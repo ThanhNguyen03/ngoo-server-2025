@@ -1,0 +1,29 @@
+{
+  "name": "ngoo-server-2025",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "repository": "https://github.com/ThanhNguyen03/ngoo-server-2025.git",
+  "author": "thanhf.ng_ <thanhfng.dev@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@apollo/server": "^5.0.0",
+    "axios": "^1.12.2",
+    "connect-redis": "^9.0.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "graphql": "^16.11.0",
+    "redis": "^5.8.3"
+  },
+  "devDependencies": {
+    "@graphql-codegen/cli": "^6.0.0",
+    "@graphql-codegen/typescript": "^5.0.2",
+    "@graphql-codegen/typescript-resolvers": "^5.1.0",
+    "@types/cors": "^2.8.19",
+    "@types/express-session": "^1.18.2",
+    "@types/node": "^24.7.2",
+    "eslint": "^9.37.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3"
+  }
+}
