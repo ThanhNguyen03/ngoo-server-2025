@@ -1,0 +1,6 @@
+type UserInfo {
+  uuid: String!
+  email: String!
+  address: String
+  isAdmin: Boolean
+}

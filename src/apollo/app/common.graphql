@@ -1,0 +1,10 @@
+enum ESort {
+  asc
+  desc
+}
+
+input PaginationInput {
+  offset: Int
+  limit: Int
+  sort: ESort
+}
