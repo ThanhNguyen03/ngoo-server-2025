@@ -9,6 +9,7 @@
       "@/apollo-api": ["./src/apollo"],
       "@/model": ["./src/model"],
       "@/helper": ["./src/helper"],
+      "@/utils": ["./src/utils"],
       "@/generated/graphql": ["./src/apollo/types.generated"],
     },
     "strict": true,
