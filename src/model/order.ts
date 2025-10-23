@@ -1,18 +1,18 @@
 import mongoose, { Schema, model, Document, Types } from 'mongoose';
 import { TItemOption } from './item';
-import { TPaymentMethod, TPaymentStatus } from './transaction';
+import { TPaymentMethod } from './payment';
 
-export type TOrderStatus = 'pending' | 'completed' | 'cancelled' | 'delivering';
+export type TOrderStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED' | 'DELIVERING';
 export type TUserInfoSnapshot = {
   name?: string;
-  address?: string;
-  phoneNumber?: string;
+  address: string;
+  phoneNumber: string;
   email: string;
 };
 
 interface IOrderItem {
   item: Types.ObjectId; // ref Item
-  title: string;
+  name: string;
   quantity: number;
   price: number;
   discountPercent?: number;
@@ -20,15 +20,12 @@ interface IOrderItem {
 }
 
 interface IOrder extends Document {
-  user: Types.ObjectId; // ref user
   userInfoSnapshot: TUserInfoSnapshot;
   items: IOrderItem[];
-  totalAmount: number;
+  totalPrice: number;
   paymentMethod: TPaymentMethod;
-  paymentStatus: TPaymentStatus;
   orderStatus: TOrderStatus;
   transactionId?: string;
-  txHash?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,7 +39,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
       ref: 'Item',
       required: true,
     },
-    title: { type: String, required: true },
+    name: { type: String, required: true },
     quantity: {
       type: Number,
       required: true,
@@ -67,19 +64,14 @@ const OrderItemSchema = new Schema<IOrderItem>(
 
 const OrderSchema = new Schema<TOrder>(
   {
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
     userInfoSnapshot: {
       name: { type: String },
-      address: { type: String },
-      phoneNumber: { type: String },
+      address: { type: String, required: true },
+      phoneNumber: { type: String, required: true },
       email: { type: String, required: true },
     },
     items: { type: [OrderItemSchema], required: true },
-    totalAmount: {
+    totalPrice: {
       type: Number,
       required: true,
       min: 0,
@@ -89,21 +81,12 @@ const OrderSchema = new Schema<TOrder>(
       enum: ['momo', 'cod', 'crypto'],
       required: true,
     },
-    paymentStatus: {
-      type: String,
-      enum: ['pending', 'success', 'failed'],
-      default: 'pending',
-    },
     orderStatus: {
       type: String,
-      enum: ['pending', 'completed', 'delivering', 'completed', 'cancelled'],
-      default: 'pending',
+      enum: ['PENDING', 'COMPLETED', 'CANCELLED', 'DELIVERING'],
+      default: 'PENDING',
     },
     transactionId: { type: String },
-    txHash: {
-      type: String,
-      trim: true,
-    },
   },
   {
     timestamps: true,
