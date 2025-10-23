@@ -3,6 +3,6 @@ type Category {
 }
 
 type Query {
-  categoryDetail: Category!
+  categoryDetail(name: String!): Category!
   listCategory: [Category]!
 }

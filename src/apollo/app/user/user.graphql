@@ -1,6 +1,41 @@
+enum ERole {
+  ADMIN
+  USER
+}
+
+type TUserAuth {
+  userUuid: String!
+  accessToken: String!
+  refreshToken: String!
+}
+
 type UserInfo {
   uuid: String!
   email: String!
+  name: String
+  walletAddress: String
+  role: ERole!
   address: String
-  isAdmin: Boolean
+  phoneNumber: String
+}
+
+type TConnectCryptoWalletResponse {
+  connectCompleted: Boolean!
+  userUuid: String!
+  walletAddress: String!
+}
+
+type Query {
+  userInfo: UserInfo!
+  cryptoWalletWithNone: String!
+}
+
+
+type Mutation {
+  refreshToken(refreshToken: String!): {
+    accessToken: String!
+  }
+  userLogin(token: String!): TUserAuth!
+  userConnectCryptoWallet(signature: String!, address: String!): TConnectCryptoWalletResponse!
+  userLogout(logoutEverywhere: Boolean): Boolean!
 }

@@ -1,0 +1,58 @@
+enum EOrderStatus {
+  PENDING 
+  COMPLETED 
+  CANCELLED 
+  DELIVERING
+}
+
+type TUserInfoSnapshot {
+  name: String
+  address: String!
+  phoneNumber: String!
+  email: String!
+};
+
+type TOrderItem {
+  item: ID!
+  name: String!
+  quantity: Int!
+  price: Float!
+  discountPercent: Float
+  selectedOptions: [TItemOption]
+}
+
+type TOrderResponse {
+  orderId: ID!
+  userInfoSnapshot: TUserInfoSnapshot!
+  paymentMethod: EPaymentMethod!
+  items: [TOrderItem]!
+  totalPrice: Float!
+  paymentMethod: EPaymentMethod!
+  momo: TMomoPayment
+  crypto: TCryptoPayment
+  transactionId: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+
+"""Input types"""
+input OrderItemInput {
+  itemId: ID!
+  quantity: Int!
+}
+
+input CreateOrderInput {
+  user: UserInfoSnapshot!
+  items: [OrderItemInput!]!
+  paymentMethod: EPaymentMethod!
+}
+
+type Query {
+  getOrder(orderID: ID!): TOrderResponse
+  listOrders(offset: Int, limit: Int): [TOrderResponse]!
+}
+
+type Mutation {
+  createOrder(input: CreateOrderInput!): TOrderResponse!
+}

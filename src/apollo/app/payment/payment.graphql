@@ -1,0 +1,56 @@
+enum EPaymentMethod {
+  COD
+  MOMO
+  CRYPTO
+}
+
+enum EPaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+}
+
+type TMomoPayment {
+  payUrl: String!
+  requestId: String!
+  orderId: String!
+}
+
+type TCryptoPayment {
+  toAddress: String!
+  amount: Float!
+  tokenSymbol: String!
+  chainId: Int!
+  dataToSign: String!
+  signature: String
+  txHash: String
+}
+
+type TPaymentResponse {
+  id: ID!
+  orderID: ID!
+  paymentMethod: EPaymentMethod!
+  totalPrice: Float!
+  status: EPaymentStatus!
+  momo: TMomoPayment
+  crypto: TCryptoPayment
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""Input types"""
+input ConfirmPaymentInput {
+  orderId: ID!
+  paymentMethod: EPaymentMethod!
+  transactionId: String
+  txHash: String
+}
+
+type Query {
+  paymentHistory(orderId: ID!): TPaymentResponse!
+  listPaymentHistory(offset: Int, limit: Int, query: [QueryByInput]): [TPaymentResponse]!
+}
+
+type Mutation {
+  confirmPayment(input: ConfirmPaymentInput!): TPaymentResponse!
+}
