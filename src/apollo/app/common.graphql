@@ -3,8 +3,18 @@ enum ESort {
   desc
 }
 
+type TQueryBy {
+  column: String
+  order: EOrder
+}
+
+input QueryByInput = {
+  column: String
+  order: EOrder
+}
+
 input PaginationInput {
   offset: Int
   limit: Int
-  sort: ESort
+  query: [TQueryBy]
 }

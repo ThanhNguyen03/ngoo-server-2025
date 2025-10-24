@@ -1,0 +1,65 @@
+enum EAuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  PAYMENT
+  OTHER
+}
+
+enum ETargetType {
+  User
+  Item
+  Order
+  Category
+  Transaction
+  System
+}
+
+type TAuditDiff {
+  oldValue: JSON
+  newValue: JSON
+}
+
+type TAuditMetadata {
+  refId: String
+  key: String
+  value: String
+}
+
+type TAuditLog {
+  id: ID!
+  userId: ID
+  action: EAuditAction!
+  targetType: ETargetType!
+  targetId: ID
+  diff: TAuditDiff
+  metadata: JSON
+  createdAt: DateTime!
+}
+
+type Query {
+  getAuditLog(id: ID!): TAuditLog
+  listAuditLog(
+    userId: ID
+    targetType: ETargetType
+    targetId: ID
+    action: EAuditAction
+    offset: Int
+    limit: Int
+  ): [TAuditLog!]!
+}
+
+input CreateAuditLogInput {
+  userId: ID
+  action: EAuditAction!
+  targetType: ETargetType!
+  targetId: ID
+  diff: JSON
+  metadata: JSON
+}
+
+type Mutation {
+  createAuditLog(input: CreateAuditLogInput!): TAuditLog!
+}

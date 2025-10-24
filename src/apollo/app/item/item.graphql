@@ -1,0 +1,82 @@
+type TItemOption = {
+  group: String!
+  name: String!
+  extraPrice: Float
+};
+
+enum EItemStatus {
+  NEW 
+  SELLER 
+  EMPTY
+}
+
+type TItem = {
+  id: ID!
+  name: String!
+  image: String!
+  price: Float!
+  amount: Int!
+  description: String
+  discountPercent: Float
+  requireOption: [TItemOption]
+  additionalOption: [TItemOption]
+  note: String
+  status: [EItemStatus]
+  category: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+input ItemOptionInput {
+  group: String!
+  name: String!
+  extraPrice: Float
+}
+
+input CreateItemInput {
+  name: String!
+  image: String!
+  price: Float!
+  amount: Int!
+  description: String
+  discountPercent: Float
+  requireOption: [ItemOptionInput]
+  additionalOption: [ItemOptionInput]
+  note: String
+  status: [ItemStatus]
+  category: String!
+}
+
+input UpdateItemInput {
+  id: ID!
+  name: String
+  image: String
+  price: Float
+  amount: Int
+  description: String
+  discountPercent: Float
+  requireOption: [ItemOptionInput]
+  additionalOption: [ItemOptionInput]
+  note: String
+  status: [ItemStatus]
+  category: String
+}
+
+type TItemResponse {
+  offset: Int!
+  limit: Int!
+  total: Int!
+  query: [TQueryBy]!
+  records: [TItem]!
+}
+
+type Query {
+  listItem(offset: Int, limit: Int, query: [QueryByInput]): TItemResponse!
+  getItemById(id: ID!): Item
+}
+
+type Mutation {
+  createItem(input: CreateItemInput!): Item!
+  updateItem(input: UpdateItemInput!): Item!
+  deleteItem(id: ID!): Boolean!
+}
