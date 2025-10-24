@@ -14,13 +14,7 @@ export class ByteBuffer {
 
   /** Internal generic uint writer */
   private writeUint(value: TNumberLike, byteLen: number): this {
-    let bigintValue: bigint;
-
-    if (typeof value === 'string') {
-      bigintValue = BigInt(value);
-    } else {
-      bigintValue = BigInt(value);
-    }
+    const bigintValue: bigint = BigInt(value);
 
     const hex = bigintValue.toString(16).padStart(byteLen * 2, '0');
     const bytes = Buffer.from(hex, 'hex');
