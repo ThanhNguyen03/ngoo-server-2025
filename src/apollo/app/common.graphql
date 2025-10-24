@@ -1,3 +1,6 @@
+scalar JSON
+scalar DateTime
+
 enum ESort {
   asc
   desc
@@ -5,12 +8,12 @@ enum ESort {
 
 type TQueryBy {
   column: String
-  order: EOrder
+  sort: ESort
 }
 
-input QueryByInput = {
+input QueryByInput {
   column: String
-  order: EOrder
+  sort: ESort
 }
 
 input PaginationInput {

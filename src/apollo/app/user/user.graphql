@@ -32,9 +32,7 @@ type Query {
 
 
 type Mutation {
-  refreshToken(refreshToken: String!): {
-    accessToken: String!
-  }
+  refreshToken(refreshToken: String!): TUserAuth!
   userLogin(token: String!): TUserAuth!
   userConnectCryptoWallet(signature: String!, address: String!): TConnectCryptoWalletResponse!
   userLogout(logoutEverywhere: Boolean): Boolean!

@@ -10,7 +10,7 @@ type TUserInfoSnapshot {
   address: String!
   phoneNumber: String!
   email: String!
-};
+}
 
 type TOrderItem {
   item: ID!
@@ -43,7 +43,7 @@ input OrderItemInput {
 }
 
 input CreateOrderInput {
-  user: UserInfoSnapshot!
+  user: TUserInfoSnapshot!
   items: [OrderItemInput!]!
   paymentMethod: EPaymentMethod!
 }
