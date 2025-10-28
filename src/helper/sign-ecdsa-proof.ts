@@ -1,4 +1,4 @@
-import { ByteBuffer, FixedFloat, THexString } from '@/utils';
+import { ByteBuffer, FixedFloat, THexString } from '@/lib';
 import { Contract, Signer } from 'ethers';
 
 export class SignEcdsaProof {
