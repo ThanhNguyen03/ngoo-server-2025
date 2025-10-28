@@ -1,7 +1,7 @@
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
 import { JwtAuthAccessTokenInstance, TJwtPayload } from './jwt.js';
-import { FixedFloat, TBigSerial } from '@/utils';
+import { TBigSerial } from '@/lib';
 import { ESort } from '@/generated/graphql';
 
 export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';
@@ -40,7 +40,6 @@ export type TAppContext = {
         readonly kind: EUserAuthenticationStatus.Authenticated;
         readonly token: string;
         userId: TBigSerial;
-        userUuid: string;
       };
 };
 
@@ -97,7 +96,7 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
 
       try {
         verifiedJwtPayload = (await JwtAuthAccessTokenInstance.verifyHeader(context.user.token)).payload;
-      } catch (error: any) {
+      } catch (error) {
         if (error instanceof Error) {
           authContext = createUnauthContext(error);
           break;
@@ -123,7 +122,6 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
           kind: EUserAuthenticationStatus.Authenticated,
           token: context.user.token,
           userId: BigInt(verifiedJwtPayload.id),
-          userUuid: verifiedJwtPayload.uuid,
         },
       };
       break;

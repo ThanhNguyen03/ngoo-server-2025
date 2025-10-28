@@ -5,11 +5,13 @@ export const camelToSnakeCase = (str: string) => str.replace(/[A-Z]/g, (letter) 
 
 const NGOO_TABLE = {
   user: '',
+  userInfo: '',
   category: '',
   loginMethod: '',
-  menuItem: '',
-  paymentHistory: '',
-  paymentOption: '',
+  item: '',
+  order: '',
+  payment: '',
+  auditLog: '',
 };
 
 export type TTableName = typeof NGOO_TABLE;
@@ -22,6 +24,8 @@ type TAppConfig = {
   MONGODB_URL: string;
   JWT_SECRET_KEY: string;
   EXPRESS_SESSION_SECRET: string;
+  REDIS_URL: string;
+  REDIS_KEY_PREFIX: string;
   MONGODB_TABLE_PREFIX: string;
   NGOO_CONTRACT_ADDRESS: string;
   NGOO_CHAIN_ID: string;
@@ -36,7 +40,12 @@ const envSchema = Joi.object({
   MONGODB_URL: Joi.string().required(),
   JWT_SECRET_KEY: Joi.string().required(),
   EXPRESS_SESSION_SECRET: Joi.string().required(),
-  SERVICE_CONFIG: Joi.string().required(),
+  // SERVICE_CONFIG: Joi.string().required(),
+  REDIS_URL: Joi.string()
+    .trim()
+    .regex(/^redis:\/\//)
+    .required(),
+  REDIS_KEY_PREFIX: Joi.string().trim().optional().default('thanhfng_server'),
   MONGODB_TABLE_PREFIX: Joi.string().required(),
   NGOO_CONTRACT_ADDRESS: Joi.string().required(),
   NGOO_CHAIN_ID: Joi.string().required(),
@@ -59,8 +68,8 @@ export const config = {
   MONGODB_URL: envVars.MONGODB_URL,
   JWT_SECRET_KEY: envVars.JWT_SECRET_KEY,
   EXPRESS_SESSION_SECRET: envVars.EXPRESS_SESSION_SECRET,
-  // REDIS_URL: envVars.REDIS_URL,
-  // REDIS_KEY_PREFIX: envVars.REDIS_KEY_PREFIX,
+  REDIS_URL: envVars.REDIS_URL,
+  REDIS_KEY_PREFIX: envVars.REDIS_KEY_PREFIX,
   MONGODB_TABLE_PREFIX: envVars.MONGODB_TABLE_PREFIX,
   NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS,
   NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID,

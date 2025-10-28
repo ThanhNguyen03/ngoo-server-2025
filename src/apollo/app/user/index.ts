@@ -6,7 +6,7 @@ import {
 } from '@/generated/graphql';
 import { authorizedWrapper, JwtAuthAccessTokenInstance, publicWrapper } from '@/helper';
 import { UserModel } from '@/model';
-import isOk, { JOI_ERC55_ADDRESS } from '@/utils';
+import isOk, { JOI_ERC55_ADDRESS } from '@/lib';
 import { randomUUID } from 'crypto';
 import { isHexString, verifyMessage } from 'ethers';
 import Joi from 'joi';
