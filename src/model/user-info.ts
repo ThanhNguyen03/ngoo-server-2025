@@ -1,7 +1,7 @@
 import mongoose, { Document, model, Schema } from 'mongoose';
 
-interface IUserInfo extends Document {
-  user: mongoose.Types.ObjectId; // ref ngược về User
+interface IUserInfo {
+  user: mongoose.Types.ObjectId; // ref to User
   name?: string;
   address?: string;
   phoneNumber?: string;
@@ -19,4 +19,4 @@ const UserInfoSchema = new Schema<TUserInfo>(
   { timestamps: true, versionKey: false },
 );
 
-export const UserInfoModel = mongoose.models.UserInfo || model<TUserInfo>('UserInfo', UserInfoSchema);
+export const UserInfoModel = model<TUserInfo>('UserInfo', UserInfoSchema);

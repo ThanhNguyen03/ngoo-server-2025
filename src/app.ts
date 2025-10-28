@@ -14,7 +14,7 @@ import {
 } from '@apollo/server/plugin/landingPage/default';
 import { randomUUID } from 'crypto';
 import session from 'express-session';
-import { config, EUserAuthenticationStatus, TAppContext } from '@/helper';
+import { config, EUserAuthenticationStatus, JwtAuthAccessTokenInstance, TAppContext } from '@/helper';
 
 const HSTS_HELMET_MAX_AGE_IN_SECONDS = 30 * 24 * 3600; // 30 days
 const COOKIE_SESSION_MAX_AGE_IN_SECONDS = 24 * 3600; // 1 day
@@ -94,24 +94,40 @@ export const NGOO_API = {
       '/graphql',
       expressMiddleware(server, {
         context: async ({ req }): Promise<TAppContext> => {
-          return {
-            user: {
-              kind: EUserAuthenticationStatus.Guest,
-              token: req.headers.authorization,
-            },
-          };
+          const authHeader = req.headers.authorization;
+          if (!authHeader) {
+            return { user: { kind: EUserAuthenticationStatus.Guest } };
+          }
+
+          const token = authHeader.split(' ')[1];
+          try {
+            // Verify token — secret (JWT NextAuth)
+            const decoded = await JwtAuthAccessTokenInstance.verify(token);
+
+            if (!decoded.payload.uuid) {
+              return { user: { kind: EUserAuthenticationStatus.Guest } };
+            }
+
+            return {
+              user: {
+                kind: EUserAuthenticationStatus.Authenticated,
+                token,
+                userId: decoded.payload.uuid,
+              },
+            };
+          } catch (err) {
+            console.error('JWT verify failed:', err);
+            return { user: { kind: EUserAuthenticationStatus.Guest } };
+          }
         },
       }) as Application,
     );
 
-    
     await new Promise<void>((resolve) => {
       httpServer.listen({ port: config.PORT }, resolve);
     });
 
-    console.debug(
-      `Server ready at ${config.APP_URL}:${config.PORT}/graphql`,
-    );
+    console.debug(`Server ready at ${config.APP_URL}:${config.PORT}/graphql`);
   },
 };
 

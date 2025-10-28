@@ -5,7 +5,7 @@ import {
   Resolvers,
 } from '@/generated/graphql';
 import { authorizedWrapper, JwtAuthAccessTokenInstance, publicWrapper } from '@/helper';
-import { UserModel } from '@/model';
+import { UserInfoModel, UserModel } from '@/model';
 import isOk, { JOI_ERC55_ADDRESS } from '@/lib';
 import { randomUUID } from 'crypto';
 import { isHexString, verifyMessage } from 'ethers';
@@ -40,38 +40,26 @@ export const resolverUser: Resolvers = {
     userInfo: authorizedWrapper(async (_root, _args, context) => {
       const { userId } = context.user;
 
-      const imUser = new UserModel();
-
-      const user = (await imUser.find(imUser.condition.field('id').eq(context.user.userId))).unwrapOne();
-
-      const email = user.email;
-      if (!email) {
-        throw new Error('Email not found');
+      const user = await UserModel.findById(userId);
+      if (!user) {
+        throw new Error('User not found');
       }
+      const userInfo = await UserInfoModel.findOne(user._id);
 
-      const userInfo = {
+      const info = {
         uuid: user.uuid,
-        email,
-        name: user.name,
+        email: user.email,
+        name: userInfo?.name,
         walletAddress: user.walletAddress,
         role: user.role,
-        address: user.address,
-        phoneNumber: user.phoneNumber,
+        address: userInfo?.address,
+        phoneNumber: userInfo?.phoneNumber,
       };
 
       // Cache user info
       // await RedisHelper.account.userInfoSet(user.id, userInfo);
 
-      return {
-        ...userInfo,
-        uuid: user.uuid,
-        email,
-        name: user.name,
-        walletAddress: user.walletAddress,
-        role: user.role,
-        address: user.address,
-        phoneNumber: user.phoneNumber,
-      };
+      return info;
     }),
 
     cryptoWalletWithNone: authorizedWrapper(async (_root, _args, context) => {
@@ -118,7 +106,7 @@ export const resolverUser: Resolvers = {
 
       return {
         connectCompleted: true,
-        userUuid: user.userUuid,
+        userUuid: user.userId,
         walletAddress: recoveredAddress,
       };
 

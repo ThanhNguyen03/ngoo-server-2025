@@ -39,7 +39,7 @@ export type TAppContext = {
     | {
         readonly kind: EUserAuthenticationStatus.Authenticated;
         readonly token: string;
-        userId: TBigSerial;
+        userId: string;
       };
 };
 
@@ -121,7 +121,7 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
         user: {
           kind: EUserAuthenticationStatus.Authenticated,
           token: context.user.token,
-          userId: BigInt(verifiedJwtPayload.id),
+          userId: verifiedJwtPayload.sid,
         },
       };
       break;
