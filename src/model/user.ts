@@ -1,7 +1,8 @@
 import { ERole } from '@/generated/graphql';
-import { Document, model, Schema, Types } from 'mongoose';
+import { model, Schema, Types } from 'mongoose';
 
-interface IUser extends Document {
+interface IUser {
+  uuid: string;
   email: string;
   walletAddress?: string;
   role: ERole;
@@ -15,6 +16,7 @@ export type TUser = IUser;
 
 const UserSchema = new Schema<TUser>(
   {
+    uuid: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     role: { type: String, enum: ['USER', 'ADMIN'], default: ERole.User },
     walletAddress: { type: String, index: true, sparse: true },

@@ -6,6 +6,7 @@ import { UserModel } from '@/model';
 
 export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';
 export const JOI_ID_SCHEMA = Joi.string()
+  .alphanum()
   .trim()
   .guid({
     version: ['uuidv4'],
@@ -138,7 +139,7 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
         user: {
           kind: EUserAuthenticationStatus.Authenticated,
           token: context.user.token,
-          userId: verifiedJwtPayload.id,
+          userId: verifiedJwtPayload.sid,
         },
       };
       break;

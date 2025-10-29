@@ -15,7 +15,6 @@ type TItem {
   name: String!
   image: String!
   price: Float!
-  amount: Int!
   description: String
   discountPercent: Float
   requireOption: [TItemOption]
@@ -36,13 +35,11 @@ input CreateItemInput {
   name: String!
   image: String!
   price: Float!
-  amount: Int!
   description: String
   discountPercent: Float
   requireOption: [ItemOptionInput]
   additionalOption: [ItemOptionInput]
-  note: String
-  status: [EItemStatus]
+  status: EItemStatus
   categoryId: String!
 }
 
@@ -51,12 +48,10 @@ input UpdateItemInput {
   name: String
   image: String
   price: Float
-  amount: Int
   description: String
   discountPercent: Float
   requireOption: [ItemOptionInput]
   additionalOption: [ItemOptionInput]
-  note: String
   status: [EItemStatus]
   categoryId: String
 }
@@ -71,7 +66,7 @@ type TItemResponse {
 
 type Query {
   listItem(offset: Int, limit: Int, query: [QueryByInput]): TItemResponse!
-  getItemById(itemId: String!): TItem!
+  getItemByCategory(categoryId: String!): TItem!
 }
 
 type Mutation {

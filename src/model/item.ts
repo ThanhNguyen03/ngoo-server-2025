@@ -21,6 +21,7 @@ interface IItem {
   additionalOption?: TItemOption[];
   status?: EItemStatus;
   categoryName: string; // Ref to Category
+  isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,7 +40,7 @@ const ItemOptionSchema = new Schema<TItemOption>(
 const ItemSchema = new Schema<IItem>(
   {
     itemId: { type: String, required: true, unique: true, default: () => randomUUID() },
-    name: { type: String, required: true },
+    name: { type: String, required: true, unique: true },
     image: { type: String, required: true },
     price: { type: Number, required: true },
     amount: { type: Number, default: 0 },
@@ -48,6 +49,7 @@ const ItemSchema = new Schema<IItem>(
     requireOption: { type: [ItemOptionSchema], required: true },
     additionalOption: { type: [ItemOptionSchema], required: false },
     status: { type: String, enum: ['NEW', 'SELLER', 'EMPTY'], default: '' },
+    isDeleted: { type: Boolean, default: false },
     categoryName: { type: String, required: true, index: true },
   },
   { timestamps: true },
