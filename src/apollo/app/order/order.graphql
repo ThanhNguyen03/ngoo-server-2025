@@ -16,12 +16,13 @@ type TOrderItem {
   name: String!
   quantity: Int!
   price: Float!
+  note: String
   discountPercent: Float
   selectedOptions: [TItemOption]
 }
 
 type TOrderResponse {
-  orderId: ID!
+  orderId: String!
   userInfoSnapshot: TUserInfoSnapshot!
   paymentMethod: EPaymentMethod!
   items: [TOrderItem]!
@@ -29,16 +30,17 @@ type TOrderResponse {
   momo: TMomoPayment
   crypto: TCryptoPayment
   transactionId: String
-  createdAt: Date!
-  updatedAt: Date!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
 }
 
 """
 Input types
 """
 input OrderItemInput {
-  itemId: ID!
+  itemId: String!
   quantity: Int!
+  note: String
   selectedOptions: [ItemOptionInput]
 }
 
@@ -53,7 +55,7 @@ input CreateOrderInput {
 }
 
 type Query {
-  getOrder(orderID: ID!): TOrderResponse
+  getOrder(orderID: String!): TOrderResponse
   listOrders(offset: Int, limit: Int): [TOrderResponse]!
 }
 

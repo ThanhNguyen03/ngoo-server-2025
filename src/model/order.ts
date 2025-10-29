@@ -13,6 +13,7 @@ export type TUserInfoSnapshot = {
 
 interface IOrderItem {
   item: Types.ObjectId; // ref Item
+  note?: string;
   name: string;
   quantity: number;
   price: number;
@@ -52,6 +53,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
       required: true,
       min: 0,
     },
+    note: { type: String },
     discountPercent: { type: Number },
     selectedOptions: [
       {

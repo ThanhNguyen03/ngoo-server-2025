@@ -1,6 +1,7 @@
 // models/Item.model.ts
+import { EItemStatus } from '@/generated/graphql';
 import { randomUUID } from 'crypto';
-import mongoose, { Schema, Document, model, Types } from 'mongoose';
+import { Schema, model } from 'mongoose';
 
 export type TItemOption = {
   group: string;
@@ -8,9 +9,7 @@ export type TItemOption = {
   extraPrice?: number;
 };
 
-export type TItemStatus = 'NEW' | 'SELLER' | 'EMPTY';
-
-interface IItem extends Document {
+interface IItem {
   itemId: string;
   name: string;
   image: string;
@@ -20,9 +19,8 @@ interface IItem extends Document {
   discountPercent?: number;
   requireOption: TItemOption[];
   additionalOption?: TItemOption[];
-  note?: string;
-  status?: TItemStatus;
-  category: Types.ObjectId; // Ref to Category
+  status?: EItemStatus;
+  categoryName: string; // Ref to Category
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,16 +47,10 @@ const ItemSchema = new Schema<IItem>(
     discountPercent: { type: Number },
     requireOption: { type: [ItemOptionSchema], required: true },
     additionalOption: { type: [ItemOptionSchema], required: false },
-    note: { type: String },
     status: { type: String, enum: ['NEW', 'SELLER', 'EMPTY'], default: '' },
-    category: {
-      type: Schema.Types.ObjectId,
-      ref: 'Category',
-      required: true,
-      index: true,
-    },
+    categoryName: { type: String, required: true, index: true },
   },
   { timestamps: true },
 );
 
-export const ItemModel = mongoose.models.Item || model<TItem>('Item', ItemSchema);
+export const ItemModel = model<TItem>('Item', ItemSchema);
