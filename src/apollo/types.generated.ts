@@ -15,13 +15,19 @@ export type Scalars = {
   Boolean: { input: boolean; output: boolean; }
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
-  DateTime: { input: any; output: any; }
-  JSON: { input: any; output: any; }
+  Date: { input: string; output: string; }
+  Object: { input: {[key: string]: unknown}; output: {[key: string]: unknown}; }
 };
 
 export type Category = {
   __typename?: 'Category';
+  categoryId: Scalars['ID']['output'];
   name: Scalars['String']['output'];
+};
+
+export type CategoryInput = {
+  categoryId: Scalars['ID']['input'];
+  name: Scalars['String']['input'];
 };
 
 /** Input types */
@@ -34,8 +40,8 @@ export type ConfirmPaymentInput = {
 
 export type CreateAuditLogInput = {
   action: EAuditAction;
-  diff?: InputMaybe<Scalars['JSON']['input']>;
-  metadata?: InputMaybe<Scalars['JSON']['input']>;
+  diff?: InputMaybe<Scalars['Object']['input']>;
+  metadata?: InputMaybe<Scalars['Object']['input']>;
   targetId?: InputMaybe<Scalars['ID']['input']>;
   targetType: ETargetType;
   userId?: InputMaybe<Scalars['ID']['input']>;
@@ -58,7 +64,7 @@ export type CreateItemInput = {
 export type CreateOrderInput = {
   items: Array<OrderItemInput>;
   paymentMethod: EPaymentMethod;
-  user: TUserInfoSnapshot;
+  user: UserSnapshotInput;
 };
 
 export enum EAuditAction {
@@ -125,10 +131,13 @@ export type Mutation = {
   __typename?: 'Mutation';
   confirmPayment: TPaymentResponse;
   createAuditLog: TAuditLog;
+  createCategory?: Maybe<Category>;
   createItem: TItem;
   createOrder: TOrderResponse;
+  deleteCategory?: Maybe<Scalars['Boolean']['output']>;
   deleteItem: Scalars['Boolean']['output'];
   refreshToken: TUserAuth;
+  updateCategory?: Maybe<Category>;
   updateItem: TItem;
   userConnectCryptoWallet: TConnectCryptoWalletResponse;
   userLogin: TUserAuth;
@@ -137,12 +146,17 @@ export type Mutation = {
 
 
 export type MutationConfirmPaymentArgs = {
-  input: ConfirmPaymentInput;
+  paymentInput: ConfirmPaymentInput;
 };
 
 
 export type MutationCreateAuditLogArgs = {
   input: CreateAuditLogInput;
+};
+
+
+export type MutationCreateCategoryArgs = {
+  name: Scalars['String']['input'];
 };
 
 
@@ -156,13 +170,23 @@ export type MutationCreateOrderArgs = {
 };
 
 
+export type MutationDeleteCategoryArgs = {
+  categoryId: Scalars['ID']['input'];
+};
+
+
 export type MutationDeleteItemArgs = {
-  id: Scalars['ID']['input'];
+  itemId: Scalars['ID']['input'];
 };
 
 
 export type MutationRefreshTokenArgs = {
   refreshToken: Scalars['String']['input'];
+};
+
+
+export type MutationUpdateCategoryArgs = {
+  category: CategoryInput;
 };
 
 
@@ -190,17 +214,17 @@ export type MutationUserLogoutArgs = {
 export type OrderItemInput = {
   itemId: Scalars['ID']['input'];
   quantity: Scalars['Int']['input'];
+  selectedOptions?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
 };
 
 export type PaginationInput = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  query?: InputMaybe<Array<InputMaybe<TQueryBy>>>;
+  query?: InputMaybe<Array<InputMaybe<QueryByInput>>>;
 };
 
 export type Query = {
   __typename?: 'Query';
-  categoryDetail: Category;
   cryptoWalletWithNone: Scalars['String']['output'];
   getAuditLog?: Maybe<TAuditLog>;
   getItemById: TItem;
@@ -215,18 +239,13 @@ export type Query = {
 };
 
 
-export type QueryCategoryDetailArgs = {
-  name: Scalars['String']['input'];
-};
-
-
 export type QueryGetAuditLogArgs = {
   id: Scalars['ID']['input'];
 };
 
 
 export type QueryGetItemByIdArgs = {
-  id: Scalars['ID']['input'];
+  itemId: Scalars['ID']['input'];
 };
 
 
@@ -266,7 +285,7 @@ export type QueryListPaymentHistoryArgs = {
 
 
 export type QueryPaymentHistoryArgs = {
-  orderId: Scalars['ID']['input'];
+  paymentId: Scalars['ID']['input'];
 };
 
 export type QueryByInput = {
@@ -276,17 +295,17 @@ export type QueryByInput = {
 
 export type TAuditDiff = {
   __typename?: 'TAuditDiff';
-  newValue?: Maybe<Scalars['JSON']['output']>;
-  oldValue?: Maybe<Scalars['JSON']['output']>;
+  newValue?: Maybe<Scalars['Object']['output']>;
+  oldValue?: Maybe<Scalars['Object']['output']>;
 };
 
 export type TAuditLog = {
   __typename?: 'TAuditLog';
   action: EAuditAction;
-  createdAt: Scalars['DateTime']['output'];
+  createdAt: Scalars['Date']['output'];
   diff?: Maybe<TAuditDiff>;
   id: Scalars['ID']['output'];
-  metadata?: Maybe<Scalars['JSON']['output']>;
+  metadata?: Maybe<Scalars['Object']['output']>;
   targetId?: Maybe<Scalars['ID']['output']>;
   targetType: ETargetType;
   userId?: Maybe<Scalars['ID']['output']>;
@@ -322,17 +341,17 @@ export type TItem = {
   additionalOption?: Maybe<Array<Maybe<TItemOption>>>;
   amount: Scalars['Int']['output'];
   category: Scalars['String']['output'];
-  createdAt: Scalars['DateTime']['output'];
+  createdAt: Scalars['Date']['output'];
   description?: Maybe<Scalars['String']['output']>;
   discountPercent?: Maybe<Scalars['Float']['output']>;
-  id: Scalars['ID']['output'];
   image: Scalars['String']['output'];
+  itemId: Scalars['ID']['output'];
   name: Scalars['String']['output'];
   note?: Maybe<Scalars['String']['output']>;
   price: Scalars['Float']['output'];
   requireOption?: Maybe<Array<Maybe<TItemOption>>>;
   status?: Maybe<Array<Maybe<EItemStatus>>>;
-  updatedAt: Scalars['DateTime']['output'];
+  updatedAt: Scalars['Date']['output'];
 };
 
 export type TItemOption = {
@@ -353,7 +372,6 @@ export type TItemResponse = {
 
 export type TMomoPayment = {
   __typename?: 'TMomoPayment';
-  orderId: Scalars['String']['output'];
   payUrl: Scalars['String']['output'];
   requestId: Scalars['String']['output'];
 };
@@ -361,7 +379,6 @@ export type TMomoPayment = {
 export type TOrderItem = {
   __typename?: 'TOrderItem';
   discountPercent?: Maybe<Scalars['Float']['output']>;
-  item: Scalars['ID']['output'];
   name: Scalars['String']['output'];
   price: Scalars['Float']['output'];
   quantity: Scalars['Int']['output'];
@@ -370,7 +387,7 @@ export type TOrderItem = {
 
 export type TOrderResponse = {
   __typename?: 'TOrderResponse';
-  createdAt: Scalars['DateTime']['output'];
+  createdAt: Scalars['Date']['output'];
   crypto?: Maybe<TCryptoPayment>;
   items: Array<Maybe<TOrderItem>>;
   momo?: Maybe<TMomoPayment>;
@@ -378,21 +395,21 @@ export type TOrderResponse = {
   paymentMethod: EPaymentMethod;
   totalPrice: Scalars['Float']['output'];
   transactionId?: Maybe<Scalars['String']['output']>;
-  updatedAt: Scalars['DateTime']['output'];
+  updatedAt: Scalars['Date']['output'];
   userInfoSnapshot: TUserInfoSnapshot;
 };
 
 export type TPaymentResponse = {
   __typename?: 'TPaymentResponse';
-  createdAt: Scalars['DateTime']['output'];
+  createdAt: Scalars['Date']['output'];
   crypto?: Maybe<TCryptoPayment>;
-  id: Scalars['ID']['output'];
   momo?: Maybe<TMomoPayment>;
   orderID: Scalars['ID']['output'];
+  paymentId: Scalars['ID']['output'];
   paymentMethod: EPaymentMethod;
   status: EPaymentStatus;
   totalPrice: Scalars['Float']['output'];
-  updatedAt: Scalars['DateTime']['output'];
+  updatedAt: Scalars['Date']['output'];
 };
 
 export type TQueryBy = {
@@ -422,8 +439,8 @@ export type UpdateItemInput = {
   category?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   discountPercent?: InputMaybe<Scalars['Float']['input']>;
-  id: Scalars['ID']['input'];
   image?: InputMaybe<Scalars['String']['input']>;
+  itemId: Scalars['ID']['input'];
   name?: InputMaybe<Scalars['String']['input']>;
   note?: InputMaybe<Scalars['String']['input']>;
   price?: InputMaybe<Scalars['Float']['input']>;
@@ -440,6 +457,10 @@ export type UserInfo = {
   role: ERole;
   uuid: Scalars['String']['output'];
   walletAddress?: Maybe<Scalars['String']['output']>;
+};
+
+export type UserSnapshotInput = {
+  email: Scalars['String']['input'];
 };
 
 
@@ -517,11 +538,12 @@ export type DirectiveResolverFn<TResult = Record<PropertyKey, never>, TParent = 
 export type ResolversTypes = {
   Boolean: ResolverTypeWrapper<Scalars['Boolean']['output']>;
   Category: ResolverTypeWrapper<Category>;
+  CategoryInput: CategoryInput;
   ConfirmPaymentInput: ConfirmPaymentInput;
   CreateAuditLogInput: CreateAuditLogInput;
   CreateItemInput: CreateItemInput;
   CreateOrderInput: CreateOrderInput;
-  DateTime: ResolverTypeWrapper<Scalars['DateTime']['output']>;
+  Date: ResolverTypeWrapper<Scalars['Date']['output']>;
   EAuditAction: EAuditAction;
   EItemStatus: EItemStatus;
   EOrderStatus: EOrderStatus;
@@ -534,8 +556,8 @@ export type ResolversTypes = {
   ID: ResolverTypeWrapper<Scalars['ID']['output']>;
   Int: ResolverTypeWrapper<Scalars['Int']['output']>;
   ItemOptionInput: ItemOptionInput;
-  JSON: ResolverTypeWrapper<Scalars['JSON']['output']>;
   Mutation: ResolverTypeWrapper<Record<PropertyKey, never>>;
+  Object: ResolverTypeWrapper<Scalars['Object']['output']>;
   OrderItemInput: OrderItemInput;
   PaginationInput: PaginationInput;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
@@ -558,23 +580,25 @@ export type ResolversTypes = {
   TUserInfoSnapshot: ResolverTypeWrapper<TUserInfoSnapshot>;
   UpdateItemInput: UpdateItemInput;
   UserInfo: ResolverTypeWrapper<UserInfo>;
+  UserSnapshotInput: UserSnapshotInput;
 };
 
 /** Mapping between all available schema types and the resolvers parents */
 export type ResolversParentTypes = {
   Boolean: Scalars['Boolean']['output'];
   Category: Category;
+  CategoryInput: CategoryInput;
   ConfirmPaymentInput: ConfirmPaymentInput;
   CreateAuditLogInput: CreateAuditLogInput;
   CreateItemInput: CreateItemInput;
   CreateOrderInput: CreateOrderInput;
-  DateTime: Scalars['DateTime']['output'];
+  Date: Scalars['Date']['output'];
   Float: Scalars['Float']['output'];
   ID: Scalars['ID']['output'];
   Int: Scalars['Int']['output'];
   ItemOptionInput: ItemOptionInput;
-  JSON: Scalars['JSON']['output'];
   Mutation: Record<PropertyKey, never>;
+  Object: Scalars['Object']['output'];
   OrderItemInput: OrderItemInput;
   PaginationInput: PaginationInput;
   Query: Record<PropertyKey, never>;
@@ -597,59 +621,63 @@ export type ResolversParentTypes = {
   TUserInfoSnapshot: TUserInfoSnapshot;
   UpdateItemInput: UpdateItemInput;
   UserInfo: UserInfo;
+  UserSnapshotInput: UserSnapshotInput;
 };
 
 export type CategoryResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Category'] = ResolversParentTypes['Category']> = {
+  categoryId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
-export interface DateTimeScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['DateTime'], any> {
-  name: 'DateTime';
-}
-
-export interface JsonScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['JSON'], any> {
-  name: 'JSON';
+export interface DateScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Date'], any> {
+  name: 'Date';
 }
 
 export type MutationResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
-  confirmPayment?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<MutationConfirmPaymentArgs, 'input'>>;
+  confirmPayment?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<MutationConfirmPaymentArgs, 'paymentInput'>>;
   createAuditLog?: Resolver<ResolversTypes['TAuditLog'], ParentType, ContextType, RequireFields<MutationCreateAuditLogArgs, 'input'>>;
+  createCategory?: Resolver<Maybe<ResolversTypes['Category']>, ParentType, ContextType, RequireFields<MutationCreateCategoryArgs, 'name'>>;
   createItem?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<MutationCreateItemArgs, 'input'>>;
   createOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<MutationCreateOrderArgs, 'input'>>;
-  deleteItem?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteItemArgs, 'id'>>;
+  deleteCategory?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteCategoryArgs, 'categoryId'>>;
+  deleteItem?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteItemArgs, 'itemId'>>;
   refreshToken?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationRefreshTokenArgs, 'refreshToken'>>;
+  updateCategory?: Resolver<Maybe<ResolversTypes['Category']>, ParentType, ContextType, RequireFields<MutationUpdateCategoryArgs, 'category'>>;
   updateItem?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<MutationUpdateItemArgs, 'input'>>;
   userConnectCryptoWallet?: Resolver<ResolversTypes['TConnectCryptoWalletResponse'], ParentType, ContextType, RequireFields<MutationUserConnectCryptoWalletArgs, 'address' | 'signature'>>;
   userLogin?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationUserLoginArgs, 'token'>>;
   userLogout?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, Partial<MutationUserLogoutArgs>>;
 };
 
+export interface ObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Object'], any> {
+  name: 'Object';
+}
+
 export type QueryResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
-  categoryDetail?: Resolver<ResolversTypes['Category'], ParentType, ContextType, RequireFields<QueryCategoryDetailArgs, 'name'>>;
   cryptoWalletWithNone?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   getAuditLog?: Resolver<Maybe<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryGetAuditLogArgs, 'id'>>;
-  getItemById?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<QueryGetItemByIdArgs, 'id'>>;
+  getItemById?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<QueryGetItemByIdArgs, 'itemId'>>;
   getOrder?: Resolver<Maybe<ResolversTypes['TOrderResponse']>, ParentType, ContextType, RequireFields<QueryGetOrderArgs, 'orderID'>>;
   listAuditLog?: Resolver<Array<ResolversTypes['TAuditLog']>, ParentType, ContextType, Partial<QueryListAuditLogArgs>>;
   listCategory?: Resolver<Array<Maybe<ResolversTypes['Category']>>, ParentType, ContextType>;
   listItem?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, Partial<QueryListItemArgs>>;
   listOrders?: Resolver<Array<Maybe<ResolversTypes['TOrderResponse']>>, ParentType, ContextType, Partial<QueryListOrdersArgs>>;
   listPaymentHistory?: Resolver<Array<Maybe<ResolversTypes['TPaymentResponse']>>, ParentType, ContextType, Partial<QueryListPaymentHistoryArgs>>;
-  paymentHistory?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<QueryPaymentHistoryArgs, 'orderId'>>;
+  paymentHistory?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<QueryPaymentHistoryArgs, 'paymentId'>>;
   userInfo?: Resolver<ResolversTypes['UserInfo'], ParentType, ContextType>;
 };
 
 export type TAuditDiffResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TAuditDiff'] = ResolversParentTypes['TAuditDiff']> = {
-  newValue?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
-  oldValue?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
+  newValue?: Resolver<Maybe<ResolversTypes['Object']>, ParentType, ContextType>;
+  oldValue?: Resolver<Maybe<ResolversTypes['Object']>, ParentType, ContextType>;
 };
 
 export type TAuditLogResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TAuditLog'] = ResolversParentTypes['TAuditLog']> = {
   action?: Resolver<ResolversTypes['EAuditAction'], ParentType, ContextType>;
-  createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  createdAt?: Resolver<ResolversTypes['Date'], ParentType, ContextType>;
   diff?: Resolver<Maybe<ResolversTypes['TAuditDiff']>, ParentType, ContextType>;
   id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
-  metadata?: Resolver<Maybe<ResolversTypes['JSON']>, ParentType, ContextType>;
+  metadata?: Resolver<Maybe<ResolversTypes['Object']>, ParentType, ContextType>;
   targetId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
   targetType?: Resolver<ResolversTypes['ETargetType'], ParentType, ContextType>;
   userId?: Resolver<Maybe<ResolversTypes['ID']>, ParentType, ContextType>;
@@ -681,17 +709,17 @@ export type TItemResolvers<ContextType = TAppContext, ParentType extends Resolve
   additionalOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
   amount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   category?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  createdAt?: Resolver<ResolversTypes['Date'], ParentType, ContextType>;
   description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   discountPercent?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
-  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   image?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  itemId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   requireOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
   status?: Resolver<Maybe<Array<Maybe<ResolversTypes['EItemStatus']>>>, ParentType, ContextType>;
-  updatedAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  updatedAt?: Resolver<ResolversTypes['Date'], ParentType, ContextType>;
 };
 
 export type TItemOptionResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItemOption'] = ResolversParentTypes['TItemOption']> = {
@@ -709,14 +737,12 @@ export type TItemResponseResolvers<ContextType = TAppContext, ParentType extends
 };
 
 export type TMomoPaymentResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TMomoPayment'] = ResolversParentTypes['TMomoPayment']> = {
-  orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   payUrl?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   requestId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type TOrderItemResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderItem'] = ResolversParentTypes['TOrderItem']> = {
   discountPercent?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
-  item?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   quantity?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
@@ -724,7 +750,7 @@ export type TOrderItemResolvers<ContextType = TAppContext, ParentType extends Re
 };
 
 export type TOrderResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderResponse'] = ResolversParentTypes['TOrderResponse']> = {
-  createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  createdAt?: Resolver<ResolversTypes['Date'], ParentType, ContextType>;
   crypto?: Resolver<Maybe<ResolversTypes['TCryptoPayment']>, ParentType, ContextType>;
   items?: Resolver<Array<Maybe<ResolversTypes['TOrderItem']>>, ParentType, ContextType>;
   momo?: Resolver<Maybe<ResolversTypes['TMomoPayment']>, ParentType, ContextType>;
@@ -732,20 +758,20 @@ export type TOrderResponseResolvers<ContextType = TAppContext, ParentType extend
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
   totalPrice?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   transactionId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  updatedAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  updatedAt?: Resolver<ResolversTypes['Date'], ParentType, ContextType>;
   userInfoSnapshot?: Resolver<ResolversTypes['TUserInfoSnapshot'], ParentType, ContextType>;
 };
 
 export type TPaymentResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TPaymentResponse'] = ResolversParentTypes['TPaymentResponse']> = {
-  createdAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  createdAt?: Resolver<ResolversTypes['Date'], ParentType, ContextType>;
   crypto?: Resolver<Maybe<ResolversTypes['TCryptoPayment']>, ParentType, ContextType>;
-  id?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   momo?: Resolver<Maybe<ResolversTypes['TMomoPayment']>, ParentType, ContextType>;
   orderID?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
+  paymentId?: Resolver<ResolversTypes['ID'], ParentType, ContextType>;
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['EPaymentStatus'], ParentType, ContextType>;
   totalPrice?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
-  updatedAt?: Resolver<ResolversTypes['DateTime'], ParentType, ContextType>;
+  updatedAt?: Resolver<ResolversTypes['Date'], ParentType, ContextType>;
 };
 
 export type TQueryByResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TQueryBy'] = ResolversParentTypes['TQueryBy']> = {
@@ -778,9 +804,9 @@ export type UserInfoResolvers<ContextType = TAppContext, ParentType extends Reso
 
 export type Resolvers<ContextType = TAppContext> = {
   Category?: CategoryResolvers<ContextType>;
-  DateTime?: GraphQLScalarType;
-  JSON?: GraphQLScalarType;
+  Date?: GraphQLScalarType;
   Mutation?: MutationResolvers<ContextType>;
+  Object?: GraphQLScalarType;
   Query?: QueryResolvers<ContextType>;
   TAuditDiff?: TAuditDiffResolvers<ContextType>;
   TAuditLog?: TAuditLogResolvers<ContextType>;

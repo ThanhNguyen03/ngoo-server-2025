@@ -1,8 +1,19 @@
 type Category {
+  categoryId: ID!
+  name: String!
+}
+
+input CategoryInput {
+  categoryId: ID!
   name: String!
 }
 
 type Query {
-  categoryDetail(name: String!): Category!
   listCategory: [Category]!
+}
+
+type Mutation {
+  createCategory(name: String!): Category
+  updateCategory(category: CategoryInput!): Category
+  deleteCategory(categoryId: ID!): Boolean
 }

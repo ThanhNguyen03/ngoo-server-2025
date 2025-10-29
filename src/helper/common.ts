@@ -2,17 +2,32 @@ import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
 import { JwtAuthAccessTokenInstance, TJwtPayload } from './jwt.js';
 import { TBigSerial } from '@/lib';
-import { ESort } from '@/generated/graphql';
+import { ESort, QueryByInput } from '@/generated/graphql';
 
 export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';
+export const JOI_ID_SCHEMA = Joi.string()
+  .trim()
+  .guid({
+    version: ['uuidv4'],
+  })
+  .required();
 
 export type TGraphQLRequest<T> = {
   data: T;
 };
 
-export const schemaPagination = () => ({
+export const schemaPagination = (queryList: string[]) => ({
   offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
-  sort: Joi.string().valid(ESort.Asc, ESort.Desc).required().default(ESort.Asc),
+  query: Joi.array()
+    .items(
+      Joi.object<QueryByInput>({
+        column: Joi.string()
+          .valid(...queryList)
+          .required(),
+        sort: Joi.string().valid(ESort.Asc, ESort.Desc).required(),
+      }),
+    )
+    .default([]),
   limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
 });
 
