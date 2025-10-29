@@ -131,13 +131,13 @@ export type Mutation = {
   __typename?: 'Mutation';
   confirmPayment: TPaymentResponse;
   createAuditLog: TAuditLog;
-  createCategory?: Maybe<Category>;
+  createCategory: Category;
   createItem: TItem;
   createOrder: TOrderResponse;
   deleteCategory?: Maybe<Scalars['Boolean']['output']>;
   deleteItem: Scalars['Boolean']['output'];
   refreshToken: TUserAuth;
-  updateCategory?: Maybe<Category>;
+  updateCategory: Category;
   updateItem: TItem;
   userConnectCryptoWallet: TConnectCryptoWalletResponse;
   userLogin: TUserAuth;
@@ -228,7 +228,7 @@ export type Query = {
   __typename?: 'Query';
   cryptoWalletWithNone: Scalars['String']['output'];
   getAuditLog?: Maybe<TAuditLog>;
-  getItemById: TItem;
+  getItemByCategory: TItem;
   getOrder?: Maybe<TOrderResponse>;
   listAuditLog: Array<TAuditLog>;
   listCategory: Array<Maybe<Category>>;
@@ -245,8 +245,8 @@ export type QueryGetAuditLogArgs = {
 };
 
 
-export type QueryGetItemByIdArgs = {
-  itemId: Scalars['String']['input'];
+export type QueryGetItemByCategoryArgs = {
+  categoryId: Scalars['String']['input'];
 };
 
 
@@ -631,13 +631,13 @@ export type CategoryResolvers<ContextType = TAppContext, ParentType extends Reso
 export type MutationResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
   confirmPayment?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<MutationConfirmPaymentArgs, 'paymentInput'>>;
   createAuditLog?: Resolver<ResolversTypes['TAuditLog'], ParentType, ContextType, RequireFields<MutationCreateAuditLogArgs, 'input'>>;
-  createCategory?: Resolver<Maybe<ResolversTypes['Category']>, ParentType, ContextType, RequireFields<MutationCreateCategoryArgs, 'name'>>;
+  createCategory?: Resolver<ResolversTypes['Category'], ParentType, ContextType, RequireFields<MutationCreateCategoryArgs, 'name'>>;
   createItem?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<MutationCreateItemArgs, 'input'>>;
   createOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<MutationCreateOrderArgs, 'input'>>;
   deleteCategory?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteCategoryArgs, 'categoryId'>>;
   deleteItem?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteItemArgs, 'itemId'>>;
   refreshToken?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationRefreshTokenArgs, 'refreshToken'>>;
-  updateCategory?: Resolver<Maybe<ResolversTypes['Category']>, ParentType, ContextType, RequireFields<MutationUpdateCategoryArgs, 'category'>>;
+  updateCategory?: Resolver<ResolversTypes['Category'], ParentType, ContextType, RequireFields<MutationUpdateCategoryArgs, 'category'>>;
   updateItem?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<MutationUpdateItemArgs, 'input'>>;
   userConnectCryptoWallet?: Resolver<ResolversTypes['TConnectCryptoWalletResponse'], ParentType, ContextType, RequireFields<MutationUserConnectCryptoWalletArgs, 'address' | 'signature'>>;
   userLogin?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationUserLoginArgs, 'token'>>;
@@ -651,7 +651,7 @@ export interface ObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTyp
 export type QueryResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
   cryptoWalletWithNone?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   getAuditLog?: Resolver<Maybe<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryGetAuditLogArgs, 'id'>>;
-  getItemById?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<QueryGetItemByIdArgs, 'itemId'>>;
+  getItemByCategory?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<QueryGetItemByCategoryArgs, 'categoryId'>>;
   getOrder?: Resolver<Maybe<ResolversTypes['TOrderResponse']>, ParentType, ContextType, RequireFields<QueryGetOrderArgs, 'orderID'>>;
   listAuditLog?: Resolver<Array<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryListAuditLogArgs, 'targetId' | 'userId'>>;
   listCategory?: Resolver<Array<Maybe<ResolversTypes['Category']>>, ParentType, ContextType>;
