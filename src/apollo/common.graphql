@@ -1,5 +1,5 @@
 scalar Object
-scalar Date
+scalar Timestamp
 
 enum ESort {
   asc

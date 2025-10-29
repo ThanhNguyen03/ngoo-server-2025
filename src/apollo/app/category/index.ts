@@ -4,7 +4,7 @@ import {
   MutationUpdateCategoryArgs,
   Resolvers,
 } from '@/generated/graphql';
-import { JOI_ID_SCHEMA, validationWrapper } from '@/helper';
+import { adminWrapper, authorizedWrapper, JOI_ID_SCHEMA } from '@/helper';
 import { CategoryModel } from '@/model';
 import Joi from 'joi';
 
@@ -35,7 +35,7 @@ export const resolverCategory: Resolvers = {
   },
 
   Mutation: {
-    createCategory: validationWrapper(JOI_CATEGORY_NAME, async (_root, _arg) => {
+    createCategory: adminWrapper(JOI_CATEGORY_NAME, async (_root, _arg) => {
       const { name } = _arg;
       const category = await CategoryModel.findOne({ name });
 
@@ -53,7 +53,7 @@ export const resolverCategory: Resolvers = {
       throw new Error('Category already exist!');
     }),
 
-    updateCategory: validationWrapper(JOI_CATEGORY, async (_root, _arg) => {
+    updateCategory: adminWrapper(JOI_CATEGORY, async (_root, _arg) => {
       const { categoryId, name } = _arg.category;
       const category = await CategoryModel.findOne({ categoryId, isDeleted: false });
 
@@ -65,7 +65,7 @@ export const resolverCategory: Resolvers = {
       return await CategoryModel.findOneAndUpdate({ categoryId }, { name }, { new: true });
     }),
 
-    deleteCategory: validationWrapper(JOI_CATEGORY_ID, async (_root, _arg) => {
+    deleteCategory: adminWrapper(JOI_CATEGORY_ID, async (_root, _arg) => {
       const { categoryId } = _arg;
       const category = await CategoryModel.findOneAndUpdate({ categoryId }, { isDeleted: true }, { new: true });
 

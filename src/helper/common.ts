@@ -1,8 +1,8 @@
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
 import { JwtAuthAccessTokenInstance, TJwtPayload } from './jwt.js';
-import { TBigSerial } from '@/lib';
-import { ESort, QueryByInput } from '@/generated/graphql';
+import { ERole, ESort, QueryByInput, TQueryBy } from '@/generated/graphql';
+import { UserModel } from '@/model';
 
 export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';
 export const JOI_ID_SCHEMA = Joi.string()
@@ -15,6 +15,8 @@ export const JOI_ID_SCHEMA = Joi.string()
 export type TGraphQLRequest<T> = {
   data: T;
 };
+
+export type TPagination = { total: number; offset: number; limit: number; query: TQueryBy[] };
 
 export const schemaPagination = (queryList: string[]) => ({
   offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
@@ -54,7 +56,7 @@ export type TAppContext = {
     | {
         readonly kind: EUserAuthenticationStatus.Authenticated;
         readonly token: string;
-        userId: TBigSerial;
+        userId: string;
       };
 };
 
@@ -136,7 +138,7 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
         user: {
           kind: EUserAuthenticationStatus.Authenticated,
           token: context.user.token,
-          userId: BigInt(verifiedJwtPayload.id),
+          userId: verifiedJwtPayload.id,
         },
       };
       break;
@@ -314,6 +316,59 @@ export function publicWrapper<TArgs, TValidatedArgs, TResult>(
     return validationWrapper(schema, (_root, _args, _context, _info) =>
       resolver(_root, _args, _context as TGuestContext, _info),
     )(root, args, context, info);
+  };
+}
+
+/** Wrapper for authorized admin resolver, which will verify the token and check the
+ * user against the database. It also validates the input arguments [T] against
+ * the schema. */
+export function adminWrapper<TArgs, TResult>(
+  resolver: THandler<TArgs, TAuthorizedContext, TResult>,
+): THandler<TArgs, TAppContext, TResult>;
+export function adminWrapper<TArgs, TValidatedArgs, TResult>(
+  schema: Joi.ObjectSchema<TValidatedArgs>,
+  resolver: THandler<TValidatedArgs, TAuthorizedContext, TResult>,
+): THandler<TArgs, TAppContext, TResult>;
+export function adminWrapper<TArgs, TValidatedArgs, TResult>(
+  schemaOrResolver: Joi.ObjectSchema<TValidatedArgs> | THandler<TArgs, TAuthorizedContext, TResult>,
+  resolverOrUndefined?: THandler<TValidatedArgs, TAuthorizedContext, TResult>,
+): THandler<TArgs, TAppContext, TResult> {
+  return async (root: any, args, context, info) => {
+    const ctx = await authenticateUser(context);
+    let authContext: TAuthorizedContext;
+
+    switch (ctx.user.kind) {
+      case EUserAuthenticationStatus.Unauthenticated:
+        throw ctx.user.reason;
+      case EUserAuthenticationStatus.Authenticated:
+        // Safety: Typescript couldn't infer the type of context.user in switch
+        // case statement but it's guaranteed to be authenticated here.
+        // Alternatively, we can use a type guard to check the type of
+        // context.user, but it could incur computational overhead.
+        authContext = ctx as TAuthorizedContext;
+        break;
+      default:
+        throw new Error('Unhandled user kind');
+    }
+
+    // No schema case
+    if (!resolverOrUndefined) {
+      return (schemaOrResolver as THandler<TArgs, TAuthorizedContext, TResult>)(root, args, authContext, info);
+    }
+
+    // With schema case
+    const schema = schemaOrResolver as Joi.ObjectSchema<TValidatedArgs>;
+    const resolver = resolverOrUndefined;
+
+    const user = await UserModel.findById(authContext.user.userId);
+    if (!user || (user && user.role !== ERole.Admin)) {
+      throw new Error('Forbidden: Admin privileges required');
+    }
+
+    // Safety: The context is guaranteed to be authenticated at this point.
+    return validationWrapper(schema, (_root, _args, _context, _info) =>
+      resolver(_root, _args, _context as TAuthorizedContext, _info),
+    )(root, args, authContext, info);
   };
 }
 

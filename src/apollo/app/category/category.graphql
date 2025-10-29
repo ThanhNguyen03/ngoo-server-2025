@@ -1,10 +1,10 @@
 type Category {
-  categoryId: ID!
+  categoryId: String!
   name: String!
 }
 
 input CategoryInput {
-  categoryId: ID!
+  categoryId: String!
   name: String!
 }
 
@@ -15,5 +15,5 @@ type Query {
 type Mutation {
   createCategory(name: String!): Category
   updateCategory(category: CategoryInput!): Category
-  deleteCategory(categoryId: ID!): Boolean
+  deleteCategory(categoryId: String!): Boolean
 }

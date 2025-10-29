@@ -26,27 +26,27 @@ type TCryptoPayment {
 }
 
 type TPaymentResponse {
-  paymentId: ID!
-  orderID: ID!
+  paymentId: String!
+  orderID: String!
   paymentMethod: EPaymentMethod!
   totalPrice: Float!
   status: EPaymentStatus!
   momo: TMomoPayment
   crypto: TCryptoPayment
-  createdAt: Date!
-  updatedAt: Date!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
 }
 
 """Input types"""
 input ConfirmPaymentInput {
-  orderId: ID!
+  orderId: String!
   paymentMethod: EPaymentMethod!
   transactionId: String
   txHash: String
 }
 
 type Query {
-  paymentHistory(paymentId: ID!): TPaymentResponse!
+  paymentHistory(paymentId: String!): TPaymentResponse!
   listPaymentHistory(offset: Int, limit: Int, query: [QueryByInput]): [TPaymentResponse]!
 }
 
