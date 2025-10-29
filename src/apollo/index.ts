@@ -1,6 +1,8 @@
 import { readFileSync } from '@/helper';
 import { resolverUser } from './app/user';
 import { resolverCategory } from './app/category';
+import CustomScalarTypes from './scalar';
+import { Resolvers } from './types.generated';
 
 const typeDefUser = readFileSync('./src/apollo/app/user/user.graphql');
 const typeDefAuditLog = readFileSync('./src/apollo/app/audit-log/audit.graphql');
@@ -9,6 +11,10 @@ const typeDefItem = readFileSync('./src/apollo/app/item/item.graphql');
 const typeDefOrder = readFileSync('./src/apollo/app/order/order.graphql');
 const typeDefPayment = readFileSync('./src/apollo/app/payment/payment.graphql');
 const typeDefCommon = readFileSync('./src/apollo/common.graphql');
+
+const resolverScalars: Resolvers = {
+  Timestamp: CustomScalarTypes.Timestamp(),
+};
 
 export const TypedefApp = [
   typeDefAuditLog,
@@ -20,4 +26,4 @@ export const TypedefApp = [
   typeDefCommon,
 ];
 
-export const ResolverApp = [resolverUser, resolverCategory];
+export const ResolverApp = [resolverUser, resolverCategory, resolverScalars];
