@@ -5,13 +5,13 @@ type TItemOption {
 }
 
 enum EItemStatus {
-  NEW 
-  SELLER 
+  NEW
+  SELLER
   EMPTY
 }
 
 type TItem {
-  id: ID!
+  itemId: ID!
   name: String!
   image: String!
   price: Float!
@@ -23,8 +23,8 @@ type TItem {
   note: String
   status: [EItemStatus]
   category: String!
-  createdAt: DateTime!
-  updatedAt: DateTime!
+  createdAt: Date!
+  updatedAt: Date!
 }
 
 input ItemOptionInput {
@@ -48,7 +48,7 @@ input CreateItemInput {
 }
 
 input UpdateItemInput {
-  id: ID!
+  itemId: ID!
   name: String
   image: String
   price: Float
@@ -72,11 +72,11 @@ type TItemResponse {
 
 type Query {
   listItem(offset: Int, limit: Int, query: [QueryByInput]): TItemResponse!
-  getItemById(id: ID!): TItem!
+  getItemById(itemId: ID!): TItem!
 }
 
 type Mutation {
   createItem(input: CreateItemInput!): TItem!
   updateItem(input: UpdateItemInput!): TItem!
-  deleteItem(id: ID!): Boolean!
+  deleteItem(itemId: ID!): Boolean!
 }

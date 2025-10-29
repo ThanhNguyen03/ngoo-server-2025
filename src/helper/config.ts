@@ -43,7 +43,7 @@ const envSchema = Joi.object({
   // SERVICE_CONFIG: Joi.string().required(),
   REDIS_URL: Joi.string()
     .trim()
-    .regex(/^redis:\/\//)
+    .regex(/^rediss:\/\//)
     .required(),
   REDIS_KEY_PREFIX: Joi.string().trim().optional().default('thanhfng_server'),
   MONGODB_TABLE_PREFIX: Joi.string().required(),

@@ -1,4 +1,5 @@
 // models/Item.model.ts
+import { randomUUID } from 'crypto';
 import mongoose, { Schema, Document, model, Types } from 'mongoose';
 
 export type TItemOption = {
@@ -10,6 +11,7 @@ export type TItemOption = {
 export type TItemStatus = 'NEW' | 'SELLER' | 'EMPTY';
 
 interface IItem extends Document {
+  itemId: string;
   name: string;
   image: string;
   price: number;
@@ -38,6 +40,7 @@ const ItemOptionSchema = new Schema<TItemOption>(
 
 const ItemSchema = new Schema<IItem>(
   {
+    itemId: { type: String, required: true, unique: true, default: () => randomUUID() },
     name: { type: String, required: true },
     image: { type: String, required: true },
     price: { type: Number, required: true },
@@ -57,7 +60,5 @@ const ItemSchema = new Schema<IItem>(
   },
   { timestamps: true },
 );
-
-ItemSchema.index({ title: 1, category: 1 });
 
 export const ItemModel = mongoose.models.Item || model<TItem>('Item', ItemSchema);

@@ -25,6 +25,4 @@ const UserSchema = new Schema<TUser>(
   { timestamps: true, versionKey: false },
 );
 
-UserSchema.index({ email: 1 });
-
 export const UserModel = mongoose.models.User || model<TUser>('User', UserSchema);

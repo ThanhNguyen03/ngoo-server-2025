@@ -1,5 +1,5 @@
-scalar JSON
-scalar DateTime
+scalar Object
+scalar Date
 
 enum ESort {
   asc
@@ -19,5 +19,5 @@ input QueryByInput {
 input PaginationInput {
   offset: Int
   limit: Int
-  query: [TQueryBy]
+  query: [QueryByInput]
 }

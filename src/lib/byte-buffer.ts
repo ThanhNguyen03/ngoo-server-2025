@@ -1,11 +1,11 @@
-import { Buffer } from 'safer-buffer';
+import SaferBuffer from 'safer-buffer';
 import { ethers } from 'ethers';
 import { THexString } from '.';
 
 export type TNumberLike = THexString | bigint | number;
 
 export class ByteBuffer {
-  private buf: Buffer = Buffer.alloc(0);
+  private buf: Buffer = SaferBuffer.Buffer.alloc(0);
 
   /** Factory method */
   static getInstance(): ByteBuffer {
