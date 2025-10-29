@@ -6,6 +6,7 @@ import { UserModel } from '@/model';
 
 export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';
 export const JOI_ID_SCHEMA = Joi.string()
+  .alphanum()
   .trim()
   .guid({
     version: ['uuidv4'],

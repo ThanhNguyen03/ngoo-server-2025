@@ -49,16 +49,14 @@ export type CreateAuditLogInput = {
 
 export type CreateItemInput = {
   additionalOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
-  amount: Scalars['Int']['input'];
   categoryId: Scalars['String']['input'];
   description?: InputMaybe<Scalars['String']['input']>;
   discountPercent?: InputMaybe<Scalars['Float']['input']>;
   image: Scalars['String']['input'];
   name: Scalars['String']['input'];
-  note?: InputMaybe<Scalars['String']['input']>;
   price: Scalars['Float']['input'];
   requireOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
-  status?: InputMaybe<Array<InputMaybe<EItemStatus>>>;
+  status?: InputMaybe<EItemStatus>;
 };
 
 export type CreateOrderInput = {
@@ -340,7 +338,6 @@ export type TCryptoPayment = {
 export type TItem = {
   __typename?: 'TItem';
   additionalOption?: Maybe<Array<Maybe<TItemOption>>>;
-  amount: Scalars['Int']['output'];
   categoryName: Scalars['String']['output'];
   createdAt: Scalars['Timestamp']['output'];
   description?: Maybe<Scalars['String']['output']>;
@@ -436,14 +433,12 @@ export type TUserInfoSnapshot = {
 
 export type UpdateItemInput = {
   additionalOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
-  amount?: InputMaybe<Scalars['Int']['input']>;
   categoryId?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   discountPercent?: InputMaybe<Scalars['Float']['input']>;
   image?: InputMaybe<Scalars['String']['input']>;
   itemId: Scalars['String']['input'];
   name?: InputMaybe<Scalars['String']['input']>;
-  note?: InputMaybe<Scalars['String']['input']>;
   price?: InputMaybe<Scalars['Float']['input']>;
   requireOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
   status?: InputMaybe<Array<InputMaybe<EItemStatus>>>;
@@ -702,7 +697,6 @@ export type TCryptoPaymentResolvers<ContextType = TAppContext, ParentType extend
 
 export type TItemResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItem'] = ResolversParentTypes['TItem']> = {
   additionalOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
-  amount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   categoryName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;

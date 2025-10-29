@@ -14,16 +14,11 @@ const JOI_CATEGORY_NAME = Joi.object<MutationCreateCategoryArgs>({
 const JOI_CATEGORY = Joi.object<MutationUpdateCategoryArgs>({
   category: Joi.object({
     categoryId: JOI_ID_SCHEMA,
-    name: Joi.string().alphanum().trim().min(5).max(30).required(),
+    name: Joi.string().trim().min(5).max(30).required(),
   }),
 });
 const JOI_CATEGORY_ID = Joi.object<MutationDeleteCategoryArgs>({
-  categoryId: Joi.string()
-    .alphanum()
-    .trim()
-    .guid({
-      version: ['uuidv4'],
-    }),
+  categoryId: JOI_ID_SCHEMA,
 });
 
 export const resolverCategory: Resolvers = {
@@ -51,7 +46,6 @@ export const resolverCategory: Resolvers = {
       const existingActive = await CategoryModel.findOne({
         name,
         isDeleted: false,
-        _id: { $ne: category._id },
       });
 
       if (existingActive) {
@@ -66,11 +60,7 @@ export const resolverCategory: Resolvers = {
 
     updateCategory: adminWrapper(JOI_CATEGORY, async (_root, _arg) => {
       const { categoryId, name } = _arg.category;
-      const category = await CategoryModel.findOneAndUpdate(
-        { _id: categoryId, isDeleted: false },
-        { name },
-        { new: true },
-      );
+      const category = await CategoryModel.findOneAndUpdate({ categoryId, isDeleted: false }, { name }, { new: true });
 
       if (!category) {
         throw new Error('Category not found');
