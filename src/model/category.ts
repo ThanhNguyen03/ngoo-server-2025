@@ -1,19 +1,21 @@
-import mongoose, { Document, model, Schema } from 'mongoose';
+import { randomUUID } from 'crypto';
+import { model, Schema } from 'mongoose';
 
-interface ICategory extends Document {
+interface ICategory {
+  categoryId: string;
   name: string;
-  createAt: Date;
+  isDeleted: boolean;
 }
 
 export type TCategory = ICategory;
 
 const CategorySchema = new Schema<TCategory>(
   {
+    categoryId: { type: String, required: true, default: () => randomUUID() },
     name: { type: String, require: true, unique: true },
+    isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true, versionKey: false },
 );
 
-CategorySchema.index({ name: 1 });
-
-export const CategoryModel = mongoose.models.Category || model<TCategory>('Category', CategorySchema);
+export const CategoryModel = model<TCategory>('Category', CategorySchema);

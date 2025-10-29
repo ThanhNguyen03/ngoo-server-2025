@@ -1,6 +1,7 @@
 import mongoose, { Schema, model, Document, Types } from 'mongoose';
 import { TItemOption } from './item';
 import { TPaymentMethod } from './payment';
+import { randomUUID } from 'crypto';
 
 export type TOrderStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED' | 'DELIVERING';
 export type TUserInfoSnapshot = {
@@ -12,6 +13,7 @@ export type TUserInfoSnapshot = {
 
 interface IOrderItem {
   item: Types.ObjectId; // ref Item
+  note?: string;
   name: string;
   quantity: number;
   price: number;
@@ -19,7 +21,8 @@ interface IOrderItem {
   selectedOptions?: TItemOption[];
 }
 
-interface IOrder extends Document {
+interface IOrder {
+  orderId: string;
   userInfoSnapshot: TUserInfoSnapshot;
   items: IOrderItem[];
   totalPrice: number;
@@ -50,6 +53,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
       required: true,
       min: 0,
     },
+    note: { type: String },
     discountPercent: { type: Number },
     selectedOptions: [
       {
@@ -64,6 +68,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
 
 const OrderSchema = new Schema<TOrder>(
   {
+    orderId: { type: String, required: true, unique: true, default: () => randomUUID() },
     userInfoSnapshot: {
       name: { type: String },
       address: { type: String, required: true },
@@ -95,6 +100,6 @@ const OrderSchema = new Schema<TOrder>(
 );
 
 OrderSchema.index({ createdAt: -1 });
-OrderSchema.index({ user: 1, status: 1 });
+OrderSchema.index({ status: 1 });
 
 export const Order = mongoose.models.Order || model<TOrder>('Order', OrderSchema);

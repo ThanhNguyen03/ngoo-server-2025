@@ -26,7 +26,4 @@ const UserSchema = new Schema<TUser>(
   { timestamps: true, versionKey: false },
 );
 
-UserSchema.index({ email: 1 });
-UserSchema.index({ uuid: 1 });
-
 export const UserModel = model<TUser>('User', UserSchema);

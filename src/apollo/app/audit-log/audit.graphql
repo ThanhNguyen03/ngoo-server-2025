@@ -18,8 +18,8 @@ enum ETargetType {
 }
 
 type TAuditDiff {
-  oldValue: JSON
-  newValue: JSON
+  oldValue: Object
+  newValue: Object
 }
 
 type TAuditMetadata {
@@ -29,22 +29,22 @@ type TAuditMetadata {
 }
 
 type TAuditLog {
-  id: ID!
-  userId: ID
+  id: String!
+  userId: String!
   action: EAuditAction!
   targetType: ETargetType!
-  targetId: ID
+  targetId: String!
   diff: TAuditDiff
-  metadata: JSON
-  createdAt: DateTime!
+  metadata: Object
+  createdAt: Timestamp!
 }
 
 type Query {
-  getAuditLog(id: ID!): TAuditLog
+  getAuditLog(id: String!): TAuditLog
   listAuditLog(
-    userId: ID
+    userId: String!
     targetType: ETargetType
-    targetId: ID
+    targetId: String!
     action: EAuditAction
     offset: Int
     limit: Int
@@ -52,12 +52,12 @@ type Query {
 }
 
 input CreateAuditLogInput {
-  userId: ID
+  userId: String!
   action: EAuditAction!
   targetType: ETargetType!
-  targetId: ID
-  diff: JSON
-  metadata: JSON
+  targetId: String!
+  diff: Object
+  metadata: Object
 }
 
 type Mutation {

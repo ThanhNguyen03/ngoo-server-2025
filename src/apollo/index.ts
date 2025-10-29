@@ -1,14 +1,29 @@
 import { readFileSync } from '@/helper';
 import { resolverUser } from './app/user';
 import { resolverCategory } from './app/category';
+import CustomScalarTypes from './scalar';
+import { Resolvers } from './types.generated';
 
+const typeDefUser = readFileSync('./src/apollo/app/user/user.graphql');
 const typeDefAuditLog = readFileSync('./src/apollo/app/audit-log/audit.graphql');
 const typeDefCategory = readFileSync('./src/apollo/app/category/category.graphql');
 const typeDefItem = readFileSync('./src/apollo/app/item/item.graphql');
 const typeDefOrder = readFileSync('./src/apollo/app/order/order.graphql');
 const typeDefPayment = readFileSync('./src/apollo/app/payment/payment.graphql');
-const typeDefUser = readFileSync('./src/apollo/app/user/user.graphql');
+const typeDefCommon = readFileSync('./src/apollo/common.graphql');
 
-export const TypedefApp = [typeDefAuditLog, typeDefCategory, typeDefItem, typeDefOrder, typeDefPayment, typeDefUser];
+const resolverScalars: Resolvers = {
+  Timestamp: CustomScalarTypes.Timestamp(),
+};
 
-export const ResolverApp = [resolverUser, resolverCategory];
+export const TypedefApp = [
+  typeDefAuditLog,
+  typeDefCategory,
+  typeDefItem,
+  typeDefOrder,
+  typeDefPayment,
+  typeDefUser,
+  typeDefCommon,
+];
+
+export const ResolverApp = [resolverUser, resolverCategory, resolverScalars];

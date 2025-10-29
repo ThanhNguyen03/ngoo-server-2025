@@ -16,6 +16,14 @@ const config: CodegenConfig = {
             input: 'bigint',
             output: 'bigint',
           },
+          Object: {
+            input: '{[key: string]: unknown}',
+            output: '{[key: string]: unknown}',
+          },
+          Timestamp: {
+            input: 'number',
+            output: 'number',
+          },
         },
       },
     },

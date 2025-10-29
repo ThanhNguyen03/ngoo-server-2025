@@ -1,7 +1,7 @@
 enum EOrderStatus {
-  PENDING 
-  COMPLETED 
-  CANCELLED 
+  PENDING
+  COMPLETED
+  CANCELLED
   DELIVERING
 }
 
@@ -13,43 +13,49 @@ type TUserInfoSnapshot {
 }
 
 type TOrderItem {
-  item: ID!
   name: String!
   quantity: Int!
   price: Float!
+  note: String
   discountPercent: Float
   selectedOptions: [TItemOption]
 }
 
 type TOrderResponse {
-  orderId: ID!
+  orderId: String!
   userInfoSnapshot: TUserInfoSnapshot!
   paymentMethod: EPaymentMethod!
   items: [TOrderItem]!
   totalPrice: Float!
-  paymentMethod: EPaymentMethod!
   momo: TMomoPayment
   crypto: TCryptoPayment
   transactionId: String
-  createdAt: DateTime!
-  updatedAt: DateTime!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
 }
 
-
-"""Input types"""
+"""
+Input types
+"""
 input OrderItemInput {
-  itemId: ID!
+  itemId: String!
   quantity: Int!
+  note: String
+  selectedOptions: [ItemOptionInput]
+}
+
+input UserSnapshotInput {
+  email: String!
 }
 
 input CreateOrderInput {
-  user: TUserInfoSnapshot!
+  user: UserSnapshotInput!
   items: [OrderItemInput!]!
   paymentMethod: EPaymentMethod!
 }
 
 type Query {
-  getOrder(orderID: ID!): TOrderResponse
+  getOrder(orderID: String!): TOrderResponse
   listOrders(offset: Int, limit: Int): [TOrderResponse]!
 }
 

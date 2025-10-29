@@ -13,7 +13,6 @@ enum EPaymentStatus {
 type TMomoPayment {
   payUrl: String!
   requestId: String!
-  orderId: String!
 }
 
 type TCryptoPayment {
@@ -27,30 +26,30 @@ type TCryptoPayment {
 }
 
 type TPaymentResponse {
-  id: ID!
-  orderID: ID!
+  paymentId: String!
+  orderID: String!
   paymentMethod: EPaymentMethod!
   totalPrice: Float!
   status: EPaymentStatus!
   momo: TMomoPayment
   crypto: TCryptoPayment
-  createdAt: DateTime!
-  updatedAt: DateTime!
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
 }
 
 """Input types"""
 input ConfirmPaymentInput {
-  orderId: ID!
+  orderId: String!
   paymentMethod: EPaymentMethod!
   transactionId: String
   txHash: String
 }
 
 type Query {
-  paymentHistory(orderId: ID!): TPaymentResponse!
+  paymentHistory(paymentId: String!): TPaymentResponse!
   listPaymentHistory(offset: Int, limit: Int, query: [QueryByInput]): [TPaymentResponse]!
 }
 
 type Mutation {
-  confirmPayment(input: ConfirmPaymentInput!): TPaymentResponse!
+  confirmPayment(paymentInput: ConfirmPaymentInput!): TPaymentResponse!
 }
