@@ -14,22 +14,30 @@ type TUserInfoSnapshot {
 
 type TOrderItem {
   name: String!
-  quantity: Int!
+  amount: Int!
   price: Float!
   note: String
   discountPercent: Float
   selectedOptions: [TItemOption]
 }
 
+type TCreateOrderResponse {
+  orderId: String!
+  momoPaymentUrl: String
+  momoRequestId: String
+  cryptoPaymentData: String
+  codPaymentData: String
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
+}
+
 type TOrderResponse {
   orderId: String!
   userInfoSnapshot: TUserInfoSnapshot!
-  paymentMethod: EPaymentMethod!
   items: [TOrderItem]!
-  totalPrice: Float!
-  momo: TMomoPayment
-  crypto: TCryptoPayment
-  transactionId: String
+  totalPrice: Int!
+  paymentMethod: EPaymentMethod!
+  orderStatus: EOrderStatus!
   createdAt: Timestamp!
   updatedAt: Timestamp!
 }
@@ -39,26 +47,21 @@ Input types
 """
 input OrderItemInput {
   itemId: String!
-  quantity: Int!
+  amount: Int!
   note: String
   selectedOptions: [ItemOptionInput]
 }
 
-input UserSnapshotInput {
-  email: String!
-}
-
 input CreateOrderInput {
-  user: UserSnapshotInput!
-  items: [OrderItemInput!]!
+  userId: String!
+  items: [OrderItemInput]!
   paymentMethod: EPaymentMethod!
 }
 
 type Query {
-  getOrder(orderID: String!): TOrderResponse
-  listOrders(offset: Int, limit: Int): [TOrderResponse]!
+  getOrder(orderId: String!): TOrderResponse!
 }
 
 type Mutation {
-  createOrder(input: CreateOrderInput!): TOrderResponse!
+  createOrder(input: CreateOrderInput!): TCreateOrderResponse!
 }

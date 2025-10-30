@@ -6,7 +6,7 @@ interface IUser {
   email: string;
   walletAddress?: string;
   role: ERole;
-  userInfo?: Types.ObjectId;
+  userInfo: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
   lastLoginAt: Date;
@@ -20,7 +20,7 @@ const UserSchema = new Schema<TUser>(
     email: { type: String, required: true, unique: true },
     role: { type: String, enum: ['USER', 'ADMIN'], default: ERole.User },
     walletAddress: { type: String, index: true, sparse: true },
-    userInfo: { type: Schema.Types.ObjectId, ref: 'UserInfo' },
+    userInfo: { type: Schema.Types.ObjectId, ref: 'UserInfo', required: true },
     lastLoginAt: { type: Date },
   },
   { timestamps: true, versionKey: false },
