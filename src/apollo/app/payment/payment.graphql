@@ -11,16 +11,16 @@ enum EPaymentStatus {
 }
 
 type TMomoPayment {
-  payUrl: String!
-  requestId: String!
+  payUrl: String
+  requestId: String
 }
 
 type TCryptoPayment {
-  toAddress: String!
-  amount: Float!
-  tokenSymbol: String!
-  chainId: Int!
-  dataToSign: String!
+  toAddress: String
+  amount: Float
+  tokenSymbol: String
+  chainId: Int
+  dataToSign: String
   signature: String
   txHash: String
 }
@@ -31,8 +31,8 @@ type TPaymentResponse {
   paymentMethod: EPaymentMethod!
   totalPrice: Float!
   status: EPaymentStatus!
-  momo: TMomoPayment
-  crypto: TCryptoPayment
+  userInfo: TUserInfoSnapshot!
+  items: [TOrderItem]!
   createdAt: Timestamp!
   updatedAt: Timestamp!
 }

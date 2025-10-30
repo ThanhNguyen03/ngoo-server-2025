@@ -23,13 +23,9 @@ type TOrderItem {
 
 type TOrderResponse {
   orderId: String!
-  userInfoSnapshot: TUserInfoSnapshot!
-  paymentMethod: EPaymentMethod!
-  items: [TOrderItem]!
-  totalPrice: Float!
-  momo: TMomoPayment
-  crypto: TCryptoPayment
-  transactionId: String
+  momoPaymentUrl: String
+  monoRequestId: String
+  cryptoPaymentData: String
   createdAt: Timestamp!
   updatedAt: Timestamp!
 }
@@ -44,19 +40,10 @@ input OrderItemInput {
   selectedOptions: [ItemOptionInput]
 }
 
-input UserSnapshotInput {
-  email: String!
-}
-
 input CreateOrderInput {
-  user: UserSnapshotInput!
+  userId: String!
   items: [OrderItemInput!]!
   paymentMethod: EPaymentMethod!
-}
-
-type Query {
-  getOrder(orderID: String!): TOrderResponse
-  listOrders(offset: Int, limit: Int): [TOrderResponse]!
 }
 
 type Mutation {
