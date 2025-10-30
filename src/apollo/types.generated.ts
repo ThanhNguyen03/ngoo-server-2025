@@ -311,17 +311,6 @@ export type TConnectCryptoWalletResponse = {
   walletAddress: Scalars['String']['output'];
 };
 
-export type TCryptoPayment = {
-  __typename?: 'TCryptoPayment';
-  amount?: Maybe<Scalars['Float']['output']>;
-  chainId?: Maybe<Scalars['Int']['output']>;
-  dataToSign?: Maybe<Scalars['String']['output']>;
-  signature?: Maybe<Scalars['String']['output']>;
-  toAddress?: Maybe<Scalars['String']['output']>;
-  tokenSymbol?: Maybe<Scalars['String']['output']>;
-  txHash?: Maybe<Scalars['String']['output']>;
-};
-
 export type TItem = {
   __typename?: 'TItem';
   additionalOption?: Maybe<Array<Maybe<TItemOption>>>;
@@ -352,12 +341,6 @@ export type TItemResponse = {
   query: Array<Maybe<TQueryBy>>;
   records: Array<Maybe<TItem>>;
   total: Scalars['Int']['output'];
-};
-
-export type TMomoPayment = {
-  __typename?: 'TMomoPayment';
-  payUrl?: Maybe<Scalars['String']['output']>;
-  requestId?: Maybe<Scalars['String']['output']>;
 };
 
 export type TOrderItem = {
@@ -540,11 +523,9 @@ export type ResolversTypes = {
   TAuditLog: ResolverTypeWrapper<TAuditLog>;
   TAuditMetadata: ResolverTypeWrapper<TAuditMetadata>;
   TConnectCryptoWalletResponse: ResolverTypeWrapper<TConnectCryptoWalletResponse>;
-  TCryptoPayment: ResolverTypeWrapper<TCryptoPayment>;
   TItem: ResolverTypeWrapper<TItem>;
   TItemOption: ResolverTypeWrapper<TItemOption>;
   TItemResponse: ResolverTypeWrapper<TItemResponse>;
-  TMomoPayment: ResolverTypeWrapper<TMomoPayment>;
   TOrderItem: ResolverTypeWrapper<TOrderItem>;
   TOrderResponse: ResolverTypeWrapper<TOrderResponse>;
   TPaymentResponse: ResolverTypeWrapper<TPaymentResponse>;
@@ -579,11 +560,9 @@ export type ResolversParentTypes = {
   TAuditLog: TAuditLog;
   TAuditMetadata: TAuditMetadata;
   TConnectCryptoWalletResponse: TConnectCryptoWalletResponse;
-  TCryptoPayment: TCryptoPayment;
   TItem: TItem;
   TItemOption: TItemOption;
   TItemResponse: TItemResponse;
-  TMomoPayment: TMomoPayment;
   TOrderItem: TOrderItem;
   TOrderResponse: TOrderResponse;
   TPaymentResponse: TPaymentResponse;
@@ -660,16 +639,6 @@ export type TConnectCryptoWalletResponseResolvers<ContextType = TAppContext, Par
   walletAddress?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
-export type TCryptoPaymentResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TCryptoPayment'] = ResolversParentTypes['TCryptoPayment']> = {
-  amount?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
-  chainId?: Resolver<Maybe<ResolversTypes['Int']>, ParentType, ContextType>;
-  dataToSign?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  signature?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  toAddress?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  tokenSymbol?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  txHash?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-};
-
 export type TItemResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItem'] = ResolversParentTypes['TItem']> = {
   additionalOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
   categoryName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -697,11 +666,6 @@ export type TItemResponseResolvers<ContextType = TAppContext, ParentType extends
   query?: Resolver<Array<Maybe<ResolversTypes['TQueryBy']>>, ParentType, ContextType>;
   records?: Resolver<Array<Maybe<ResolversTypes['TItem']>>, ParentType, ContextType>;
   total?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
-};
-
-export type TMomoPaymentResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TMomoPayment'] = ResolversParentTypes['TMomoPayment']> = {
-  payUrl?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  requestId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
 export type TOrderItemResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderItem'] = ResolversParentTypes['TOrderItem']> = {
@@ -775,11 +739,9 @@ export type Resolvers<ContextType = TAppContext> = {
   TAuditLog?: TAuditLogResolvers<ContextType>;
   TAuditMetadata?: TAuditMetadataResolvers<ContextType>;
   TConnectCryptoWalletResponse?: TConnectCryptoWalletResponseResolvers<ContextType>;
-  TCryptoPayment?: TCryptoPaymentResolvers<ContextType>;
   TItem?: TItemResolvers<ContextType>;
   TItemOption?: TItemOptionResolvers<ContextType>;
   TItemResponse?: TItemResponseResolvers<ContextType>;
-  TMomoPayment?: TMomoPaymentResolvers<ContextType>;
   TOrderItem?: TOrderItemResolvers<ContextType>;
   TOrderResponse?: TOrderResponseResolvers<ContextType>;
   TPaymentResponse?: TPaymentResponseResolvers<ContextType>;

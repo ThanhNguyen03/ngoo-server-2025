@@ -10,21 +10,6 @@ enum EPaymentStatus {
   FAILED
 }
 
-type TMomoPayment {
-  payUrl: String
-  requestId: String
-}
-
-type TCryptoPayment {
-  toAddress: String
-  amount: Float
-  tokenSymbol: String
-  chainId: Int
-  dataToSign: String
-  signature: String
-  txHash: String
-}
-
 type TPaymentResponse {
   paymentId: String!
   orderID: String!
@@ -37,7 +22,9 @@ type TPaymentResponse {
   updatedAt: Timestamp!
 }
 
-"""Input types"""
+"""
+Input types
+"""
 input ConfirmPaymentInput {
   orderId: String!
   paymentMethod: EPaymentMethod!
