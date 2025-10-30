@@ -14,18 +14,30 @@ type TUserInfoSnapshot {
 
 type TOrderItem {
   name: String!
-  quantity: Int!
+  amount: Int!
   price: Float!
   note: String
   discountPercent: Float
   selectedOptions: [TItemOption]
 }
 
-type TOrderResponse {
+type TCreateOrderResponse {
   orderId: String!
   momoPaymentUrl: String
-  monoRequestId: String
+  momoRequestId: String
   cryptoPaymentData: String
+  codPaymentData: String
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
+}
+
+type TOrderResponse {
+  orderId: String!
+  userInfoSnapshot: TUserInfoSnapshot!
+  items: [TOrderItem]!
+  totalPrice: Int!
+  paymentMethod: EPaymentMethod!
+  orderStatus: EOrderStatus!
   createdAt: Timestamp!
   updatedAt: Timestamp!
 }
@@ -35,17 +47,21 @@ Input types
 """
 input OrderItemInput {
   itemId: String!
-  quantity: Int!
+  amount: Int!
   note: String
   selectedOptions: [ItemOptionInput]
 }
 
 input CreateOrderInput {
   userId: String!
-  items: [OrderItemInput!]!
+  items: [OrderItemInput]!
   paymentMethod: EPaymentMethod!
 }
 
+type Query {
+  getOrder(orderId: String!): TOrderResponse!
+}
+
 type Mutation {
-  createOrder(input: CreateOrderInput!): TOrderResponse!
+  createOrder(input: CreateOrderInput!): TCreateOrderResponse!
 }

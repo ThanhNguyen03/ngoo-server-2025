@@ -14,12 +14,11 @@ interface IItem {
   name: string;
   image: string;
   price: number;
-  amount: number;
   description: string;
   discountPercent?: number;
   requireOption: TItemOption[];
   additionalOption?: TItemOption[];
-  status?: EItemStatus;
+  status?: EItemStatus[];
   categoryName: string; // Ref to Category
   isDeleted: boolean;
   createdAt: Date;
@@ -43,7 +42,6 @@ const ItemSchema = new Schema<IItem>(
     name: { type: String, required: true, unique: true },
     image: { type: String, required: true },
     price: { type: Number, required: true },
-    amount: { type: Number, default: 0 },
     description: { type: String, required: true },
     discountPercent: { type: Number },
     requireOption: { type: [ItemOptionSchema], required: true },

@@ -56,11 +56,11 @@ export type CreateItemInput = {
   name: Scalars['String']['input'];
   price: Scalars['Float']['input'];
   requireOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
-  status?: InputMaybe<EItemStatus>;
+  status?: InputMaybe<Array<InputMaybe<EItemStatus>>>;
 };
 
 export type CreateOrderInput = {
-  items: Array<OrderItemInput>;
+  items: Array<InputMaybe<OrderItemInput>>;
   paymentMethod: EPaymentMethod;
   userId: Scalars['String']['input'];
 };
@@ -131,7 +131,7 @@ export type Mutation = {
   createAuditLog: TAuditLog;
   createCategory: Category;
   createItem: TItem;
-  createOrder: TOrderResponse;
+  createOrder: TCreateOrderResponse;
   deleteCategory?: Maybe<Scalars['Boolean']['output']>;
   deleteItem: Scalars['Boolean']['output'];
   refreshToken: TUserAuth;
@@ -210,9 +210,9 @@ export type MutationUserLogoutArgs = {
 
 /** Input types */
 export type OrderItemInput = {
+  amount: Scalars['Int']['input'];
   itemId: Scalars['String']['input'];
   note?: InputMaybe<Scalars['String']['input']>;
-  quantity: Scalars['Int']['input'];
   selectedOptions?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
 };
 
@@ -227,6 +227,7 @@ export type Query = {
   cryptoWalletWithNone: Scalars['String']['output'];
   getAuditLog?: Maybe<TAuditLog>;
   getItemByCategory: TItem;
+  getOrder: TOrderResponse;
   listAuditLog: Array<TAuditLog>;
   listCategory: Array<Maybe<Category>>;
   listItem: TItemResponse;
@@ -243,6 +244,11 @@ export type QueryGetAuditLogArgs = {
 
 export type QueryGetItemByCategoryArgs = {
   categoryId: Scalars['String']['input'];
+};
+
+
+export type QueryGetOrderArgs = {
+  orderId: Scalars['String']['input'];
 };
 
 
@@ -311,6 +317,17 @@ export type TConnectCryptoWalletResponse = {
   walletAddress: Scalars['String']['output'];
 };
 
+export type TCreateOrderResponse = {
+  __typename?: 'TCreateOrderResponse';
+  codPaymentData?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['Timestamp']['output'];
+  cryptoPaymentData?: Maybe<Scalars['String']['output']>;
+  momoPaymentUrl?: Maybe<Scalars['String']['output']>;
+  momoRequestId?: Maybe<Scalars['String']['output']>;
+  orderId: Scalars['String']['output'];
+  updatedAt: Scalars['Timestamp']['output'];
+};
+
 export type TItem = {
   __typename?: 'TItem';
   additionalOption?: Maybe<Array<Maybe<TItemOption>>>;
@@ -323,7 +340,7 @@ export type TItem = {
   name: Scalars['String']['output'];
   price: Scalars['Float']['output'];
   requireOption?: Maybe<Array<Maybe<TItemOption>>>;
-  status?: Maybe<EItemStatus>;
+  status?: Maybe<Array<Maybe<EItemStatus>>>;
   updatedAt: Scalars['Timestamp']['output'];
 };
 
@@ -345,22 +362,24 @@ export type TItemResponse = {
 
 export type TOrderItem = {
   __typename?: 'TOrderItem';
+  amount: Scalars['Int']['output'];
   discountPercent?: Maybe<Scalars['Float']['output']>;
   name: Scalars['String']['output'];
   note?: Maybe<Scalars['String']['output']>;
   price: Scalars['Float']['output'];
-  quantity: Scalars['Int']['output'];
   selectedOptions?: Maybe<Array<Maybe<TItemOption>>>;
 };
 
 export type TOrderResponse = {
   __typename?: 'TOrderResponse';
   createdAt: Scalars['Timestamp']['output'];
-  cryptoPaymentData?: Maybe<Scalars['String']['output']>;
-  momoPaymentUrl?: Maybe<Scalars['String']['output']>;
-  monoRequestId?: Maybe<Scalars['String']['output']>;
+  items: Array<Maybe<TOrderItem>>;
   orderId: Scalars['String']['output'];
+  orderStatus: EOrderStatus;
+  paymentMethod: EPaymentMethod;
+  totalPrice: Scalars['Int']['output'];
   updatedAt: Scalars['Timestamp']['output'];
+  userInfoSnapshot: TUserInfoSnapshot;
 };
 
 export type TPaymentResponse = {
@@ -372,6 +391,8 @@ export type TPaymentResponse = {
   paymentMethod: EPaymentMethod;
   status: EPaymentStatus;
   totalPrice: Scalars['Float']['output'];
+  transactionId?: Maybe<Scalars['String']['output']>;
+  txHash?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['Timestamp']['output'];
   userInfo: TUserInfoSnapshot;
 };
@@ -523,6 +544,7 @@ export type ResolversTypes = {
   TAuditLog: ResolverTypeWrapper<TAuditLog>;
   TAuditMetadata: ResolverTypeWrapper<TAuditMetadata>;
   TConnectCryptoWalletResponse: ResolverTypeWrapper<TConnectCryptoWalletResponse>;
+  TCreateOrderResponse: ResolverTypeWrapper<TCreateOrderResponse>;
   TItem: ResolverTypeWrapper<TItem>;
   TItemOption: ResolverTypeWrapper<TItemOption>;
   TItemResponse: ResolverTypeWrapper<TItemResponse>;
@@ -560,6 +582,7 @@ export type ResolversParentTypes = {
   TAuditLog: TAuditLog;
   TAuditMetadata: TAuditMetadata;
   TConnectCryptoWalletResponse: TConnectCryptoWalletResponse;
+  TCreateOrderResponse: TCreateOrderResponse;
   TItem: TItem;
   TItemOption: TItemOption;
   TItemResponse: TItemResponse;
@@ -584,7 +607,7 @@ export type MutationResolvers<ContextType = TAppContext, ParentType extends Reso
   createAuditLog?: Resolver<ResolversTypes['TAuditLog'], ParentType, ContextType, RequireFields<MutationCreateAuditLogArgs, 'input'>>;
   createCategory?: Resolver<ResolversTypes['Category'], ParentType, ContextType, RequireFields<MutationCreateCategoryArgs, 'name'>>;
   createItem?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<MutationCreateItemArgs, 'input'>>;
-  createOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<MutationCreateOrderArgs, 'input'>>;
+  createOrder?: Resolver<ResolversTypes['TCreateOrderResponse'], ParentType, ContextType, RequireFields<MutationCreateOrderArgs, 'input'>>;
   deleteCategory?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteCategoryArgs, 'categoryId'>>;
   deleteItem?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteItemArgs, 'itemId'>>;
   refreshToken?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationRefreshTokenArgs, 'refreshToken'>>;
@@ -603,6 +626,7 @@ export type QueryResolvers<ContextType = TAppContext, ParentType extends Resolve
   cryptoWalletWithNone?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   getAuditLog?: Resolver<Maybe<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryGetAuditLogArgs, 'id'>>;
   getItemByCategory?: Resolver<ResolversTypes['TItem'], ParentType, ContextType, RequireFields<QueryGetItemByCategoryArgs, 'categoryId'>>;
+  getOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<QueryGetOrderArgs, 'orderId'>>;
   listAuditLog?: Resolver<Array<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryListAuditLogArgs, 'targetId' | 'userId'>>;
   listCategory?: Resolver<Array<Maybe<ResolversTypes['Category']>>, ParentType, ContextType>;
   listItem?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, Partial<QueryListItemArgs>>;
@@ -639,6 +663,16 @@ export type TConnectCryptoWalletResponseResolvers<ContextType = TAppContext, Par
   walletAddress?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
+export type TCreateOrderResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TCreateOrderResponse'] = ResolversParentTypes['TCreateOrderResponse']> = {
+  codPaymentData?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
+  cryptoPaymentData?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  momoPaymentUrl?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  momoRequestId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
+};
+
 export type TItemResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItem'] = ResolversParentTypes['TItem']> = {
   additionalOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
   categoryName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -650,7 +684,7 @@ export type TItemResolvers<ContextType = TAppContext, ParentType extends Resolve
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   requireOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
-  status?: Resolver<Maybe<ResolversTypes['EItemStatus']>, ParentType, ContextType>;
+  status?: Resolver<Maybe<Array<Maybe<ResolversTypes['EItemStatus']>>>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
 };
 
@@ -669,21 +703,23 @@ export type TItemResponseResolvers<ContextType = TAppContext, ParentType extends
 };
 
 export type TOrderItemResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderItem'] = ResolversParentTypes['TOrderItem']> = {
+  amount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   discountPercent?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
-  quantity?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   selectedOptions?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
 };
 
 export type TOrderResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderResponse'] = ResolversParentTypes['TOrderResponse']> = {
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
-  cryptoPaymentData?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  momoPaymentUrl?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  monoRequestId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  items?: Resolver<Array<Maybe<ResolversTypes['TOrderItem']>>, ParentType, ContextType>;
   orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  orderStatus?: Resolver<ResolversTypes['EOrderStatus'], ParentType, ContextType>;
+  paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
+  totalPrice?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
+  userInfoSnapshot?: Resolver<ResolversTypes['TUserInfoSnapshot'], ParentType, ContextType>;
 };
 
 export type TPaymentResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TPaymentResponse'] = ResolversParentTypes['TPaymentResponse']> = {
@@ -694,6 +730,8 @@ export type TPaymentResponseResolvers<ContextType = TAppContext, ParentType exte
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
   status?: Resolver<ResolversTypes['EPaymentStatus'], ParentType, ContextType>;
   totalPrice?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  transactionId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  txHash?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   userInfo?: Resolver<ResolversTypes['TUserInfoSnapshot'], ParentType, ContextType>;
 };
@@ -739,6 +777,7 @@ export type Resolvers<ContextType = TAppContext> = {
   TAuditLog?: TAuditLogResolvers<ContextType>;
   TAuditMetadata?: TAuditMetadataResolvers<ContextType>;
   TConnectCryptoWalletResponse?: TConnectCryptoWalletResponseResolvers<ContextType>;
+  TCreateOrderResponse?: TCreateOrderResponseResolvers<ContextType>;
   TItem?: TItemResolvers<ContextType>;
   TItemOption?: TItemOptionResolvers<ContextType>;
   TItemResponse?: TItemResponseResolvers<ContextType>;

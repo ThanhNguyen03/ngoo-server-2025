@@ -19,7 +19,7 @@ type TItem {
   discountPercent: Float
   requireOption: [TItemOption]
   additionalOption: [TItemOption]
-  status: EItemStatus
+  status: [EItemStatus]
   categoryName: String!
   createdAt: Timestamp!
   updatedAt: Timestamp!
@@ -39,7 +39,7 @@ input CreateItemInput {
   discountPercent: Float
   requireOption: [ItemOptionInput]
   additionalOption: [ItemOptionInput]
-  status: EItemStatus
+  status: [EItemStatus]
   categoryId: String!
 }
 

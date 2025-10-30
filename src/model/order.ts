@@ -1,9 +1,8 @@
 import mongoose, { Schema, model, Document, Types } from 'mongoose';
 import { TItemOption } from './item';
-import { TPaymentMethod } from './payment';
 import { randomUUID } from 'crypto';
+import { EOrderStatus, EPaymentMethod } from '@/generated/graphql';
 
-export type TOrderStatus = 'PENDING' | 'COMPLETED' | 'CANCELLED' | 'DELIVERING';
 export type TUserInfoSnapshot = {
   name?: string;
   address: string;
@@ -13,9 +12,9 @@ export type TUserInfoSnapshot = {
 
 interface IOrderItem {
   item: Types.ObjectId; // ref Item
-  note?: string;
   name: string;
-  quantity: number;
+  note?: string;
+  amount: number;
   price: number;
   discountPercent?: number;
   selectedOptions?: TItemOption[];
@@ -26,9 +25,8 @@ interface IOrder {
   userInfoSnapshot: TUserInfoSnapshot;
   items: IOrderItem[];
   totalPrice: number;
-  paymentMethod: TPaymentMethod;
-  orderStatus: TOrderStatus;
-  transactionId?: string;
+  paymentMethod: EPaymentMethod;
+  orderStatus: EOrderStatus;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -43,7 +41,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
       required: true,
     },
     name: { type: String, required: true },
-    quantity: {
+    amount: {
       type: Number,
       required: true,
       min: 1,
@@ -83,15 +81,14 @@ const OrderSchema = new Schema<TOrder>(
     },
     paymentMethod: {
       type: String,
-      enum: ['momo', 'cod', 'crypto'],
+      enum: ['MOMO', 'COD', 'CRYPTO'],
       required: true,
     },
     orderStatus: {
       type: String,
       enum: ['PENDING', 'COMPLETED', 'CANCELLED', 'DELIVERING'],
-      default: 'PENDING',
+      default: EOrderStatus.Pending,
     },
-    transactionId: { type: String },
   },
   {
     timestamps: true,
@@ -102,4 +99,4 @@ const OrderSchema = new Schema<TOrder>(
 OrderSchema.index({ createdAt: -1 });
 OrderSchema.index({ status: 1 });
 
-export const Order = mongoose.models.Order || model<TOrder>('Order', OrderSchema);
+export const OrderModel = model<TOrder>('Order', OrderSchema);

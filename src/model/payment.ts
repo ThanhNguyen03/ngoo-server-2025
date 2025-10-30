@@ -1,28 +1,14 @@
+import { EPaymentStatus } from '@/generated/graphql';
+import { randomUUID } from 'crypto';
 import mongoose, { Schema, model, Document, Types } from 'mongoose';
 
-export type TPaymentMethod = 'MOMO' | 'COD' | 'CRYPTO';
-export type TPaymentStatus = 'PENDING' | 'SUCCESSFUL' | 'FAILED';
-
-interface IPayment extends Document {
-  user: Types.ObjectId; // ref User
+interface IPayment {
+  paymentId: string;
   order: Types.ObjectId; // ref Order
-  paymentMethod: TPaymentMethod;
-  totalPrice: number;
-  status: TPaymentStatus;
+  status: EPaymentStatus;
   txHash?: string; // blockchain Payment hash (for crypto)
-  transactionId?: string; // for Momo
-  momoSnapshot?: {
-    payUrl?: string;
-    requestId?: string;
-    signature?: string;
-  };
-  cryptoSnapshot?: {
-    toAddress?: string;
-    amount?: number;
-    tokenSymbol?: string;
-    chainId?: number;
-    dataToSign?: string;
-  };
+  momoTransactionId?: string; // for Momo
+  codTransactionId?: string; // for COD
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,29 +17,16 @@ export type TPayment = IPayment;
 
 const PaymentSchema = new Schema<TPayment>(
   {
-    user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    paymentId: { type: String, required: true, unique: true, default: () => randomUUID() },
     order: { type: Schema.Types.ObjectId, ref: 'Order', required: true },
-    paymentMethod: { type: String, enum: ['MOMO', 'COD', 'CRYPTO'], required: true },
-    totalPrice: { type: Number, required: true, min: 0 },
     status: {
       type: String,
       enum: ['PENDING', 'SUCCESSFUL', 'FAILED'],
-      default: 'PENDING',
+      default: EPaymentStatus.Pending,
     },
     txHash: { type: String, trim: true },
-    transactionId: { type: String, trim: true },
-    momoSnapshot: {
-      payUrl: { type: String },
-      requestId: { type: String },
-      signature: { type: String },
-    },
-    cryptoSnapshot: {
-      toAddress: { type: String },
-      amount: { type: Number },
-      tokenSymbol: { type: String },
-      chainId: { type: Number },
-      dataToSign: { type: String },
-    },
+    momoTransactionId: { type: String, trim: true },
+    codTransactionId: { type: String, trim: true },
   },
   {
     timestamps: true,

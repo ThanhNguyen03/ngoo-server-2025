@@ -1,6 +1,5 @@
 import {
   EItemStatus,
-  ItemOptionInput,
   MutationCreateItemArgs,
   MutationDeleteItemArgs,
   MutationUpdateItemArgs,
@@ -15,7 +14,7 @@ enum EItemQuery {
   Status = 'status',
   Price = 'price',
 }
-const JOI_ITEM_OPTION = Joi.object({
+export const JOI_ITEM_OPTION = Joi.object({
   group: Joi.string().trim().min(1).max(50).required(),
   name: Joi.string().trim().min(1).max(50).required(),
   extraPrice: Joi.number().min(0),
@@ -29,7 +28,7 @@ const JOI_ITEM_INPUT_BASE = Joi.object({
   discountPercent: Joi.number().min(0).max(100).allow(null),
   requireOption: Joi.array().items(JOI_ITEM_OPTION).default([]),
   additionalOption: Joi.array().items(JOI_ITEM_OPTION).default([]),
-  status: Joi.string().valid(...Object.values(EItemStatus)),
+  status: Joi.array().items(Joi.string().valid(...Object.values(EItemStatus))),
   categoryId: JOI_ID_SCHEMA,
 });
 
@@ -57,7 +56,7 @@ const JOI_LIST_ITEM = Joi.object<Omit<TPagination, 'total'>>({
   ...schemaPagination(Object.values(EItemQuery)),
 });
 
-const mapItemResponse = (item: TItem) => ({
+const returnResponse = (item: TItem) => ({
   itemId: item.itemId,
   name: item.name,
   image: item.image,
@@ -93,7 +92,7 @@ export const resolverItem: Resolvers = {
         limit,
         query,
         total,
-        records: listItem.map(mapItemResponse),
+        records: listItem.map(returnResponse),
       };
     }),
 
@@ -103,7 +102,7 @@ export const resolverItem: Resolvers = {
       if (!result) {
         throw new Error('Item not found!');
       }
-      return mapItemResponse(result);
+      return returnResponse(result);
     }),
   },
 
@@ -136,7 +135,7 @@ export const resolverItem: Resolvers = {
         { new: true, upsert: true },
       );
 
-      return mapItemResponse(item);
+      return returnResponse(item);
     }),
 
     updateItem: adminWrapper(JOI_UPDATE_ITEM_INPUT, async (_root, { input }) => {
@@ -155,7 +154,7 @@ export const resolverItem: Resolvers = {
         throw new Error('Item not found!');
       }
 
-      return mapItemResponse(item);
+      return returnResponse(item);
     }),
 
     deleteItem: adminWrapper(JOI_ITEM_ID, async (_root, _arg) => {

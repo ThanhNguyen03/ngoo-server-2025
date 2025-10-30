@@ -18,6 +18,8 @@ type TPaymentResponse {
   status: EPaymentStatus!
   userInfo: TUserInfoSnapshot!
   items: [TOrderItem]!
+  txHash: String
+  transactionId: String
   createdAt: Timestamp!
   updatedAt: Timestamp!
 }
