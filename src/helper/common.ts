@@ -1,6 +1,6 @@
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
-import { JwtAuthAccessTokenInstance, TJwtPayload } from './jwt.js';
+import { JwtAuthAccessTokenInstance, TAccessTokenPayload } from './jwt.js';
 import { ERole, ESort, QueryByInput, TQueryBy } from '@/generated/graphql';
 import { UserModel } from '@/model';
 
@@ -70,6 +70,7 @@ export type TAppContext = {
         readonly kind: EUserAuthenticationStatus.Authenticated;
         readonly token: string;
         userId: string;
+        sid: string;
       };
 };
 
@@ -122,7 +123,7 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
         break;
       }
 
-      let verifiedJwtPayload: TJwtPayload;
+      let verifiedJwtPayload: TAccessTokenPayload;
 
       try {
         verifiedJwtPayload = (await JwtAuthAccessTokenInstance.verifyHeader(context.user.token)).payload;
@@ -151,7 +152,8 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
         user: {
           kind: EUserAuthenticationStatus.Authenticated,
           token: context.user.token,
-          userId: verifiedJwtPayload.sid,
+          userId: verifiedJwtPayload.uuid,
+          sid: verifiedJwtPayload.sid,
         },
       };
       break;

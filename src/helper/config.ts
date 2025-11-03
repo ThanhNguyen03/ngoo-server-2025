@@ -40,7 +40,7 @@ const envSchema = Joi.object({
   MONGODB_URL: Joi.string().required(),
   JWT_SECRET_KEY: Joi.string().required(),
   EXPRESS_SESSION_SECRET: Joi.string().required(),
-  // SERVICE_CONFIG: Joi.string().required(),
+  GOOGLE_CLIENT_ID: Joi.string().required(),
   REDIS_URL: Joi.string()
     .trim()
     .regex(/^rediss:\/\//)
@@ -68,6 +68,7 @@ export const config = {
   MONGODB_URL: envVars.MONGODB_URL,
   JWT_SECRET_KEY: envVars.JWT_SECRET_KEY,
   EXPRESS_SESSION_SECRET: envVars.EXPRESS_SESSION_SECRET,
+  GOOGLE_CLIENT_ID: envVars.GOOGLE_CLIENT_ID,
   REDIS_URL: envVars.REDIS_URL,
   REDIS_KEY_PREFIX: envVars.REDIS_KEY_PREFIX,
   MONGODB_TABLE_PREFIX: envVars.MONGODB_TABLE_PREFIX,

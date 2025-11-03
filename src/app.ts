@@ -113,6 +113,7 @@ export const NGOO_API = {
                 kind: EUserAuthenticationStatus.Authenticated,
                 token,
                 userId: decoded.payload.uuid,
+                sid: decoded.payload.sid,
               },
             };
           } catch (err) {
