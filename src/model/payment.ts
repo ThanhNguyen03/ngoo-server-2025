@@ -38,4 +38,4 @@ PaymentSchema.index({ order: 1, user: 1 });
 PaymentSchema.index({ createdAt: -1 });
 PaymentSchema.index({ txHash: 1 });
 
-export const Transaction = mongoose.models.Payment || model<TPayment>('Payment', PaymentSchema);
+export const PaymentModel = model<TPayment>('Payment', PaymentSchema);

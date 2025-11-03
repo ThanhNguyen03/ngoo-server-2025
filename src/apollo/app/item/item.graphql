@@ -10,7 +10,7 @@ enum EItemStatus {
   EMPTY
 }
 
-type TItem {
+type TItemResponse {
   itemId: String!
   name: String!
   image: String!
@@ -56,21 +56,21 @@ input UpdateItemInput {
   categoryId: String
 }
 
-type TItemResponse {
+type TListItemResponse {
   offset: Int!
   limit: Int!
   total: Int!
   query: [TQueryBy]!
-  records: [TItem]!
+  records: [TItemResponse]!
 }
 
 type Query {
-  listItem(offset: Int, limit: Int, query: [QueryByInput]): TItemResponse!
-  getItemByCategory(categoryId: String!): TItem!
+  listItem(offset: Int, limit: Int, query: [QueryByInput]): TListItemResponse!
+  getItemByCategory(categoryId: String!): TItemResponse!
 }
 
 type Mutation {
-  createItem(input: CreateItemInput!): TItem!
-  updateItem(input: UpdateItemInput!): TItem!
+  createItem(input: CreateItemInput!): TItemResponse!
+  updateItem(input: UpdateItemInput!): TItemResponse!
   deleteItem(itemId: String!): Boolean!
 }

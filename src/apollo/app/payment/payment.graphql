@@ -12,16 +12,25 @@ enum EPaymentStatus {
 
 type TPaymentResponse {
   paymentId: String!
-  orderID: String!
+  orderId: String!
   paymentMethod: EPaymentMethod!
   totalPrice: Float!
   status: EPaymentStatus!
   userInfo: TUserInfoSnapshot!
   items: [TOrderItem]!
   txHash: String
-  transactionId: String
+  momoTransactionId: String
+  codTransactionId: String
   createdAt: Timestamp!
   updatedAt: Timestamp!
+}
+
+type TListPaymentResponse {
+  offset: Int!
+  limit: Int!
+  total: Int!
+  query: [TQueryBy]!
+  records: [TPaymentResponse]!
 }
 
 """
@@ -30,13 +39,14 @@ Input types
 input ConfirmPaymentInput {
   orderId: String!
   paymentMethod: EPaymentMethod!
-  transactionId: String
+  momoTransactionId: String
   txHash: String
+  codTransactionId: String
 }
 
 type Query {
   paymentHistory(paymentId: String!): TPaymentResponse!
-  listPaymentHistory(offset: Int, limit: Int, query: [QueryByInput]): [TPaymentResponse]!
+  listPaymentHistory(offset: Int, limit: Int, query: [QueryByInput]): TListPaymentResponse!
 }
 
 type Mutation {
