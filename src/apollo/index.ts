@@ -5,6 +5,7 @@ import CustomScalarTypes from './scalar';
 import { Resolvers } from './types.generated';
 import { resolverItem } from './app/item';
 import { resolverOrder } from './app/order';
+import { resolverPayment } from './app/payment';
 
 const typeDefUser = readFileSync('./src/apollo/app/user/user.graphql');
 const typeDefAuditLog = readFileSync('./src/apollo/app/audit-log/audit.graphql');
@@ -28,4 +29,11 @@ export const TypedefApp = [
   typeDefCommon,
 ];
 
-export const ResolverApp = [resolverCategory, resolverItem, resolverOrder, resolverUser, resolverScalars];
+export const ResolverApp = [
+  resolverCategory,
+  resolverItem,
+  resolverOrder,
+  resolverPayment,
+  resolverUser,
+  resolverScalars,
+];

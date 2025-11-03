@@ -6,7 +6,7 @@ import {
   QueryGetItemByCategoryArgs,
   Resolvers,
 } from '@/generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, schemaPagination, TPagination } from '@/helper';
+import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, schemaPagination, sortQuery, TPagination } from '@/helper';
 import { CategoryModel, ItemModel, TItem } from '@/model';
 import Joi from 'joi';
 
@@ -75,13 +75,8 @@ export const resolverItem: Resolvers = {
   Query: {
     listItem: publicWrapper(JOI_LIST_ITEM, async (_root, _args) => {
       const { offset, limit, query } = _args;
-      const sort: Record<string, 1 | -1> = {};
+      const sort = sortQuery(query);
 
-      for (const q of query) {
-        if (q.sort) {
-          sort[q.column!] = q.sort === 'asc' ? 1 : -1;
-        }
-      }
       const [listItem, total] = await Promise.all([
         ItemModel.find({ isDeleted: false }).skip(offset).limit(limit).sort(sort).lean(),
         ItemModel.countDocuments({ isDeleted: false }),

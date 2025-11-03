@@ -34,6 +34,18 @@ export const schemaPagination = (queryList: string[]) => ({
   limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
 });
 
+export const sortQuery = (query: TQueryBy[]) => {
+  const sort: Record<string, 1 | -1> = {};
+
+  for (const q of query) {
+    if (q.sort) {
+      sort[q.column!] = q.sort === 'asc' ? 1 : -1;
+    }
+  }
+
+  return sort;
+};
+
 export enum EUserAuthenticationStatus {
   Guest,
   Unauthenticated,
