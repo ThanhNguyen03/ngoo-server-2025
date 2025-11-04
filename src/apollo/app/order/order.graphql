@@ -23,8 +23,8 @@ type TOrderItem {
 
 type TCreateOrderResponse {
   orderId: String!
-  momoPaymentUrl: String
-  momoRequestId: String
+  paypalOrderId: String
+  paypalApproveUrl: String
   cryptoPaymentData: String
   codPaymentData: String
   createdAt: Timestamp!
@@ -33,6 +33,7 @@ type TCreateOrderResponse {
 
 type TOrderResponse {
   orderId: String!
+  paypalOrderId: String
   userInfoSnapshot: TUserInfoSnapshot!
   items: [TOrderItem]!
   totalPrice: Int!
@@ -53,9 +54,10 @@ input OrderItemInput {
 }
 
 input CreateOrderInput {
-  userId: String!
   items: [OrderItemInput]!
   paymentMethod: EPaymentMethod!
+  returnUrl: String!
+  cancelUrl: String!
 }
 
 type Query {

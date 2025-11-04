@@ -58,9 +58,11 @@ export const resolverOrder: Resolvers = {
   },
 
   Mutation: {
-    createOrder: authorizedWrapper(JOI_CREATE_ORDER, async (_root, { input }) => {
+    createOrder: authorizedWrapper(JOI_CREATE_ORDER, async (_root, { input }, context) => {
       // TODO: get from redis
-      const user = await UserModel.findOne({ uuid: input.userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+      const user = await UserModel.findOne({ uuid: context.user.userId })
+        .populate<{ userInfo: TUserInfo }>('userInfo')
+        .exec();
       if (!user) {
         throw new Error('Authorization Error!');
       }
@@ -82,7 +84,7 @@ export const resolverOrder: Resolvers = {
         paymentMethod: input.paymentMethod,
       });
 
-      if (input.paymentMethod === EPaymentMethod.Momo) {
+      if (input.paymentMethod === EPaymentMethod.Paypal) {
         // TODO
       }
       if (input.paymentMethod === EPaymentMethod.Crypto) {

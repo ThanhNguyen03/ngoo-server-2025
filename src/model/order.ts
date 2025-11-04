@@ -22,6 +22,7 @@ interface IOrderItem {
 
 interface IOrder {
   orderId: string;
+  paypalOrderId: string;
   userInfoSnapshot: TUserInfoSnapshot;
   items: IOrderItem[];
   totalPrice: number;
@@ -67,6 +68,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
 const OrderSchema = new Schema<TOrder>(
   {
     orderId: { type: String, required: true, unique: true, default: () => randomUUID() },
+    paypalOrderId: { type: String, sparse: true },
     userInfoSnapshot: {
       name: { type: String },
       address: { type: String, required: true },
@@ -81,7 +83,7 @@ const OrderSchema = new Schema<TOrder>(
     },
     paymentMethod: {
       type: String,
-      enum: ['MOMO', 'COD', 'CRYPTO'],
+      enum: ['PAYPAL', 'COD', 'CRYPTO'],
       required: true,
     },
     orderStatus: {
@@ -97,6 +99,6 @@ const OrderSchema = new Schema<TOrder>(
 );
 
 OrderSchema.index({ createdAt: -1 });
-OrderSchema.index({ status: 1 });
+OrderSchema.index({ orderStatus: 1 });
 
 export const OrderModel = model<TOrder>('Order', OrderSchema);

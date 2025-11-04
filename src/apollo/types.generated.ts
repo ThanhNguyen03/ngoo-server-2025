@@ -33,9 +33,9 @@ export type CategoryInput = {
 /** Input types */
 export type ConfirmPaymentInput = {
   codTransactionId?: InputMaybe<Scalars['String']['input']>;
-  momoTransactionId?: InputMaybe<Scalars['String']['input']>;
   orderId: Scalars['String']['input'];
   paymentMethod: EPaymentMethod;
+  paypalTransactionId?: InputMaybe<Scalars['String']['input']>;
   txHash?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -61,9 +61,10 @@ export type CreateItemInput = {
 };
 
 export type CreateOrderInput = {
+  cancelUrl: Scalars['String']['input'];
   items: Array<InputMaybe<OrderItemInput>>;
   paymentMethod: EPaymentMethod;
-  userId: Scalars['String']['input'];
+  returnUrl: Scalars['String']['input'];
 };
 
 export enum EAuditAction {
@@ -92,7 +93,7 @@ export enum EOrderStatus {
 export enum EPaymentMethod {
   Cod = 'COD',
   Crypto = 'CRYPTO',
-  Momo = 'MOMO'
+  Paypal = 'PAYPAL'
 }
 
 export enum EPaymentStatus {
@@ -323,9 +324,9 @@ export type TCreateOrderResponse = {
   codPaymentData?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['Timestamp']['output'];
   cryptoPaymentData?: Maybe<Scalars['String']['output']>;
-  momoPaymentUrl?: Maybe<Scalars['String']['output']>;
-  momoRequestId?: Maybe<Scalars['String']['output']>;
   orderId: Scalars['String']['output'];
+  paypalApproveUrl?: Maybe<Scalars['String']['output']>;
+  paypalOrderId?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['Timestamp']['output'];
 };
 
@@ -387,6 +388,7 @@ export type TOrderResponse = {
   orderId: Scalars['String']['output'];
   orderStatus: EOrderStatus;
   paymentMethod: EPaymentMethod;
+  paypalOrderId?: Maybe<Scalars['String']['output']>;
   totalPrice: Scalars['Int']['output'];
   updatedAt: Scalars['Timestamp']['output'];
   userInfoSnapshot: TUserInfoSnapshot;
@@ -397,10 +399,10 @@ export type TPaymentResponse = {
   codTransactionId?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['Timestamp']['output'];
   items: Array<Maybe<TOrderItem>>;
-  momoTransactionId?: Maybe<Scalars['String']['output']>;
   orderId: Scalars['String']['output'];
   paymentId: Scalars['String']['output'];
   paymentMethod: EPaymentMethod;
+  paypalTransactionId?: Maybe<Scalars['String']['output']>;
   status: EPaymentStatus;
   totalPrice: Scalars['Float']['output'];
   txHash?: Maybe<Scalars['String']['output']>;
@@ -679,9 +681,9 @@ export type TCreateOrderResponseResolvers<ContextType = TAppContext, ParentType 
   codPaymentData?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   cryptoPaymentData?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  momoPaymentUrl?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  momoRequestId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  paypalApproveUrl?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  paypalOrderId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
 };
 
@@ -737,6 +739,7 @@ export type TOrderResponseResolvers<ContextType = TAppContext, ParentType extend
   orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   orderStatus?: Resolver<ResolversTypes['EOrderStatus'], ParentType, ContextType>;
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
+  paypalOrderId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   totalPrice?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   userInfoSnapshot?: Resolver<ResolversTypes['TUserInfoSnapshot'], ParentType, ContextType>;
@@ -746,10 +749,10 @@ export type TPaymentResponseResolvers<ContextType = TAppContext, ParentType exte
   codTransactionId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   items?: Resolver<Array<Maybe<ResolversTypes['TOrderItem']>>, ParentType, ContextType>;
-  momoTransactionId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paymentId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
+  paypalTransactionId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['EPaymentStatus'], ParentType, ContextType>;
   totalPrice?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   txHash?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;

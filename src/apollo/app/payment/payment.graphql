@@ -1,6 +1,6 @@
 enum EPaymentMethod {
   COD
-  MOMO
+  PAYPAL
   CRYPTO
 }
 
@@ -19,7 +19,7 @@ type TPaymentResponse {
   userInfo: TUserInfoSnapshot!
   items: [TOrderItem]!
   txHash: String
-  momoTransactionId: String
+  paypalTransactionId: String
   codTransactionId: String
   createdAt: Timestamp!
   updatedAt: Timestamp!
@@ -39,7 +39,7 @@ Input types
 input ConfirmPaymentInput {
   orderId: String!
   paymentMethod: EPaymentMethod!
-  momoTransactionId: String
+  paypalTransactionId: String
   txHash: String
   codTransactionId: String
 }
