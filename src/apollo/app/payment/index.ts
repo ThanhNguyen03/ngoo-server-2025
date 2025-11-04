@@ -53,7 +53,7 @@ export const resolverPayment: Resolvers = {
         userInfo: paymentHistory.order.userInfoSnapshot,
         items: paymentHistory.order.items,
         txHash: paymentHistory.txHash,
-        momoTransactionId: paymentHistory.momoTransactionId,
+        momoTransactionId: paymentHistory.paypalTransactionId,
         codTransactionId: paymentHistory.codTransactionId,
         createdAt: paymentHistory.createdAt.getTime(),
         updatedAt: paymentHistory.createdAt.getTime(),
@@ -79,7 +79,7 @@ export const resolverPayment: Resolvers = {
           userInfo: history.order.userInfoSnapshot,
           items: history.order.items,
           txHash: history.txHash,
-          momoTransactionId: history.momoTransactionId,
+          momoTransactionId: history.paypalTransactionId,
           codTransactionId: history.codTransactionId,
           createdAt: history.createdAt.getTime(),
           updatedAt: history.createdAt.getTime(),
@@ -98,7 +98,7 @@ export const resolverPayment: Resolvers = {
 
   Mutation: {
     confirmPayment: authorizedWrapper(JOI_CONFIRM_PAYMENT, async (_root, { paymentInput }) => {
-      const { orderId, paymentMethod, momoTransactionId, txHash, codTransactionId } = paymentInput;
+      const { orderId, paymentMethod, paypalTransactionId, txHash, codTransactionId } = paymentInput;
 
       const order = await OrderModel.findOne({ orderId });
       if (!order) {
@@ -116,15 +116,15 @@ export const resolverPayment: Resolvers = {
             throw new Error('Transaction ID is not compatible with payment method');
           }
         }
-        case EPaymentMethod.Momo: {
-          if (!momoTransactionId) {
+        case EPaymentMethod.Paypal: {
+          if (!paypalTransactionId) {
             throw new Error('Transaction ID is not compatible with payment method');
           }
         }
       }
 
       // TODO: handle get BE transaction ID to compare with id from FE
-      const payment = await PaymentModel.create({ order, txHash, momoTransactionId, codTransactionId });
+      const payment = await PaymentModel.create({ order, txHash, paypalTransactionId, codTransactionId });
       const result = await payment.populate<{ order: TOrder }>('order');
 
       return {
@@ -136,7 +136,7 @@ export const resolverPayment: Resolvers = {
         userInfo: result.order.userInfoSnapshot,
         items: result.order.items,
         txHash: result.txHash,
-        momoTransactionId: result.momoTransactionId,
+        paypalTransactionId: result.paypalTransactionId,
         codTransactionId: result.codTransactionId,
         createdAt: result.createdAt.getTime(),
         updatedAt: result.createdAt.getTime(),

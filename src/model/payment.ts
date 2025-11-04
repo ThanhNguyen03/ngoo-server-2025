@@ -7,7 +7,7 @@ interface IPayment {
   order: Types.ObjectId; // ref Order
   status: EPaymentStatus;
   txHash?: string; // blockchain Payment hash (for crypto)
-  momoTransactionId?: string; // for Momo
+  paypalTransactionId?: string; // for Paypal
   codTransactionId?: string; // for COD
   createdAt: Date;
   updatedAt: Date;
@@ -25,7 +25,7 @@ const PaymentSchema = new Schema<TPayment>(
       default: EPaymentStatus.Pending,
     },
     txHash: { type: String, trim: true },
-    momoTransactionId: { type: String, trim: true },
+    paypalTransactionId: { type: String, trim: true },
     codTransactionId: { type: String, trim: true },
   },
   {

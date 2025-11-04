@@ -4,7 +4,7 @@ import type { CodegenConfig } from '@graphql-codegen/cli';
 const config: CodegenConfig = {
   schema: [
     'src/**/*.graphql', // Local GraphQL schema files
-    // { [url]: { headers: { 'x-ngoo-id': clientId } } }, // Remote GraphQL schema with authentication headers
+    // Remote GraphQL schema with authentication headers
   ],
   generates: {
     './src/apollo/types.generated.ts': {
