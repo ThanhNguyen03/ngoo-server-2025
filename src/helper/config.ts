@@ -46,7 +46,7 @@ const envSchema = Joi.object({
     .regex(/^rediss:\/\//)
     .required(),
   REDIS_KEY_PREFIX: Joi.string().trim().optional().default('thanhfng_server'),
-  MONGODB_TABLE_PREFIX: Joi.string().required(),
+  MONGODB_TABLE_NAME: Joi.string().required(),
   NGOO_CONTRACT_ADDRESS: Joi.string().required(),
   NGOO_CHAIN_ID: Joi.string().required(),
   NGOO_SIGNER: Joi.string().required(),
@@ -71,7 +71,7 @@ export const config = {
   GOOGLE_CLIENT_ID: envVars.GOOGLE_CLIENT_ID,
   REDIS_URL: envVars.REDIS_URL,
   REDIS_KEY_PREFIX: envVars.REDIS_KEY_PREFIX,
-  MONGODB_TABLE_PREFIX: envVars.MONGODB_TABLE_PREFIX,
+  MONGODB_TABLE_NAME: envVars.MONGODB_TABLE_NAME,
   NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS,
   NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID,
   NGOO_SIGNER: envVars.NGOO_SIGNER,
@@ -82,7 +82,7 @@ export const TABLE_NAME: TTableName = (() => {
   const keys = Object.keys(NGOO_TABLE);
   const result: any = {};
   for (let i = 0; i < keys.length; i += 1) {
-    result[keys[i]] = `${config.MONGODB_TABLE_PREFIX || ''}${camelToSnakeCase(keys[i])}`;
+    result[keys[i]] = `${config.MONGODB_TABLE_NAME || ''}${camelToSnakeCase(keys[i])}`;
   }
   return result;
 })();

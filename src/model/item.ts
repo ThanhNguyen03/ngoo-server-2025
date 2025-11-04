@@ -1,7 +1,7 @@
 // models/Item.model.ts
 import { EItemStatus } from '@/generated/graphql';
 import { randomUUID } from 'crypto';
-import { Schema, model } from 'mongoose';
+import { Schema, Types, model } from 'mongoose';
 
 export type TItemOption = {
   group: string;
@@ -19,7 +19,7 @@ interface IItem {
   requireOption: TItemOption[];
   additionalOption?: TItemOption[];
   status?: EItemStatus[];
-  categoryName: string; // Ref to Category
+  category: Types.ObjectId; // Ref to Category
   isDeleted: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -46,9 +46,9 @@ const ItemSchema = new Schema<IItem>(
     discountPercent: { type: Number },
     requireOption: { type: [ItemOptionSchema], required: true },
     additionalOption: { type: [ItemOptionSchema], required: false },
-    status: { type: String, enum: ['NEW', 'SELLER', 'EMPTY'], default: '' },
+    status: [{ type: String, enum: Object.values(EItemStatus) }],
     isDeleted: { type: Boolean, default: false },
-    categoryName: { type: String, required: true, index: true },
+    category: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
   },
   { timestamps: true },
 );
