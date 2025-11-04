@@ -1,6 +1,6 @@
 import { EPaymentStatus } from '@/generated/graphql';
 import { randomUUID } from 'crypto';
-import mongoose, { Schema, model, Document, Types } from 'mongoose';
+import { Schema, model, Types } from 'mongoose';
 
 interface IPayment {
   paymentId: string;

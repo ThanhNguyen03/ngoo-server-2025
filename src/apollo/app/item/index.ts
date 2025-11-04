@@ -7,7 +7,7 @@ import {
   Resolvers,
 } from '@/generated/graphql';
 import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, schemaPagination, sortQuery, TPagination } from '@/helper';
-import { CategoryModel, ItemModel, TItem } from '@/model';
+import { CategoryModel, ItemModel, TCategory, TItem } from '@/model';
 import Joi from 'joi';
 
 enum EItemQuery {
@@ -66,7 +66,7 @@ const returnResponse = (item: TItem) => ({
   requireOption: item.requireOption,
   additionalOption: item.additionalOption,
   status: item.status,
-  categoryName: item.categoryName,
+  category: item.category,
   createdAt: item.createdAt.getTime(),
   updatedAt: item.updatedAt.getTime(),
 });
@@ -78,7 +78,12 @@ export const resolverItem: Resolvers = {
       const sort = sortQuery(query);
 
       const [listItem, total] = await Promise.all([
-        ItemModel.find({ isDeleted: false }).skip(offset).limit(limit).sort(sort).lean(),
+        ItemModel.find({ isDeleted: false })
+          .populate<{ category: TCategory }>('category')
+          .skip(offset)
+          .limit(limit)
+          .sort(sort)
+          .lean(),
         ItemModel.countDocuments({ isDeleted: false }),
       ]);
 
@@ -87,17 +92,45 @@ export const resolverItem: Resolvers = {
         limit,
         query,
         total,
-        records: listItem.map(returnResponse),
+        records: listItem.map((item) => {
+          return {
+            itemId: item.itemId,
+            name: item.name,
+            image: item.image,
+            price: item.price,
+            description: item.description,
+            discountPercent: item.discountPercent,
+            requireOption: item.requireOption,
+            additionalOption: item.additionalOption,
+            status: item.status,
+            categoryName: item.category.name,
+            createdAt: item.createdAt.getTime(),
+            updatedAt: item.updatedAt.getTime(),
+          };
+        }),
       };
     }),
 
     getItemByCategory: publicWrapper(JOI_ITEM_BY_CATEGORY_ID, async (_root, _args) => {
       const { categoryId } = _args;
-      const result = await ItemModel.findOne({ categoryId });
+      const result = await ItemModel.findOne({ categoryId }).populate<{ category: TCategory }>('category').exec();
       if (!result) {
         throw new Error('Item not found!');
       }
-      return returnResponse(result);
+      return {
+        itemId: result.itemId,
+        name: result.name,
+        image: result.image,
+        price: result.price,
+        description: result.description,
+        discountPercent: result.discountPercent,
+        requireOption: result.requireOption,
+        additionalOption: result.additionalOption,
+        status: result.status,
+        categoryName: result.category.name,
+        createdAt: result.createdAt.getTime(),
+        updatedAt: result.updatedAt.getTime(),
+      };
     }),
   },
 
@@ -123,14 +156,29 @@ export const resolverItem: Resolvers = {
         {
           $setOnInsert: {
             ...input,
-            categoryName: category.name,
+            category: category._id,
           }, // if donot have -> create new
           $set: { isDeleted: false }, // if isDelete = true -> set false
         },
         { new: true, upsert: true },
-      );
+      )
+        .populate<{ category: TCategory }>('category')
+        .exec();
 
-      return returnResponse(item);
+      return {
+        itemId: item.itemId,
+        name: item.name,
+        image: item.image,
+        price: item.price,
+        description: item.description,
+        discountPercent: item.discountPercent,
+        requireOption: item.requireOption,
+        additionalOption: item.additionalOption,
+        status: item.status,
+        categoryName: item.category.name,
+        createdAt: item.createdAt.getTime(),
+        updatedAt: item.updatedAt.getTime(),
+      };
     }),
 
     updateItem: adminWrapper(JOI_UPDATE_ITEM_INPUT, async (_root, { input }) => {
@@ -143,13 +191,28 @@ export const resolverItem: Resolvers = {
         { itemId: input.itemId, isDeleted: false },
         { ...input, categoryName: category.name },
         { new: true },
-      );
+      )
+        .populate<{ category: TCategory }>('category')
+        .exec();
 
       if (!item) {
         throw new Error('Item not found!');
       }
 
-      return returnResponse(item);
+      return {
+        itemId: item.itemId,
+        name: item.name,
+        image: item.image,
+        price: item.price,
+        description: item.description,
+        discountPercent: item.discountPercent,
+        requireOption: item.requireOption,
+        additionalOption: item.additionalOption,
+        status: item.status,
+        categoryName: item.category.name,
+        createdAt: item.createdAt.getTime(),
+        updatedAt: item.updatedAt.getTime(),
+      };
     }),
 
     deleteItem: adminWrapper(JOI_ITEM_ID, async (_root, _arg) => {
