@@ -1,5 +1,7 @@
 import {
+  EOrderStatus,
   EPaymentMethod,
+  EPaymentStatus,
   MutationConfirmPaymentArgs,
   QueryPaymentHistoryArgs,
   Resolvers,
@@ -7,6 +9,7 @@ import {
 } from '@/generated/graphql';
 import { authorizedWrapper, JOI_ID_SCHEMA, schemaPagination, sortQuery, TPagination } from '@/helper';
 import { OrderModel, PaymentModel, TOrder } from '@/model';
+import { ordersController } from '@/service';
 import Joi from 'joi';
 
 enum EPaymentQuery {
@@ -29,7 +32,7 @@ const JOI_CONFIRM_PAYMENT = Joi.object<MutationConfirmPaymentArgs>({
     paymentMethod: Joi.string()
       .valid(...Object.values(EPaymentMethod))
       .required(),
-    momoTransactionId: Joi.string().alphanum(),
+    paypalTransactionId: Joi.string().alphanum(),
     txHash: Joi.string().alphanum(),
     codTransactionId: Joi.string().alphanum(),
   }),
@@ -53,7 +56,7 @@ export const resolverPayment: Resolvers = {
         userInfo: paymentHistory.order.userInfoSnapshot,
         items: paymentHistory.order.items,
         txHash: paymentHistory.txHash,
-        momoTransactionId: paymentHistory.paypalTransactionId,
+        paypalTransaction: paymentHistory.paypalTransaction,
         codTransactionId: paymentHistory.codTransactionId,
         createdAt: paymentHistory.createdAt.getTime(),
         updatedAt: paymentHistory.createdAt.getTime(),
@@ -79,7 +82,7 @@ export const resolverPayment: Resolvers = {
           userInfo: history.order.userInfoSnapshot,
           items: history.order.items,
           txHash: history.txHash,
-          momoTransactionId: history.paypalTransactionId,
+          paypalTransaction: history.paypalTransaction,
           codTransactionId: history.codTransactionId,
           createdAt: history.createdAt.getTime(),
           updatedAt: history.createdAt.getTime(),
@@ -98,35 +101,60 @@ export const resolverPayment: Resolvers = {
 
   Mutation: {
     confirmPayment: authorizedWrapper(JOI_CONFIRM_PAYMENT, async (_root, { paymentInput }) => {
-      const { orderId, paymentMethod, paypalTransactionId, txHash, codTransactionId } = paymentInput;
+      const { orderId, paypalOrderId, txHash, codTransactionId } = paymentInput;
 
       const order = await OrderModel.findOne({ orderId });
       if (!order) {
         throw new Error('This payment is paying for not exist order!');
       }
 
-      switch (paymentMethod) {
-        case EPaymentMethod.Cod: {
-          if (!codTransactionId) {
-            throw new Error('Transaction ID is not compatible with payment method');
-          }
+      const newPayment = await PaymentModel.create({
+        order: order._id,
+      });
+      // Paypal
+      if (order.paymentMethod === EPaymentMethod.Paypal) {
+        if (!paypalOrderId) {
+          newPayment.status = EPaymentStatus.Failed;
+          await newPayment.save();
+          throw new Error('paypalOrderId is required for PayPal payment');
         }
-        case EPaymentMethod.Crypto: {
-          if (!txHash) {
-            throw new Error('Transaction ID is not compatible with payment method');
-          }
+
+        if (order.paypalOrderId !== paypalOrderId) {
+          newPayment.status = EPaymentStatus.Failed;
+          await newPayment.save();
+          throw new Error('Paypal Order Id mismatch with server record');
         }
-        case EPaymentMethod.Paypal: {
-          if (!paypalTransactionId) {
-            throw new Error('Transaction ID is not compatible with payment method');
-          }
+        
+        // existed paid order fail
+        const existedOrder = await OrderModel.findOne({ paypalOrderId });
+        if (existedOrder) {
+          newPayment.status = EPaymentStatus.Failed;
+          await newPayment.save();
+          throw new Error('This Paypal order is paid');
         }
       }
 
-      // TODO: handle get BE transaction ID to compare with id from FE
-      const payment = await PaymentModel.create({ order, txHash, paypalTransactionId, codTransactionId });
-      const result = await payment.populate<{ order: TOrder }>('order');
+      // Crypto
+      if (order.paymentMethod === EPaymentMethod.Crypto) {
+        // TODO
+      }
 
+      // COD
+      if (!codTransactionId) {
+        newPayment.status = EPaymentStatus.Failed;
+        await newPayment.save();
+        throw new Error('codTransactionId is required for COD');
+      }
+
+      newPayment.codTransactionId = codTransactionId;
+      newPayment.status = EPaymentStatus.Successful;
+      await newPayment.save();
+
+      // update order status
+      order.orderStatus = EOrderStatus.Completed;
+      order.save();
+
+      const result = await newPayment.populate<{ order: TOrder }>('order');
       return {
         paymentId: result.paymentId,
         orderId: result.order.orderId,
@@ -136,7 +164,7 @@ export const resolverPayment: Resolvers = {
         userInfo: result.order.userInfoSnapshot,
         items: result.order.items,
         txHash: result.txHash,
-        paypalTransactionId: result.paypalTransactionId,
+        paypalTransaction: result.paypalTransaction,
         codTransactionId: result.codTransactionId,
         createdAt: result.createdAt.getTime(),
         updatedAt: result.createdAt.getTime(),

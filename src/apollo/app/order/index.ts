@@ -1,4 +1,3 @@
-import { TTableName } from './../../../helper/config';
 import {
   EOrderStatus,
   EPaymentMethod,
@@ -6,19 +5,20 @@ import {
   OrderItemInput,
   QueryGetOrderArgs,
   Resolvers,
+  TUserInfoSnapshot,
 } from '@/generated/graphql';
-import { authorizedWrapper, JOI_ID_SCHEMA } from '@/helper';
+import { authorizedWrapper, calculateOrderItemPrice, createPayPalOrderBody, JOI_ID_SCHEMA } from '@/helper';
 import Joi from 'joi';
 import { JOI_ITEM_OPTION } from '../item';
-import { OrderModel, TOrder, TUserInfo, UserModel } from '@/model';
+import { ItemModel, OrderModel, TUserInfo, UserModel } from '@/model';
 import { randomUUID } from 'crypto';
+import { ordersController } from 'src/services/paypal';
 
 const JOI_ORDER_ID = Joi.object<QueryGetOrderArgs>({
   orderId: JOI_ID_SCHEMA,
 });
 const JOI_CREATE_ORDER = Joi.object<MutationCreateOrderArgs>({
   input: Joi.object({
-    userId: JOI_ID_SCHEMA,
     items: Joi.array<OrderItemInput>()
       .items(
         Joi.object({
@@ -32,6 +32,8 @@ const JOI_CREATE_ORDER = Joi.object<MutationCreateOrderArgs>({
     paymentMethod: Joi.string()
       .valid(...Object.values(EPaymentMethod))
       .required(),
+    returnUrl: Joi.string().uri().required(),
+    cancelUrl: Joi.string().uri().required(),
   }),
 });
 
@@ -63,18 +65,30 @@ export const resolverOrder: Resolvers = {
       const user = await UserModel.findOne({ uuid: context.user.userId })
         .populate<{ userInfo: TUserInfo }>('userInfo')
         .exec();
+
       if (!user) {
         throw new Error('Authorization Error!');
       }
-      const userInfoSnapshot = {
+
+      if (!user.userInfo.address || !user.userInfo.phoneNumber) {
+        throw new Error('Anonymous User info data Error!');
+      }
+
+      const userInfoSnapshot: TUserInfoSnapshot = {
         name: user.userInfo.name,
         address: user.userInfo.address,
         phoneNumber: user.userInfo.phoneNumber,
         email: user.email,
       };
 
-      // TODO: handle re-calculate total price
-      const totalPrice = 1;
+      const itemIds = input.items.map((o) => o.itemId);
+      const dbItems = await ItemModel.find({ itemId: { $in: itemIds } }).lean();
+
+      if (dbItems.length !== input.items.length) {
+        throw new Error('Some items in cart do not exist in DB');
+      }
+
+      const totalPrice = await calculateOrderItemPrice(input.items, dbItems);
 
       const newOrder = await OrderModel.create({
         userInfoSnapshot,
@@ -85,8 +99,34 @@ export const resolverOrder: Resolvers = {
       });
 
       if (input.paymentMethod === EPaymentMethod.Paypal) {
-        // TODO
+        try {
+          const orderBody = await createPayPalOrderBody({
+            totalPrice: totalPrice,
+            orders: input.items,
+            orderMongoId: newOrder._id,
+            orderId: newOrder.orderId,
+            listItemInfo: dbItems,
+          });
+          const { result } = await ordersController.createOrder({ body: orderBody });
+
+          const approveUrl = result.links?.find((l) => l.rel === 'approve')?.href;
+          newOrder.paypalOrderId = result.id || '';
+          await newOrder.save();
+
+          return {
+            orderId: newOrder.orderId,
+            paypalApproveUrl: approveUrl,
+            paypalOrderId: result.id,
+            createdAt: newOrder.createdAt.getTime(),
+            updatedAt: newOrder.createdAt.getTime(),
+          };
+        } catch (err) {
+          newOrder.orderStatus = EOrderStatus.Cancelled;
+          await newOrder.save();
+          throw new Error('PayPal order creation failed');
+        }
       }
+
       if (input.paymentMethod === EPaymentMethod.Crypto) {
         // TODO
       }

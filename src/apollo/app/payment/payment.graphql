@@ -10,6 +10,13 @@ enum EPaymentStatus {
   FAILED
 }
 
+type PaypalPayment {
+  paypalPayerEmail: String!
+  paypalCaptureId: String!
+  payerId: String!
+  rawResponse: Object
+}
+
 type TPaymentResponse {
   paymentId: String!
   orderId: String!
@@ -19,7 +26,7 @@ type TPaymentResponse {
   userInfo: TUserInfoSnapshot!
   items: [TOrderItem]!
   txHash: String
-  paypalTransactionId: String
+  paypalTransaction: PaypalPayment
   codTransactionId: String
   createdAt: Timestamp!
   updatedAt: Timestamp!
@@ -38,8 +45,7 @@ Input types
 """
 input ConfirmPaymentInput {
   orderId: String!
-  paymentMethod: EPaymentMethod!
-  paypalTransactionId: String
+  paypalOrderId: String
   txHash: String
   codTransactionId: String
 }

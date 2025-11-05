@@ -45,7 +45,7 @@ const ItemSchema = new Schema<IItem>(
     description: { type: String, required: true },
     discountPercent: { type: Number },
     requireOption: { type: [ItemOptionSchema], required: true },
-    additionalOption: { type: [ItemOptionSchema], required: false },
+    additionalOption: { type: [ItemOptionSchema] },
     status: [{ type: String, enum: Object.values(EItemStatus) }],
     isDeleted: { type: Boolean, default: false },
     category: { type: Schema.Types.ObjectId, ref: 'Category', required: true },

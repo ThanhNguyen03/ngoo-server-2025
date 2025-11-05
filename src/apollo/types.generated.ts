@@ -34,8 +34,7 @@ export type CategoryInput = {
 export type ConfirmPaymentInput = {
   codTransactionId?: InputMaybe<Scalars['String']['input']>;
   orderId: Scalars['String']['input'];
-  paymentMethod: EPaymentMethod;
-  paypalTransactionId?: InputMaybe<Scalars['String']['input']>;
+  paypalOrderId?: InputMaybe<Scalars['String']['input']>;
   txHash?: InputMaybe<Scalars['String']['input']>;
 };
 
@@ -62,7 +61,7 @@ export type CreateItemInput = {
 
 export type CreateOrderInput = {
   cancelUrl: Scalars['String']['input'];
-  items: Array<InputMaybe<OrderItemInput>>;
+  items: Array<OrderItemInput>;
   paymentMethod: EPaymentMethod;
   returnUrl: Scalars['String']['input'];
 };
@@ -222,6 +221,14 @@ export type PaginationInput = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
   query?: InputMaybe<Array<InputMaybe<QueryByInput>>>;
+};
+
+export type PaypalPayment = {
+  __typename?: 'PaypalPayment';
+  payerId: Scalars['String']['output'];
+  paypalCaptureId: Scalars['String']['output'];
+  paypalPayerEmail: Scalars['String']['output'];
+  rawResponse?: Maybe<Scalars['Object']['output']>;
 };
 
 export type Query = {
@@ -402,7 +409,7 @@ export type TPaymentResponse = {
   orderId: Scalars['String']['output'];
   paymentId: Scalars['String']['output'];
   paymentMethod: EPaymentMethod;
-  paypalTransactionId?: Maybe<Scalars['String']['output']>;
+  paypalTransaction?: Maybe<PaypalPayment>;
   status: EPaymentStatus;
   totalPrice: Scalars['Float']['output'];
   txHash?: Maybe<Scalars['String']['output']>;
@@ -549,6 +556,7 @@ export type ResolversTypes = {
   Object: ResolverTypeWrapper<Scalars['Object']['output']>;
   OrderItemInput: OrderItemInput;
   PaginationInput: PaginationInput;
+  PaypalPayment: ResolverTypeWrapper<PaypalPayment>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   QueryByInput: QueryByInput;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
@@ -588,6 +596,7 @@ export type ResolversParentTypes = {
   Object: Scalars['Object']['output'];
   OrderItemInput: OrderItemInput;
   PaginationInput: PaginationInput;
+  PaypalPayment: PaypalPayment;
   Query: Record<PropertyKey, never>;
   QueryByInput: QueryByInput;
   String: Scalars['String']['output'];
@@ -635,6 +644,13 @@ export type MutationResolvers<ContextType = TAppContext, ParentType extends Reso
 export interface ObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Object'], any> {
   name: 'Object';
 }
+
+export type PaypalPaymentResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['PaypalPayment'] = ResolversParentTypes['PaypalPayment']> = {
+  payerId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  paypalCaptureId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  paypalPayerEmail?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  rawResponse?: Resolver<Maybe<ResolversTypes['Object']>, ParentType, ContextType>;
+};
 
 export type QueryResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
   cryptoWalletWithNone?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -752,7 +768,7 @@ export type TPaymentResponseResolvers<ContextType = TAppContext, ParentType exte
   orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paymentId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
-  paypalTransactionId?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  paypalTransaction?: Resolver<Maybe<ResolversTypes['PaypalPayment']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['EPaymentStatus'], ParentType, ContextType>;
   totalPrice?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   txHash?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
@@ -795,6 +811,7 @@ export type Resolvers<ContextType = TAppContext> = {
   Category?: CategoryResolvers<ContextType>;
   Mutation?: MutationResolvers<ContextType>;
   Object?: GraphQLScalarType;
+  PaypalPayment?: PaypalPaymentResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   TAuditDiff?: TAuditDiffResolvers<ContextType>;
   TAuditLog?: TAuditLogResolvers<ContextType>;
