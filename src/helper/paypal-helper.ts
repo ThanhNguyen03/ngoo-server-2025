@@ -1,7 +1,8 @@
 import { CheckoutPaymentIntent, OrderRequest } from '@paypal/paypal-server-sdk';
-import { OrderItemInput } from '@/generated/graphql';
-import { TItem, TPayment } from '@/model';
-import { Types } from 'mongoose';
+import { EPaymentStatus, OrderItemInput } from '@/generated/graphql';
+import { PaymentModel, TItem, TOrder, TPayment } from '@/model';
+import { Document, Types } from 'mongoose';
+import { ordersController } from '@/service';
 
 type TCreatePayPalOrderBodyInput = {
   totalPrice: number;
@@ -78,4 +79,71 @@ export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput):
       },
     ],
   };
+};
+
+/**
+ * Capture a PayPal order and persist its transaction into the PaymentModel.
+ * @param {string} id - The PayPal order ID that was previously created on the client
+ *                      and stored in `order.paypalOrderId`.
+ * @param {import("mongoose").Document & TPayment} newPayment - A newly created PaymentModel
+ *                      document (typically with status `Pending`) that will be updated
+ *                      after the capture result is returned from PayPal.
+ *
+ * @throws {Error} If PayPal does not return a capture record.
+ * @throws {Error} If the capture ID was already stored (duplicate / replay attack).
+ *
+ * @returns {Promise<{
+ *   result: Record<string, unknown>,
+ *   paypalCaptureId: string,
+ *   paypalPayerEmail: string,
+ *   payerId: string
+ * }>} Useful extracted PayPal fields for optional further logging.
+ */
+export const capturePaypalOrder = async (
+  id: string,
+  newPayment: Document<unknown, {}, TPayment, {}, {}> &
+    TPayment & {
+      _id: Types.ObjectId;
+    } & {
+      __v: number;
+    },
+) => {
+  const { result } = await ordersController.captureOrder({ id });
+  const capture = result.purchaseUnits?.[0]?.payments?.captures?.[0];
+  const payer = result.payer;
+
+  if (!capture) {
+    throw new Error('PayPal capture missing in response');
+  }
+
+  // check capture status
+  const captureId = capture.id ?? '';
+  const paypalPayerEmail = payer?.emailAddress ?? '';
+  const payerId = payer?.payerId ?? '';
+
+  // Prevent duplicate captureId save
+  const existed = await PaymentModel.findOne({
+    'paypalTransaction.paypalCaptureId': captureId,
+  }).populate<{ order: TOrder }>('order');
+
+  if (existed) {
+    throw new Error('This PayPal capture was already processed');
+  }
+
+  if (capture.status !== 'COMPLETED') {
+    console.warn(`[PayPal Warning] Capture returned status "${capture.status}" for captureId=${captureId}`);
+  }
+
+  // fill payment object
+  newPayment.paypalTransaction = {
+    paypalCaptureId: captureId,
+    paypalPayerEmail,
+    payerId,
+    rawResponse: result as Record<string, unknown>,
+  };
+
+  newPayment.status = capture.status === 'COMPLETED' ? EPaymentStatus.Successful : EPaymentStatus.Failed;
+  await newPayment.save();
+
+  return { result, paypalCaptureId: captureId, paypalPayerEmail, payerId };
 };
