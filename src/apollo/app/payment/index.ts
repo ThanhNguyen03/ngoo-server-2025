@@ -7,9 +7,17 @@ import {
   Resolvers,
   TPaymentResponse,
 } from '@/generated/graphql';
-import { authorizedWrapper, JOI_ID_SCHEMA, schemaPagination, sortQuery, TPagination } from '@/helper';
+import {
+  authorizedWrapper,
+  capturePaypalOrder,
+  JOI_ID_SCHEMA,
+  schemaPagination,
+  sortQuery,
+  TPagination,
+} from '@/helper';
 import { OrderModel, PaymentModel, TOrder } from '@/model';
 import { ordersController } from '@/service';
+import { Order } from '@paypal/paypal-server-sdk';
 import Joi from 'joi';
 
 enum EPaymentQuery {
@@ -108,67 +116,125 @@ export const resolverPayment: Resolvers = {
         throw new Error('This payment is paying for not exist order!');
       }
 
-      const newPayment = await PaymentModel.create({
+      // existed paid order fail
+      const existedPayment = await PaymentModel.findOne({
         order: order._id,
-      });
+        status: EPaymentStatus.Successful,
+      }).populate<{ order: TOrder }>('order');
+
+      if (existedPayment) {
+        return {
+          paymentId: existedPayment.paymentId,
+          orderId: existedPayment.order.orderId,
+          paymentMethod: existedPayment.order.paymentMethod,
+          totalPrice: existedPayment.order.totalPrice,
+          status: existedPayment.status,
+          userInfo: existedPayment.order.userInfoSnapshot,
+          items: existedPayment.order.items,
+          txHash: existedPayment.txHash,
+          paypalTransaction: existedPayment.paypalTransaction,
+          codTransactionId: existedPayment.codTransactionId,
+          createdAt: existedPayment.createdAt.getTime(),
+          updatedAt: existedPayment.createdAt.getTime(),
+        };
+      }
+
       // Paypal
       if (order.paymentMethod === EPaymentMethod.Paypal) {
         if (!paypalOrderId) {
-          newPayment.status = EPaymentStatus.Failed;
-          await newPayment.save();
-          throw new Error('paypalOrderId is required for PayPal payment');
+          throw new Error('Paypal Order Id is required for PayPal payment');
         }
-
         if (order.paypalOrderId !== paypalOrderId) {
-          newPayment.status = EPaymentStatus.Failed;
-          await newPayment.save();
           throw new Error('Paypal Order Id mismatch with server record');
         }
-        
-        // existed paid order fail
-        const existedOrder = await OrderModel.findOne({ paypalOrderId });
-        if (existedOrder) {
-          newPayment.status = EPaymentStatus.Failed;
-          await newPayment.save();
-          throw new Error('This Paypal order is paid');
+
+        // Create payment record first (status Pending)
+        const newPaypalPayment = await PaymentModel.create({
+          order: order._id,
+          status: EPaymentStatus.Pending,
+        });
+
+        let captureResult: { result: Order; paypalCaptureId: string; paypalPayerEmail: string; payerId: string } = {
+          result: {},
+          paypalCaptureId: '',
+          paypalPayerEmail: '',
+          payerId: '',
+        };
+
+        try {
+          captureResult = await capturePaypalOrder(paypalOrderId, newPaypalPayment);
+
+          // update order
+          order.orderStatus = EOrderStatus.Completed;
+          await order.save();
+
+          const populated = await newPaypalPayment.populate<{ order: TOrder }>('order');
+          return {
+            paymentId: populated.paymentId,
+            orderId: populated.order.orderId,
+            paymentMethod: populated.order.paymentMethod,
+            totalPrice: populated.order.totalPrice,
+            status: populated.status,
+            userInfo: populated.order.userInfoSnapshot,
+            items: populated.order.items,
+            txHash: populated.txHash,
+            paypalTransaction: populated.paypalTransaction,
+            codTransactionId: populated.codTransactionId,
+            createdAt: populated.createdAt.getTime(),
+            updatedAt: populated.updatedAt.getTime(),
+          };
+        } catch (err) {
+          newPaypalPayment.status = EPaymentStatus.Failed;
+          newPaypalPayment.paypalTransaction = {
+            paypalCaptureId: captureResult.paypalCaptureId,
+            paypalPayerEmail: captureResult.paypalPayerEmail,
+            payerId: captureResult.payerId,
+            rawResponse: captureResult.result as Record<string, unknown>,
+          };
+          await newPaypalPayment.save();
+          throw err instanceof Error ? err : new Error('PayPal capture failed');
         }
       }
 
       // Crypto
       if (order.paymentMethod === EPaymentMethod.Crypto) {
         // TODO
+        throw new Error('Crypto payment not implemented yet');
       }
 
       // COD
-      if (!codTransactionId) {
-        newPayment.status = EPaymentStatus.Failed;
-        await newPayment.save();
-        throw new Error('codTransactionId is required for COD');
+      if (order.paymentMethod === EPaymentMethod.Cod) {
+        if (!codTransactionId) {
+          throw new Error('codTransactionId is required for COD');
+        }
+
+        const newPayment = await PaymentModel.create({
+          order: order._id,
+          codTransactionId,
+          status: EPaymentStatus.Successful,
+        });
+
+        order.orderStatus = EOrderStatus.Completed;
+        await order.save();
+
+        const populated = await newPayment.populate<{ order: TOrder }>('order');
+        return {
+          paymentId: populated.paymentId,
+          orderId: populated.order.orderId,
+          paymentMethod: populated.order.paymentMethod,
+          totalPrice: populated.order.totalPrice,
+          status: populated.status,
+          userInfo: populated.order.userInfoSnapshot,
+          items: populated.order.items,
+          txHash: populated.txHash,
+          paypalTransaction: populated.paypalTransaction,
+          codTransactionId: populated.codTransactionId,
+          createdAt: populated.createdAt.getTime(),
+          updatedAt: populated.createdAt.getTime(),
+        };
       }
 
-      newPayment.codTransactionId = codTransactionId;
-      newPayment.status = EPaymentStatus.Successful;
-      await newPayment.save();
-
-      // update order status
-      order.orderStatus = EOrderStatus.Completed;
-      order.save();
-
-      const result = await newPayment.populate<{ order: TOrder }>('order');
-      return {
-        paymentId: result.paymentId,
-        orderId: result.order.orderId,
-        paymentMethod: result.order.paymentMethod,
-        totalPrice: result.order.totalPrice,
-        status: result.status,
-        userInfo: result.order.userInfoSnapshot,
-        items: result.order.items,
-        txHash: result.txHash,
-        paypalTransaction: result.paypalTransaction,
-        codTransactionId: result.codTransactionId,
-        createdAt: result.createdAt.getTime(),
-        updatedAt: result.createdAt.getTime(),
-      };
+      throw new Error('Unsupported payment method');
     }),
   },
 };
