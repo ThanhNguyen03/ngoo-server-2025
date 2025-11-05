@@ -54,7 +54,7 @@ input OrderItemInput {
 }
 
 input CreateOrderInput {
-  items: [OrderItemInput]!
+  items: [OrderItemInput!]!
   paymentMethod: EPaymentMethod!
   returnUrl: String!
   cancelUrl: String!
