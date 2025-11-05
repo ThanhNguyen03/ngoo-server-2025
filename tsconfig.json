@@ -10,6 +10,7 @@
       "@/model": ["./src/model"],
       "@/helper": ["./src/helper"],
       "@/lib": ["src/lib"],
+      "@/service": ["src/services"],
       "@/generated/graphql": ["./src/apollo/types.generated"]
     },
     "strict": true,
