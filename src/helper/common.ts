@@ -1,50 +1,8 @@
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
 import { JwtAuthAccessTokenInstance, TAccessTokenPayload } from './jwt.js';
-import { ERole, ESort, QueryByInput, TQueryBy } from '@/generated/graphql';
+import { ERole } from '@/generated/graphql';
 import { UserModel } from '@/model';
-
-export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';
-export const JOI_ID_SCHEMA = Joi.string()
-  .alphanum()
-  .trim()
-  .guid({
-    version: ['uuidv4'],
-  })
-  .required();
-
-export type TGraphQLRequest<T> = {
-  data: T;
-};
-
-export type TPagination = { total: number; offset: number; limit: number; query: TQueryBy[] };
-
-export const schemaPagination = (queryList: string[]) => ({
-  offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
-  query: Joi.array()
-    .items(
-      Joi.object<QueryByInput>({
-        column: Joi.string()
-          .valid(...queryList)
-          .required(),
-        sort: Joi.string().valid(ESort.Asc, ESort.Desc).required(),
-      }),
-    )
-    .default([]),
-  limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
-});
-
-export const sortQuery = (query: TQueryBy[]) => {
-  const sort: Record<string, 1 | -1> = {};
-
-  for (const q of query) {
-    if (q.sort) {
-      sort[q.column!] = q.sort === 'asc' ? 1 : -1;
-    }
-  }
-
-  return sort;
-};
 
 export enum EUserAuthenticationStatus {
   Guest,

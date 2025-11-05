@@ -15,38 +15,36 @@ const NGOO_TABLE = {
 };
 
 export type TTableName = typeof NGOO_TABLE;
-type TNodeEnv = 'local' | 'test' | 'prod';
-
-type TAppConfig = {
-  PORT: number;
-  APP_URL: string;
-  NODE_ENV: TNodeEnv;
-  MONGODB_URL: string;
-  JWT_SECRET_KEY: string;
-  EXPRESS_SESSION_SECRET: string;
-  REDIS_URL: string;
-  REDIS_KEY_PREFIX: string;
-  MONGODB_TABLE_PREFIX: string;
-  NGOO_CONTRACT_ADDRESS: string;
-  NGOO_CHAIN_ID: string;
-  NGOO_SIGNER: string;
-  MONAD_RPC_URL: string;
-};
 
 const envSchema = Joi.object({
   PORT: Joi.number().required(),
   APP_URL: Joi.string().required(),
   NODE_ENV: Joi.string().valid('local', 'test', 'prod').required(),
-  MONGODB_URL: Joi.string().required(),
+
+  // secret
   JWT_SECRET_KEY: Joi.string().required(),
   EXPRESS_SESSION_SECRET: Joi.string().required(),
+
+  // authen
   GOOGLE_CLIENT_ID: Joi.string().required(),
+
+  // db
+  MONGODB_URL: Joi.string().required(),
+  MONGODB_TABLE_NAME: Joi.string().required(),
+
+  // redis
   REDIS_URL: Joi.string()
     .trim()
     .regex(/^rediss:\/\//)
     .required(),
   REDIS_KEY_PREFIX: Joi.string().trim().optional().default('thanhfng_server'),
-  MONGODB_TABLE_NAME: Joi.string().required(),
+
+  // paypal
+  PAYPAL_CLIENT_ID: Joi.string().required(),
+  PAYPAL_CLIENT_SECRET: Joi.string().required(),
+  PAYPAL_MODE: Joi.string().valid('sandbox', 'live').required(),
+
+  // crypto
   NGOO_CONTRACT_ADDRESS: Joi.string().required(),
   NGOO_CHAIN_ID: Joi.string().required(),
   NGOO_SIGNER: Joi.string().required(),
@@ -65,13 +63,28 @@ export const config = {
   PORT: envVars.PORT,
   APP_URL: envVars.APP_URL,
   NODE_ENV: envVars.NODE_ENV,
-  MONGODB_URL: envVars.MONGODB_URL,
+
+  // secret
   JWT_SECRET_KEY: envVars.JWT_SECRET_KEY,
   EXPRESS_SESSION_SECRET: envVars.EXPRESS_SESSION_SECRET,
+
+  // authen
   GOOGLE_CLIENT_ID: envVars.GOOGLE_CLIENT_ID,
+
+  // db
+  MONGODB_URL: envVars.MONGODB_URL,
+  MONGODB_TABLE_NAME: envVars.MONGODB_TABLE_NAME,
+
+  // redis
   REDIS_URL: envVars.REDIS_URL,
   REDIS_KEY_PREFIX: envVars.REDIS_KEY_PREFIX,
-  MONGODB_TABLE_NAME: envVars.MONGODB_TABLE_NAME,
+
+  // paypal
+  PAYPAL_CLIENT_ID: envVars.PAYPAL_CLIENT_ID,
+  PAYPAL_CLIENT_SECRET: envVars.PAYPAL_CLIENT_SECRET,
+  PAYPAL_MODE: envVars.PAYPAL_MODE,
+
+  // crypto
   NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS,
   NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID,
   NGOO_SIGNER: envVars.NGOO_SIGNER,
