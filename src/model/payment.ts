@@ -54,7 +54,6 @@ const PaymentSchema = new Schema<TPayment>(
 PaymentSchema.index({ order: 1 });
 PaymentSchema.index({ createdAt: -1 });
 PaymentSchema.index({ txHash: 1 });
-PaymentSchema.index({ 'paypalTransaction.paypalCaptureId': 1 }, { unique: true }); // enforce unique capture
 PaymentSchema.index({ status: 1, createdAt: -1 });
 
 export const PaymentModel = model<TPayment>('Payment', PaymentSchema);

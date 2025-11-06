@@ -76,6 +76,11 @@ export enum EAuditAction {
   Update = 'UPDATE'
 }
 
+export enum EAuthMethod {
+  Credential = 'CREDENTIAL',
+  Google = 'GOOGLE'
+}
+
 export enum EItemStatus {
   Empty = 'EMPTY',
   New = 'NEW',
@@ -141,6 +146,7 @@ export type Mutation = {
   userConnectCryptoWallet: TConnectCryptoWalletResponse;
   userLogin: TUserAuth;
   userLogout: Scalars['Boolean']['output'];
+  userRegister: TUserAuth;
 };
 
 
@@ -201,12 +207,20 @@ export type MutationUserConnectCryptoWalletArgs = {
 
 
 export type MutationUserLoginArgs = {
-  token: Scalars['String']['input'];
+  email?: InputMaybe<Scalars['String']['input']>;
+  password?: InputMaybe<Scalars['String']['input']>;
+  token?: InputMaybe<Scalars['String']['input']>;
 };
 
 
 export type MutationUserLogoutArgs = {
   logoutEverywhere?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+export type MutationUserRegisterArgs = {
+  email: Scalars['String']['input'];
+  password: Scalars['String']['input'];
 };
 
 /** Input types */
@@ -453,6 +467,7 @@ export type UpdateItemInput = {
 export type UserInfo = {
   __typename?: 'UserInfo';
   address?: Maybe<Scalars['String']['output']>;
+  authMethod: EAuthMethod;
   email: Scalars['String']['output'];
   name?: Maybe<Scalars['String']['output']>;
   phoneNumber?: Maybe<Scalars['String']['output']>;
@@ -542,6 +557,7 @@ export type ResolversTypes = {
   CreateItemInput: CreateItemInput;
   CreateOrderInput: CreateOrderInput;
   EAuditAction: EAuditAction;
+  EAuthMethod: EAuthMethod;
   EItemStatus: EItemStatus;
   EOrderStatus: EOrderStatus;
   EPaymentMethod: EPaymentMethod;
@@ -637,8 +653,9 @@ export type MutationResolvers<ContextType = TAppContext, ParentType extends Reso
   updateCategory?: Resolver<ResolversTypes['Category'], ParentType, ContextType, RequireFields<MutationUpdateCategoryArgs, 'category'>>;
   updateItem?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<MutationUpdateItemArgs, 'input'>>;
   userConnectCryptoWallet?: Resolver<ResolversTypes['TConnectCryptoWalletResponse'], ParentType, ContextType, RequireFields<MutationUserConnectCryptoWalletArgs, 'address' | 'signature'>>;
-  userLogin?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationUserLoginArgs, 'token'>>;
+  userLogin?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, Partial<MutationUserLoginArgs>>;
   userLogout?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, Partial<MutationUserLogoutArgs>>;
+  userRegister?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationUserRegisterArgs, 'email' | 'password'>>;
 };
 
 export interface ObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Object'], any> {
@@ -799,6 +816,7 @@ export interface TimestampScalarConfig extends GraphQLScalarTypeConfig<Resolvers
 
 export type UserInfoResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['UserInfo'] = ResolversParentTypes['UserInfo']> = {
   address?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  authMethod?: Resolver<ResolversTypes['EAuthMethod'], ParentType, ContextType>;
   email?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   name?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;

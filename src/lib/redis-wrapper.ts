@@ -3,7 +3,7 @@ import EventEmitter from 'node:events';
 
 export enum ERedisEvent {
   Connect = 'connect',
-  End = 'end',
+  Quit = 'quit',
   Reconnect = 'reconnecting',
   Error = 'error',
 }
@@ -64,7 +64,7 @@ export class RedisClient {
 
     // forward redis events to EventEmitter
     this._client.on('connect', () => this.event.emit(ERedisEvent.Connect));
-    this._client.on('end', () => this.event.emit(ERedisEvent.End));
+    this._client.on('quit', () => this.event.emit(ERedisEvent.Quit));
     this._client.on('reconnecting', () => this.event.emit(ERedisEvent.Reconnect));
     this._client.on('error', (err) => this.event.emit(ERedisEvent.Error, err));
   }
@@ -82,6 +82,12 @@ export class RedisClient {
       await this._client.connect();
     }
     return this;
+  }
+
+  async quit() {
+    if (this._client.isOpen) {
+      await this._client.quit();
+    }
   }
 
   get redis() {
