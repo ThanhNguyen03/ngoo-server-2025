@@ -1,5 +1,5 @@
-import { ESort, OrderItemInput, QueryByInput, TItemOption, TOrderItem, TQueryBy } from '@/generated/graphql';
-import { ItemModel, TItem } from '@/model';
+import { ESort, OrderItemInput, QueryByInput, TQueryBy } from '@/generated/graphql';
+import { TItem } from '@/model';
 import Joi from 'joi';
 
 export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';

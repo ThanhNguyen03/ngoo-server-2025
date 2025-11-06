@@ -3,6 +3,11 @@ enum ERole {
   USER
 }
 
+enum EAuthMethod {
+  GOOGLE
+  CREDENTIAL
+}
+
 type TUserAuth {
   accessToken: String!
   refreshToken: String!
@@ -14,6 +19,7 @@ type UserInfo {
   name: String
   walletAddress: String
   role: ERole!
+  authMethod: EAuthMethod!
   address: String
   phoneNumber: String
 }
@@ -29,10 +35,10 @@ type Query {
   cryptoWalletWithNone: String!
 }
 
-
 type Mutation {
   refreshToken(refreshToken: String!): TUserAuth!
-  userLogin(token: String!): TUserAuth!
+  userRegister(email: String!, password: String!): TUserAuth!
+  userLogin(token: String, email: String, password: String): TUserAuth!
   userConnectCryptoWallet(signature: String!, address: String!): TConnectCryptoWalletResponse!
   userLogout(logoutEverywhere: Boolean): Boolean!
 }

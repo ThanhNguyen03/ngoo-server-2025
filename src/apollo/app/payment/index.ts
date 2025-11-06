@@ -16,7 +16,6 @@ import {
   TPagination,
 } from '@/helper';
 import { OrderModel, PaymentModel, TOrder } from '@/model';
-import { ordersController } from '@/service';
 import { Order } from '@paypal/paypal-server-sdk';
 import Joi from 'joi';
 

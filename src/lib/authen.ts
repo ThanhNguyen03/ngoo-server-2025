@@ -3,6 +3,7 @@ import * as jose from 'jose';
 export const JWT_ALGORITHM_REQUIRED_KEY = ['EdDSA', 'ES256', 'ES256K', 'ES384', 'ES512'] as const;
 export const JWT_SUPPORT_ALGORITHM = [...JWT_ALGORITHM_REQUIRED_KEY, 'HS256', 'HS384', 'HS512'] as const;
 export type TJWTAlgorithm = (typeof JWT_SUPPORT_ALGORITHM)[number];
+export const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
 
 /**
  * JWT Authentication helper supporting multiple algorithms (HS / ES / EdDSA)
@@ -67,6 +68,25 @@ export class JWTAuthentication<T extends jose.JWTPayload> {
     } & Pick<jose.JWTVerifyResult, 'protectedHeader'>
   > {
     const { payload, protectedHeader } = await jose.jwtVerify(token, this.#secret);
+    return { payload: payload as T, protectedHeader };
+  }
+
+  /** Verify google id */
+  static async verifyGoogleId<T>(
+    token: string,
+    clientId: string,
+  ): Promise<
+    {
+      payload: T;
+    } & Pick<jose.JWTVerifyResult, 'protectedHeader'>
+  > {
+    const JWKS = jose.createRemoteJWKSet(new URL(GOOGLE_JWKS_URL));
+
+    const { payload, protectedHeader } = await jose.jwtVerify(token, JWKS, {
+      issuer: 'https://accounts.google.com',
+      audience: clientId,
+    });
+
     return { payload: payload as T, protectedHeader };
   }
 

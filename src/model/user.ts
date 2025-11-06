@@ -1,11 +1,12 @@
-import { ERole } from '@/generated/graphql';
+import { EAuthMethod, ERole } from '@/generated/graphql';
 import { model, Schema, Types } from 'mongoose';
 
 interface IUser {
   uuid: string;
   email: string;
-  walletAddress?: string;
+  password: string;
   role: ERole;
+  authMethod: EAuthMethod;
   userInfo: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -19,7 +20,8 @@ const UserSchema = new Schema<TUser>(
     uuid: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     role: { type: String, enum: ['USER', 'ADMIN'], default: ERole.User },
-    walletAddress: { type: String, index: true, sparse: true },
+    authMethod: { type: String, enum: ['GOOGLE', 'CREDENTIAL'], required: true },
+    password: { type: String },
     userInfo: { type: Schema.Types.ObjectId, ref: 'UserInfo', required: true },
     lastLoginAt: { type: Date },
   },

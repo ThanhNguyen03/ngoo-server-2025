@@ -1,9 +1,11 @@
 import {
+  EAuthMethod,
   ERole,
   MutationRefreshTokenArgs,
   MutationUserConnectCryptoWalletArgs,
   MutationUserLoginArgs,
   MutationUserLogoutArgs,
+  MutationUserRegisterArgs,
   Resolvers,
 } from '@/generated/graphql';
 import {
@@ -12,22 +14,52 @@ import {
   JwtAuthAccessTokenInstance,
   JwtAuthRefreshTokenInstance,
   publicWrapper,
-  verifyGoogleIdToken,
+  TGoogleTokenPayload,
 } from '@/helper';
 import { TUserInfo, UserInfoModel, UserModel } from '@/model';
-import isOk, { JOI_ERC55_ADDRESS } from '@/lib';
-import { randomUUID } from 'crypto';
+import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@/lib';
+import { argon2, randomBytes, randomUUID } from 'crypto';
 import { isHexString, verifyMessage } from 'ethers';
 import Joi from 'joi';
+import { hash, verify } from 'argon2';
 
-const AUTH_CODE_LENGTH = 32;
+// const AUTH_CODE_LENGTH = 32;
 // dsaChallenge is a hex string with 132 characters long = 65 * 2 + 2 (2 is for prefix `0x`)
 export const DSA_SIGNATURE_BYTE_LENGTH = 65;
 
+const JOI_PASSWPORD = Joi.string()
+  .min(8)
+  .max(16)
+  .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9.,])[A-Za-z0-9^A-Za-z0-9.,]{8,16}$/)
+  .messages({
+    'string.empty': 'Password is required',
+    'string.min': 'Password must be at least 8 characters',
+    'string.max': 'Password must not exceed 16 characters',
+    'string.pattern.base':
+      'Password must contain at least 1 uppercase, 1 lowercase, 1 number, 1 special character (except "." and ",")',
+  });
+
 // Validate token
 const JOI_USER_LOGIN = Joi.object<MutationUserLoginArgs>({
-  token: Joi.string().required(),
+  token: Joi.string(),
+  email: Joi.string()
+    .email()
+    .trim()
+    .lowercase()
+    .when('token', { is: Joi.exist(), then: Joi.optional(), otherwise: Joi.required() }),
+  password: Joi.string().when('token', { is: Joi.exist(), then: Joi.optional(), otherwise: Joi.required() }),
 });
+const JOI_USER_REGISTER = Joi.object<MutationUserRegisterArgs>({
+  email: Joi.string().email().trim().lowercase().required(),
+  password: JOI_PASSWPORD.required(),
+});
+const JOI_USER_LOGOUT = Joi.object<MutationUserLogoutArgs>({
+  logoutEverywhere: Joi.bool().optional().default(false),
+});
+const JOI_REFRESH_TOKEN = Joi.object<MutationRefreshTokenArgs>({
+  refreshToken: Joi.string().required(),
+});
+
 const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalletArgs>({
   signature: Joi.string()
     .trim()
@@ -40,19 +72,38 @@ const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalle
     }),
   address: JOI_ERC55_ADDRESS.required(),
 });
-const JOI_USER_LOGOUT = Joi.object<MutationUserLogoutArgs>({
-  logoutEverywhere: Joi.bool().optional().default(false),
-});
-const JOI_REFRESH_TOKEN = Joi.object<MutationRefreshTokenArgs>({
-  refreshToken: Joi.string().required(),
-});
+
+const generateTokens = async (userUuid: string, id?: { sid: string; rid: string }) => {
+  let { sid, rid } = id || { sid: '', rid: '' };
+  if (!id) {
+    sid = randomUUID(); // session id
+    rid = randomUUID(); // redis id
+  }
+
+  // Access Token
+  const accessToken = await JwtAuthAccessTokenInstance.sign({
+    uuid: userUuid,
+    sid,
+  });
+
+  // Refresh Token
+  const refreshToken = await JwtAuthRefreshTokenInstance.sign({
+    uuid: userUuid,
+    rid,
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+  };
+};
 
 export const resolverUser: Resolvers = {
   Query: {
     userInfo: authorizedWrapper(async (_root, _args, context) => {
       const { userId } = context.user;
 
-      const user = await UserModel.findById(userId).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+      const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
       if (!user) {
         throw new Error('User not found');
       }
@@ -61,8 +112,8 @@ export const resolverUser: Resolvers = {
         uuid: user.uuid,
         email: user.email,
         name: user.userInfo.name,
-        walletAddress: user.walletAddress,
         role: user.role,
+        authMethod: user.authMethod!,
         address: user.userInfo.address,
         phoneNumber: user.userInfo.phoneNumber,
       };
@@ -86,50 +137,91 @@ export const resolverUser: Resolvers = {
   },
 
   Mutation: {
+    userRegister: publicWrapper(JOI_USER_REGISTER, async (_root, args) => {
+      const { email, password } = args;
+
+      const existingUser = await UserModel.findOne({ email });
+      if (existingUser) {
+        throw new Error('Email already registered');
+      }
+
+      const hashedPassword = await hash(password, { type: 2, salt: randomBytes(16) });
+      const newUserInfo = await UserInfoModel.create({});
+
+      const newUser = await UserModel.create({
+        uuid: randomUUID(),
+        email,
+        password: hashedPassword,
+        role: ERole.User,
+        authMethod: EAuthMethod.Credential,
+        userInfo: newUserInfo._id,
+      });
+
+      return await generateTokens(newUser.uuid);
+    }),
+
     userLogin: publicWrapper(JOI_USER_LOGIN, async (_root, args) => {
-      const { token } = args;
+      const { token, email, password } = args;
 
-      // Verify Google token
-      const payload = await verifyGoogleIdToken(token, config.GOOGLE_CLIENT_ID);
-      if (!payload || !payload.email) {
-        throw new Error('Invalid Google token');
-      }
-
-      // Find or create user
-      let user = await UserModel.findOne({ email: payload.email });
-      if (!user) {
-        const userInfo = await UserInfoModel.create({
-          name: payload.name,
-        });
-
-        user = await UserModel.create({
-          email: payload.email,
-          role: ERole.User,
-          userInfo: userInfo._id,
-        });
-      }
       const sid = randomUUID(); // session id
       const rid = randomUUID(); // redis id
 
-      // Access Token
-      const accessToken = await JwtAuthAccessTokenInstance.sign({
-        uuid: user.uuid,
-        sid,
-      });
+      if (token) {
+        // Verify Google token
+        const { payload } = await JWTAuthentication.verifyGoogleId<TGoogleTokenPayload>(token, config.GOOGLE_CLIENT_ID);
+        if (!payload || !payload.email || !payload.email_verified) {
+          throw new Error('Invalid Google token');
+        }
 
-      // Refresh Token
-      const refreshToken = await JwtAuthRefreshTokenInstance.sign({
-        uuid: user.uuid,
-        rid,
-      });
+        // Find
+        const existingUser = await UserModel.findOne({ email }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+        if (!existingUser) {
+          // If don't have create new user
+          const newUserInfo = await UserInfoModel.create({
+            name: payload.name,
+          });
 
-      return {
-        accessToken,
-        refreshToken,
-      };
+          const newUser = await UserModel.create({
+            uuid: randomUUID(),
+            email: payload.email,
+            role: ERole.User,
+            authMethod: EAuthMethod.Google,
+            userInfo: newUserInfo._id,
+          });
+
+          return await generateTokens(newUser.uuid, { sid, rid });
+        }
+
+        // Update last login
+        existingUser.lastLoginAt = new Date();
+        existingUser.authMethod = EAuthMethod.Google;
+
+        if (existingUser.userInfo && payload.name) {
+          existingUser.userInfo.name = payload.name;
+        }
+
+        existingUser.save();
+
+        return await generateTokens(existingUser.uuid, { sid, rid });
+      }
+
+      if (email && password) {
+        const user = await UserModel.findOne({ email });
+        if (!user || !user.password) {
+          throw new Error('Invalid credentials');
+        }
+        const isValid = await verify(user.password, password);
+        if (!isValid) {
+          throw new Error('Invalid credentials');
+        }
+
+        return await generateTokens(user.uuid, { sid, rid });
+      }
+
+      throw new Error('Invalid credentials');
     }),
 
-    refreshToken: publicWrapper(JOI_REFRESH_TOKEN, async (_root, _args) => {
+    refreshToken: authorizedWrapper(JOI_REFRESH_TOKEN, async (_root, _args) => {
       const { refreshToken } = _args;
 
       let payload;
@@ -168,6 +260,28 @@ export const resolverUser: Resolvers = {
       };
     }),
 
+    userLogout: authorizedWrapper(JOI_USER_LOGOUT, async (_root, _args, context) => {
+      const { logoutEverywhere } = _args;
+      const token = context.user.token;
+
+      if (!token) {
+        throw new Error('Missing auth token');
+      }
+
+      if (_args.logoutEverywhere) {
+        // Revoke all access token and refresh token
+        return isOk(async () => {
+          // RedisHelper.account.userAccessTokenRemoveAll(context.user.userId);
+        });
+      }
+
+      // revoke current token
+      return isOk(async () => {
+        const verifiedJwtPayload = (await JwtAuthAccessTokenInstance.verifyHeader(context.user.token)).payload;
+        // await RedisHelper.account.userAccessTokenRemove(context.user.userId, verifiedJwtPayload.sid);
+      });
+    }),
+
     userConnectCryptoWallet: authorizedWrapper(JOI_USER_CONNECT_CRYPTO_WALLET, async (_root, args, context) => {
       const { signature, address } = args;
       const { user } = context;
@@ -198,28 +312,6 @@ export const resolverUser: Resolvers = {
         userUuid: user.userId,
         walletAddress: recoveredAddress,
       };
-    }),
-
-    userLogout: authorizedWrapper(JOI_USER_LOGOUT, async (_root, _args, context) => {
-      const { logoutEverywhere } = _args;
-      const token = context.user.token;
-
-      if (!token) {
-        throw new Error('Missing auth token');
-      }
-
-      if (_args.logoutEverywhere) {
-        // Revoke all access token and refresh token
-        return isOk(async () => {
-          // RedisHelper.account.userAccessTokenRemoveAll(context.user.userId);
-        });
-      }
-
-      // revoke current token
-      return isOk(async () => {
-        const verifiedJwtPayload = (await JwtAuthAccessTokenInstance.verifyHeader(context.user.token)).payload;
-        // await RedisHelper.account.userAccessTokenRemove(context.user.userId, verifiedJwtPayload.sid);
-      });
     }),
   },
 };

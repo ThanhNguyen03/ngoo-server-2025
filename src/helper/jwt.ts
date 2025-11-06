@@ -5,20 +5,25 @@ import config from './config';
 export const ACCESS_TOKEN_EXP = '15m';
 export const REFRESH_TOKEN_EXP = '30d';
 
-export type TAccessTokenPayload = jose.JWTPayload &
-  Pick<TUser, 'uuid'> & {
-    /** Session ID to identify the user's session. This can be stored in for
-     * example Redis to efficiently manage user sessions instead of storing the
-     * entire JWT token. */
-    sid: string;
-    uuid: string;
-  };
+export type TTokenPayload = jose.JWTPayload & Pick<TUser, 'uuid'>;
 
-export type TRefreshTokenPayload = jose.JWTPayload &
-  Pick<TUser, 'uuid'> & {
-    /** Refresh token ID */
-    rid: string;
-    uuid: string;
+export type TAccessTokenPayload = TTokenPayload & {
+  /** Session ID to identify the user's session. This can be stored in for
+   * example Redis to efficiently manage user sessions instead of storing the
+   * entire JWT token. */
+  sid: string;
+};
+
+export type TRefreshTokenPayload = TTokenPayload & {
+  /** Refresh token ID */
+  rid: string;
+};
+
+export type TGoogleTokenPayload = jose.JWTPayload &
+  Pick<TUser, 'email'> & {
+    email_verified: boolean;
+    name: string;
+    picture: string;
   };
 
 /**
@@ -35,16 +40,3 @@ export const JwtAuthRefreshTokenInstance = JWTAuthentication.getInstance<TRefres
   'HS384',
   REFRESH_TOKEN_EXP,
 );
-
-const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
-
-export const verifyGoogleIdToken = async (idToken: string, clientId: string) => {
-  const JWKS = jose.createRemoteJWKSet(new URL(GOOGLE_JWKS_URL));
-
-  const { payload } = await jose.jwtVerify(idToken, JWKS, {
-    issuer: 'https://accounts.google.com',
-    audience: clientId,
-  });
-
-  return payload;
-};
