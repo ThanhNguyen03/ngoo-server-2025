@@ -16,6 +16,5 @@ const paypalClient = new Client({
 });
 
 export const ordersController = new OrdersController(paypalClient);
-export const paymentController = new PaymentsController(paypalClient);
 
 export default paypalClient;

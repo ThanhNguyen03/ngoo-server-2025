@@ -36,4 +36,4 @@ export default isOk;
 export * from './authen';
 export * from './byte-buffer';
 export * from './fixed-float';
-export * from './redis';
+export * from './redis-wrapper';
