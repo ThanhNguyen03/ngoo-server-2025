@@ -174,7 +174,9 @@ export const resolverUser: Resolvers = {
         }
 
         // Find
-        const existingUser = await UserModel.findOne({ email }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+        const existingUser = await UserModel.findOne({ email: payload.email })
+          .populate<{ userInfo: TUserInfo }>('userInfo')
+          .exec();
         if (!existingUser) {
           // If don't have create new user
           const newUserInfo = await UserInfoModel.create({
