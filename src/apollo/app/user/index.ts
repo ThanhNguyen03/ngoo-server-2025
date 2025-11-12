@@ -30,7 +30,7 @@ export const DSA_SIGNATURE_BYTE_LENGTH = 65;
 const JOI_PASSWPORD = Joi.string()
   .min(8)
   .max(16)
-  .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9.,])[A-Za-z0-9^A-Za-z0-9.,]{8,16}$/)
+  .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9.,])[A-Za-z\d\S]{8,16}$/)
   .messages({
     'string.empty': 'Password is required',
     'string.min': 'Password must be at least 8 characters',
@@ -41,7 +41,7 @@ const JOI_PASSWPORD = Joi.string()
 
 // Validate token
 const JOI_USER_LOGIN = Joi.object<MutationUserLoginArgs>({
-  token: Joi.string(),
+  token: Joi.string().allow(null, ''),
   email: Joi.string()
     .email()
     .trim()
