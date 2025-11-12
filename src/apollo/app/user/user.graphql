@@ -9,11 +9,12 @@ enum EAuthMethod {
 }
 
 type TUserAuth {
+  userUuid: String!
   accessToken: String!
   refreshToken: String!
 }
 
-type UserInfo {
+type TUserInfo {
   uuid: String!
   email: String!
   name: String
@@ -31,7 +32,7 @@ type TConnectCryptoWalletResponse {
 }
 
 type Query {
-  userInfo: UserInfo!
+  userInfo: TUserInfo!
   cryptoWalletWithNone: String!
 }
 

@@ -3,9 +3,9 @@ import {
   MutationDeleteCategoryArgs,
   MutationUpdateCategoryArgs,
   Resolvers,
-} from '@/generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA } from '@/helper';
-import { CategoryModel } from '@/model';
+} from '@generated/graphql';
+import { adminWrapper, JOI_ID_SCHEMA } from '@helper';
+import { CategoryModel } from '@model';
 import Joi from 'joi';
 
 const JOI_CATEGORY_NAME = Joi.object<MutationCreateCategoryArgs>({

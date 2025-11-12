@@ -7,7 +7,7 @@ import {
   MutationUserLogoutArgs,
   MutationUserRegisterArgs,
   Resolvers,
-} from '@/generated/graphql';
+} from '@generated/graphql';
 import {
   authorizedWrapper,
   config,
@@ -15,13 +15,13 @@ import {
   JwtAuthRefreshTokenInstance,
   publicWrapper,
   TGoogleTokenPayload,
-} from '@/helper';
-import { TUserInfo, UserInfoModel, UserModel } from '@/model';
-import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@/lib';
-import { argon2, randomBytes, randomUUID } from 'crypto';
+} from '@helper';
+import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@lib';
+import { TUserInfo, UserInfoModel, UserModel } from '@model';
+import { hash, verify } from 'argon2';
+import { randomBytes, randomUUID } from 'crypto';
 import { isHexString, verifyMessage } from 'ethers';
 import Joi from 'joi';
-import { hash, verify } from 'argon2';
 
 // const AUTH_CODE_LENGTH = 32;
 // dsaChallenge is a hex string with 132 characters long = 65 * 2 + 2 (2 is for prefix `0x`)
@@ -30,7 +30,7 @@ export const DSA_SIGNATURE_BYTE_LENGTH = 65;
 const JOI_PASSWPORD = Joi.string()
   .min(8)
   .max(16)
-  .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9.,])[A-Za-z0-9^A-Za-z0-9.,]{8,16}$/)
+  .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9.,])[A-Za-z\d\S]{8,16}$/)
   .messages({
     'string.empty': 'Password is required',
     'string.min': 'Password must be at least 8 characters',
@@ -41,7 +41,7 @@ const JOI_PASSWPORD = Joi.string()
 
 // Validate token
 const JOI_USER_LOGIN = Joi.object<MutationUserLoginArgs>({
-  token: Joi.string(),
+  token: Joi.string().allow(null, ''),
   email: Joi.string()
     .email()
     .trim()
@@ -95,6 +95,7 @@ const generateTokens = async (userUuid: string, id?: { sid: string; rid: string 
   return {
     accessToken,
     refreshToken,
+    userUuid,
   };
 };
 
@@ -189,6 +190,7 @@ export const resolverUser: Resolvers = {
             role: ERole.User,
             authMethod: EAuthMethod.Google,
             userInfo: newUserInfo._id,
+            lastLoginAt: new Date(),
           });
 
           return await generateTokens(newUser.uuid, { sid, rid });
@@ -216,6 +218,9 @@ export const resolverUser: Resolvers = {
         if (!isValid) {
           throw new Error('Invalid credentials');
         }
+        // Update last login
+        user.lastLoginAt = new Date();
+        user.save();
 
         return await generateTokens(user.uuid, { sid, rid });
       }
@@ -259,6 +264,7 @@ export const resolverUser: Resolvers = {
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
+        userUuid: uuid,
       };
     }),
 

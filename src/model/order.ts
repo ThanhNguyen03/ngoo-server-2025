@@ -1,7 +1,7 @@
-import mongoose, { Schema, model, Document, Types } from 'mongoose';
-import { TItemOption } from './item';
+import { EOrderStatus, EPaymentMethod } from '@generated/graphql';
 import { randomUUID } from 'crypto';
-import { EOrderStatus, EPaymentMethod } from '@/generated/graphql';
+import { Schema, Types, model } from 'mongoose';
+import { TItemOption } from './item';
 
 export type TUserInfoSnapshot = {
   name?: string;

@@ -1,7 +1,7 @@
-import NGOO_API from './app';
+import { config } from '@helper';
+import { RedisInstance } from '@service';
 import mongoose from 'mongoose';
-import { config } from '@/helper';
-import { RedisInstance } from '@/service';
+import { NGOO_API } from './app';
 
 const connect = async () => {
   try {

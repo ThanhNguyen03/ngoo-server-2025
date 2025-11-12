@@ -256,7 +256,7 @@ export type Query = {
   listItem: TListItemResponse;
   listPaymentHistory: TListPaymentResponse;
   paymentHistory: TPaymentResponse;
-  userInfo: UserInfo;
+  userInfo: TUserInfo;
 };
 
 
@@ -441,6 +441,19 @@ export type TUserAuth = {
   __typename?: 'TUserAuth';
   accessToken: Scalars['String']['output'];
   refreshToken: Scalars['String']['output'];
+  userUuid: Scalars['String']['output'];
+};
+
+export type TUserInfo = {
+  __typename?: 'TUserInfo';
+  address?: Maybe<Scalars['String']['output']>;
+  authMethod: EAuthMethod;
+  email: Scalars['String']['output'];
+  name?: Maybe<Scalars['String']['output']>;
+  phoneNumber?: Maybe<Scalars['String']['output']>;
+  role: ERole;
+  uuid: Scalars['String']['output'];
+  walletAddress?: Maybe<Scalars['String']['output']>;
 };
 
 export type TUserInfoSnapshot = {
@@ -462,18 +475,6 @@ export type UpdateItemInput = {
   price?: InputMaybe<Scalars['Float']['input']>;
   requireOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
   status?: InputMaybe<Array<InputMaybe<EItemStatus>>>;
-};
-
-export type UserInfo = {
-  __typename?: 'UserInfo';
-  address?: Maybe<Scalars['String']['output']>;
-  authMethod: EAuthMethod;
-  email: Scalars['String']['output'];
-  name?: Maybe<Scalars['String']['output']>;
-  phoneNumber?: Maybe<Scalars['String']['output']>;
-  role: ERole;
-  uuid: Scalars['String']['output'];
-  walletAddress?: Maybe<Scalars['String']['output']>;
 };
 
 
@@ -590,10 +591,10 @@ export type ResolversTypes = {
   TPaymentResponse: ResolverTypeWrapper<TPaymentResponse>;
   TQueryBy: ResolverTypeWrapper<TQueryBy>;
   TUserAuth: ResolverTypeWrapper<TUserAuth>;
+  TUserInfo: ResolverTypeWrapper<TUserInfo>;
   TUserInfoSnapshot: ResolverTypeWrapper<TUserInfoSnapshot>;
   Timestamp: ResolverTypeWrapper<Scalars['Timestamp']['output']>;
   UpdateItemInput: UpdateItemInput;
-  UserInfo: ResolverTypeWrapper<UserInfo>;
 };
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -630,10 +631,10 @@ export type ResolversParentTypes = {
   TPaymentResponse: TPaymentResponse;
   TQueryBy: TQueryBy;
   TUserAuth: TUserAuth;
+  TUserInfo: TUserInfo;
   TUserInfoSnapshot: TUserInfoSnapshot;
   Timestamp: Scalars['Timestamp']['output'];
   UpdateItemInput: UpdateItemInput;
-  UserInfo: UserInfo;
 };
 
 export type CategoryResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Category'] = ResolversParentTypes['Category']> = {
@@ -679,7 +680,7 @@ export type QueryResolvers<ContextType = TAppContext, ParentType extends Resolve
   listItem?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, Partial<QueryListItemArgs>>;
   listPaymentHistory?: Resolver<ResolversTypes['TListPaymentResponse'], ParentType, ContextType, Partial<QueryListPaymentHistoryArgs>>;
   paymentHistory?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<QueryPaymentHistoryArgs, 'paymentId'>>;
-  userInfo?: Resolver<ResolversTypes['UserInfo'], ParentType, ContextType>;
+  userInfo?: Resolver<ResolversTypes['TUserInfo'], ParentType, ContextType>;
 };
 
 export type TAuditDiffResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TAuditDiff'] = ResolversParentTypes['TAuditDiff']> = {
@@ -801,6 +802,18 @@ export type TQueryByResolvers<ContextType = TAppContext, ParentType extends Reso
 export type TUserAuthResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserAuth'] = ResolversParentTypes['TUserAuth']> = {
   accessToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   refreshToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  userUuid?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type TUserInfoResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserInfo'] = ResolversParentTypes['TUserInfo']> = {
+  address?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  authMethod?: Resolver<ResolversTypes['EAuthMethod'], ParentType, ContextType>;
+  email?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  name?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  role?: Resolver<ResolversTypes['ERole'], ParentType, ContextType>;
+  uuid?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  walletAddress?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
 
 export type TUserInfoSnapshotResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserInfoSnapshot'] = ResolversParentTypes['TUserInfoSnapshot']> = {
@@ -813,17 +826,6 @@ export type TUserInfoSnapshotResolvers<ContextType = TAppContext, ParentType ext
 export interface TimestampScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Timestamp'], any> {
   name: 'Timestamp';
 }
-
-export type UserInfoResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['UserInfo'] = ResolversParentTypes['UserInfo']> = {
-  address?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  authMethod?: Resolver<ResolversTypes['EAuthMethod'], ParentType, ContextType>;
-  email?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  name?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  role?: Resolver<ResolversTypes['ERole'], ParentType, ContextType>;
-  uuid?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  walletAddress?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-};
 
 export type Resolvers<ContextType = TAppContext> = {
   Category?: CategoryResolvers<ContextType>;
@@ -845,8 +847,8 @@ export type Resolvers<ContextType = TAppContext> = {
   TPaymentResponse?: TPaymentResponseResolvers<ContextType>;
   TQueryBy?: TQueryByResolvers<ContextType>;
   TUserAuth?: TUserAuthResolvers<ContextType>;
+  TUserInfo?: TUserInfoResolvers<ContextType>;
   TUserInfoSnapshot?: TUserInfoSnapshotResolvers<ContextType>;
   Timestamp?: GraphQLScalarType;
-  UserInfo?: UserInfoResolvers<ContextType>;
 };
 

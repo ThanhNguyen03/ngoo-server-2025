@@ -1,11 +1,11 @@
-import { readFileSync } from '@/helper';
-import { resolverUser } from './app/user';
+import { readFileSync } from '@helper';
 import { resolverCategory } from './app/category';
-import CustomScalarTypes from './scalar';
-import { Resolvers } from './types.generated';
 import { resolverItem } from './app/item';
 import { resolverOrder } from './app/order';
 import { resolverPayment } from './app/payment';
+import { resolverUser } from './app/user';
+import CustomScalarTypes from './scalar';
+import { Resolvers } from './types.generated';
 
 const typeDefUser = readFileSync('./src/apollo/app/user/user.graphql');
 const typeDefAuditLog = readFileSync('./src/apollo/app/audit-log/audit.graphql');

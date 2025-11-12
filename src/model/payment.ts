@@ -1,6 +1,6 @@
-import { EPaymentStatus } from '@/generated/graphql';
+import { EPaymentStatus } from '@generated/graphql';
 import { randomUUID } from 'crypto';
-import { Schema, model, Types } from 'mongoose';
+import { model, Schema, Types } from 'mongoose';
 
 type TPaypalPayment = {
   paypalPayerEmail: string;

@@ -5,9 +5,9 @@ import {
   MutationUpdateItemArgs,
   QueryGetItemByCategoryArgs,
   Resolvers,
-} from '@/generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, schemaPagination, sortQuery, TPagination } from '@/helper';
-import { CategoryModel, ItemModel, TCategory, TItem } from '@/model';
+} from '@generated/graphql';
+import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, schemaPagination, sortQuery, TPagination } from '@helper';
+import { CategoryModel, ItemModel, TCategory, TItem } from '@model';
 import Joi from 'joi';
 
 enum EItemQuery {

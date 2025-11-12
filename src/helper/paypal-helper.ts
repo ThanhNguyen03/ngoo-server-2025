@@ -1,8 +1,8 @@
+import { EPaymentStatus, OrderItemInput } from '@generated/graphql';
+import { PaymentModel, TItem, TOrder, TPayment } from '@model';
 import { CheckoutPaymentIntent, OrderRequest } from '@paypal/paypal-server-sdk';
-import { EPaymentStatus, OrderItemInput } from '@/generated/graphql';
-import { PaymentModel, TItem, TOrder, TPayment } from '@/model';
+import { ordersController } from '@service';
 import { Document, Types } from 'mongoose';
-import { ordersController } from '@/service';
 
 type TCreatePayPalOrderBodyInput = {
   totalPrice: number;

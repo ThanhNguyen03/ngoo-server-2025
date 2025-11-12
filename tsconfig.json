@@ -6,12 +6,12 @@
     "baseUrl": "./",
     // "rootDir": "./src",
     "paths": {
-      "@/apollo-api": ["./src/apollo"],
-      "@/model": ["./src/model"],
-      "@/helper": ["./src/helper"],
-      "@/lib": ["src/lib"],
-      "@/service": ["src/services"],
-      "@/generated/graphql": ["./src/apollo/types.generated"]
+      "@apollo-api": ["./src/apollo"],
+      "@model": ["./src/model"],
+      "@helper": ["./src/helper"],
+      "@lib": ["src/lib"],
+      "@service": ["src/services"],
+      "@generated/graphql": ["./src/apollo/types.generated"]
     },
     "strict": true,
     "declaration": false,
