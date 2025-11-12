@@ -441,6 +441,7 @@ export type TUserAuth = {
   __typename?: 'TUserAuth';
   accessToken: Scalars['String']['output'];
   refreshToken: Scalars['String']['output'];
+  userUuid: Scalars['String']['output'];
 };
 
 export type TUserInfo = {
@@ -801,6 +802,7 @@ export type TQueryByResolvers<ContextType = TAppContext, ParentType extends Reso
 export type TUserAuthResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserAuth'] = ResolversParentTypes['TUserAuth']> = {
   accessToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   refreshToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  userUuid?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type TUserInfoResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserInfo'] = ResolversParentTypes['TUserInfo']> = {

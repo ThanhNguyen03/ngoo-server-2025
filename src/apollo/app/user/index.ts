@@ -95,6 +95,7 @@ const generateTokens = async (userUuid: string, id?: { sid: string; rid: string 
   return {
     accessToken,
     refreshToken,
+    userUuid,
   };
 };
 
@@ -189,6 +190,7 @@ export const resolverUser: Resolvers = {
             role: ERole.User,
             authMethod: EAuthMethod.Google,
             userInfo: newUserInfo._id,
+            lastLoginAt: new Date(),
           });
 
           return await generateTokens(newUser.uuid, { sid, rid });
@@ -216,6 +218,9 @@ export const resolverUser: Resolvers = {
         if (!isValid) {
           throw new Error('Invalid credentials');
         }
+        // Update last login
+        user.lastLoginAt = new Date();
+        user.save();
 
         return await generateTokens(user.uuid, { sid, rid });
       }
@@ -259,6 +264,7 @@ export const resolverUser: Resolvers = {
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
+        userUuid: uuid,
       };
     }),
 

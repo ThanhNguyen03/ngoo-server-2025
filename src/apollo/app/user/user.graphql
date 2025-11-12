@@ -9,6 +9,7 @@ enum EAuthMethod {
 }
 
 type TUserAuth {
+  userUuid: String!
   accessToken: String!
   refreshToken: String!
 }
