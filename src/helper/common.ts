@@ -1,8 +1,8 @@
+import { ERole } from '@generated/graphql';
+import { UserModel } from '@model';
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
 import { JwtAuthAccessTokenInstance, TAccessTokenPayload } from './jwt.js';
-import { ERole } from '@/generated/graphql';
-import { UserModel } from '@/model';
 
 export enum EUserAuthenticationStatus {
   Guest,

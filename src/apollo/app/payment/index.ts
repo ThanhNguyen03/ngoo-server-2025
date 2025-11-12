@@ -6,7 +6,7 @@ import {
   QueryPaymentHistoryArgs,
   Resolvers,
   TPaymentResponse,
-} from '@/generated/graphql';
+} from '@generated/graphql';
 import {
   authorizedWrapper,
   capturePaypalOrder,
@@ -14,8 +14,8 @@ import {
   schemaPagination,
   sortQuery,
   TPagination,
-} from '@/helper';
-import { OrderModel, PaymentModel, TOrder } from '@/model';
+} from '@helper';
+import { OrderModel, PaymentModel, TOrder } from '@model';
 import { Order } from '@paypal/paypal-server-sdk';
 import Joi from 'joi';
 

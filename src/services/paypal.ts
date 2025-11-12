@@ -1,5 +1,5 @@
-import { config } from '@/helper';
-import { Client, Environment, LogLevel, OrdersController, PaymentsController } from '@paypal/paypal-server-sdk';
+import { config } from '@helper';
+import { Client, Environment, LogLevel, OrdersController } from '@paypal/paypal-server-sdk';
 
 const paypalClient = new Client({
   clientCredentialsAuthCredentials: {

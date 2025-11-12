@@ -1,5 +1,5 @@
 // models/Item.model.ts
-import { EItemStatus } from '@/generated/graphql';
+import { EItemStatus } from '@generated/graphql';
 import { randomUUID } from 'crypto';
 import { Schema, Types, model } from 'mongoose';
 

@@ -1,6 +1,6 @@
-import { TUser } from '@/model';
-import { jose, JWTAuthentication } from '@/lib';
-import config from './config';
+import { jose, JWTAuthentication } from '@lib';
+import { TUser } from '@model';
+import { config } from './config';
 
 export const ACCESS_TOKEN_EXP = '15m';
 export const REFRESH_TOKEN_EXP = '30d';

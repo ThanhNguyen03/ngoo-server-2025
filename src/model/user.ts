@@ -1,4 +1,4 @@
-import { EAuthMethod, ERole } from '@/generated/graphql';
+import { EAuthMethod, ERole } from '@generated/graphql';
 import { model, Schema, Types } from 'mongoose';
 
 interface IUser {

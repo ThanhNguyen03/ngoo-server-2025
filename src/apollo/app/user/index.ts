@@ -7,7 +7,7 @@ import {
   MutationUserLogoutArgs,
   MutationUserRegisterArgs,
   Resolvers,
-} from '@/generated/graphql';
+} from '@generated/graphql';
 import {
   authorizedWrapper,
   config,
@@ -15,13 +15,13 @@ import {
   JwtAuthRefreshTokenInstance,
   publicWrapper,
   TGoogleTokenPayload,
-} from '@/helper';
-import { TUserInfo, UserInfoModel, UserModel } from '@/model';
-import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@/lib';
-import { argon2, randomBytes, randomUUID } from 'crypto';
+} from '@helper';
+import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@lib';
+import { TUserInfo, UserInfoModel, UserModel } from '@model';
+import { hash, verify } from 'argon2';
+import { randomBytes, randomUUID } from 'crypto';
 import { isHexString, verifyMessage } from 'ethers';
 import Joi from 'joi';
-import { hash, verify } from 'argon2';
 
 // const AUTH_CODE_LENGTH = 32;
 // dsaChallenge is a hex string with 132 characters long = 65 * 2 + 2 (2 is for prefix `0x`)
