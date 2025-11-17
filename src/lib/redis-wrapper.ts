@@ -1,5 +1,5 @@
-import { createClient, type RedisClientType, type RedisClientOptions } from 'redis';
 import EventEmitter from 'node:events';
+import { createClient, RedisArgument, RedisJSON, type RedisClientOptions, type RedisClientType } from 'redis';
 
 export enum ERedisEvent {
   Connect = 'connect',
@@ -8,47 +8,96 @@ export enum ERedisEvent {
   Error = 'error',
 }
 
-export type TRedisKeyValue = {
-  get: (key: string) => Promise<string | null>;
-  set: (key: string, value: string, expireSeconds?: number) => Promise<void>;
-  del: (key: string) => Promise<void>;
-};
+class RedisKey {
+  constructor(
+    private client: RedisClientType,
+    private prefix: string,
+    private key: string,
+  ) {}
 
-/** Factory create key-value helper */
-const createRedisKeyValue = (client: RedisClientType, prefix: string) => {
-  const wrapKey = (key: string) => `${prefix}:${key}`;
+  private fullKey() {
+    return `${this.prefix}:${this.key}`;
+  }
 
-  const keyValue: TRedisKeyValue = {
-    async get(key) {
-      return await client.get(wrapKey(key));
-    },
-    async set(key, value, expireSeconds) {
-      if (expireSeconds) {
-        await client.setEx(wrapKey(key), expireSeconds, value);
+  // API
+  async get() {
+    return await this.client.get(this.fullKey());
+  }
+  async set(value: string, expireSeconds?: number) {
+    if (expireSeconds) {
+      await this.client.setEx(this.fullKey(), expireSeconds, value);
+    } else {
+      await this.client.set(this.fullKey(), value);
+    }
+  }
+  async setAdd(member: string) {
+    return await this.client.sAdd(this.key, member);
+  }
+  async expire(exp: number) {
+    await this.client.expire(this.fullKey(), exp);
+  }
+  async delete() {
+    return await this.client.del(this.fullKey());
+  }
+
+  //  HASH
+  async hashSet(data: Record<string, any>) {
+    const flat: (string | number | Buffer)[] = [];
+
+    for (const [k, v] of Object.entries(data)) {
+      let value: string | number | Buffer;
+
+      if (v === null || v === undefined) {
+        value = '';
+      } else if (typeof v === 'object') {
+        value = JSON.stringify(v);
       } else {
-        await client.set(wrapKey(key), value);
+        value = v;
       }
-    },
-    async del(key) {
-      await client.del(wrapKey(key));
-    },
-  };
 
-  return keyValue;
-};
+      flat.push(k, value);
+    }
+
+    return this.client.hSet(this.fullKey(), flat as any);
+  }
+
+  async hashGet(field: RedisArgument) {
+    return await this.client.hGet(this.fullKey(), field);
+  }
+
+  async hashGetAll<T>() {
+    return (await this.client.hGetAll(this.fullKey())) as T;
+  }
+
+  //  JSON
+  async jsonSet<T extends RedisJSON>(value: T) {
+    await this.client.json.set(this.fullKey(), '$', value);
+  }
+
+  async jsonGet<T>() {
+    return (await this.client.json.get(this.fullKey())) as T;
+  }
+
+  // pipeline
+  pipeline() {
+    return this.client.multi();
+  }
+}
 
 /** Generic derive helper */
-export const RedisHelperDerive = <T extends string>(redisClient: RedisClient): Record<T, () => TRedisKeyValue> => {
+export const RedisHelperDerive = <T extends string>(redisClient: RedisClient): Record<T, (key: string) => RedisKey> => {
   const proxy = new Proxy(
     {},
     {
       get(_, prop: string) {
-        return () => createRedisKeyValue(redisClient.redis, prop);
+        return (key: string) => {
+          return new RedisKey(redisClient.redis, redisClient.prefixValue, `${prop}:${key}`);
+        };
       },
     },
   );
 
-  return proxy as Record<T, () => TRedisKeyValue>;
+  return proxy as Record<T, (key: string) => RedisKey>;
 };
 
 /** RedisClient */
@@ -67,6 +116,18 @@ export class RedisClient {
     this._client.on('quit', () => this.event.emit(ERedisEvent.Quit));
     this._client.on('reconnecting', () => this.event.emit(ERedisEvent.Reconnect));
     this._client.on('error', (err) => this.event.emit(ERedisEvent.Error, err));
+  }
+
+  get redis() {
+    return this._client;
+  }
+
+  set redis(_v: RedisClientType) {
+    this._client = _v;
+  }
+
+  get prefixValue() {
+    return this.prefix;
   }
 
   static getInstance(prefix: string, options: RedisClientOptions) {
@@ -88,13 +149,5 @@ export class RedisClient {
     if (this._client.isOpen) {
       await this._client.quit();
     }
-  }
-
-  get redis() {
-    return this._client;
-  }
-
-  set redis(_v: RedisClientType) {
-    this._client = _v;
   }
 }

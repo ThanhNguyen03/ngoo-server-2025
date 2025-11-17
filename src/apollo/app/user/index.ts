@@ -22,6 +22,7 @@ import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
 import { isHexString, verifyMessage } from 'ethers';
 import Joi from 'joi';
+import RedisHelper from 'src/helper/redis-helper';
 
 // const AUTH_CODE_LENGTH = 32;
 // dsaChallenge is a hex string with 132 characters long = 65 * 2 + 2 (2 is for prefix `0x`)
@@ -73,36 +74,17 @@ const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalle
   address: JOI_ERC55_ADDRESS.required(),
 });
 
-const generateTokens = async (userUuid: string, id?: { sid: string; rid: string }) => {
-  let { sid, rid } = id || { sid: '', rid: '' };
-  if (!id) {
-    sid = randomUUID(); // session id
-    rid = randomUUID(); // redis id
-  }
-
-  // Access Token
-  const accessToken = await JwtAuthAccessTokenInstance.sign({
-    uuid: userUuid,
-    sid,
-  });
-
-  // Refresh Token
-  const refreshToken = await JwtAuthRefreshTokenInstance.sign({
-    uuid: userUuid,
-    rid,
-  });
-
-  return {
-    accessToken,
-    refreshToken,
-    userUuid,
-  };
-};
-
 export const resolverUser: Resolvers = {
   Query: {
     userInfo: authorizedWrapper(async (_root, _args, context) => {
       const { userId } = context.user;
+      const userInfoCached = await RedisHelper.account.userInfoGet(userId);
+
+      if (userInfoCached && Object.keys(userInfoCached).length > 0) {
+        return {
+          ...userInfoCached,
+        };
+      }
 
       const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
       if (!user) {
@@ -120,7 +102,7 @@ export const resolverUser: Resolvers = {
       };
 
       // Cache user info
-      // await RedisHelper.account.userInfoSet(user.id, userInfo);
+      await RedisHelper.account.userInfoSet(user.uuid, info);
 
       return info;
     }),
@@ -163,11 +145,11 @@ export const resolverUser: Resolvers = {
 
     userLogin: publicWrapper(JOI_USER_LOGIN, async (_root, args) => {
       const { token, email, password } = args;
-
-      const sid = randomUUID(); // session id
-      const rid = randomUUID(); // redis id
+      const rid = randomUUID();
 
       if (token) {
+        let uuid: string = '';
+        let username: string = '';
         // Verify Google token
         const { payload } = await JWTAuthentication.verifyGoogleId<TGoogleTokenPayload>(token, config.GOOGLE_CLIENT_ID);
         if (!payload || !payload.email || !payload.email_verified) {
@@ -193,24 +175,41 @@ export const resolverUser: Resolvers = {
             lastLoginAt: new Date(),
           });
 
-          return await generateTokens(newUser.uuid, { sid, rid });
+          uuid = newUser.uuid;
+          username = newUserInfo.name || '';
+        } else {
+          // Update last login
+          existingUser.lastLoginAt = new Date();
+          existingUser.authMethod = EAuthMethod.Google;
+
+          if (existingUser.userInfo && payload.name) {
+            existingUser.userInfo.name = payload.name;
+          }
+
+          existingUser.save();
+
+          uuid = existingUser.uuid;
+          username = existingUser.userInfo.name || '';
         }
 
-        // Update last login
-        existingUser.lastLoginAt = new Date();
-        existingUser.authMethod = EAuthMethod.Google;
+        const refreshToken = await JwtAuthRefreshTokenInstance.sign({
+          name: username,
+          uuid,
+          rid,
+        });
 
-        if (existingUser.userInfo && payload.name) {
-          existingUser.userInfo.name = payload.name;
-        }
-
-        existingUser.save();
-
-        return await generateTokens(existingUser.uuid, { sid, rid });
+        return {
+          userUuid: uuid,
+          accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
+            name: username,
+            uuid,
+          }),
+          refreshToken,
+        };
       }
 
       if (email && password) {
-        const user = await UserModel.findOne({ email });
+        const user = await UserModel.findOne({ email }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
         if (!user || !user.password) {
           throw new Error('Invalid credentials');
         }
@@ -222,7 +221,20 @@ export const resolverUser: Resolvers = {
         user.lastLoginAt = new Date();
         user.save();
 
-        return await generateTokens(user.uuid, { sid, rid });
+        const refreshToken = await JwtAuthRefreshTokenInstance.sign({
+          name: user.userInfo.name || '',
+          uuid: user.uuid,
+          rid,
+        });
+
+        return {
+          userUuid: user.uuid,
+          accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
+            name: user.userInfo.name || '',
+            uuid: user.uuid,
+          }),
+          refreshToken,
+        };
       }
 
       throw new Error('Invalid credentials');

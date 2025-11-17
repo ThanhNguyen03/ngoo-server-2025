@@ -13,6 +13,8 @@ import {
   ApolloServerPluginLandingPageProductionDefault,
 } from '@apollo/server/plugin/landingPage/default';
 import { config, EUserAuthenticationStatus, JwtAuthAccessTokenInstance, TAppContext } from '@helper';
+import { RedisInstance } from '@service';
+import { RedisStore } from 'connect-redis';
 import { randomUUID } from 'crypto';
 import session from 'express-session';
 
@@ -73,9 +75,16 @@ export const NGOO_API = {
       includeStacktraceInErrorResponses: config.NODE_ENV === 'local',
     });
 
+    const redisStore: RedisStore = new RedisStore({
+      client: RedisInstance.redis,
+      prefix: `${config.REDIS_KEY_PREFIX}-express-session-`,
+      disableTouch: true, // Disables resetting the TTL when every time a user interacts with the server
+    });
+
     app.use(
       session({
         genid: () => randomUUID(),
+        store: redisStore,
         rolling: false, // force session not to reset expire time base on last call
         resave: false, // required: force lightweight session keep alive (touch)
         saveUninitialized: false, // recommended: only save session when data exists
