@@ -14,5 +14,9 @@ RedisInstance.event.on(ERedisEvent.Connect, () => console.log('✅ Quit redis su
 
 // domain helpers
 export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userInfo' | 'walletMessage'>(RedisInstance);
+export const RedisHelperCategory = RedisHelperDerive<'category'>(RedisInstance);
+export const RedisHelperItem = RedisHelperDerive<
+  'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById'
+>(RedisInstance);
 
 export default RedisInstance;

@@ -75,4 +75,5 @@ export * from './config';
 export * from './file';
 export * from './jwt';
 export * from './paypal-helper';
+export * from './redis-helper';
 export * from './sign-ecdsa-proof';

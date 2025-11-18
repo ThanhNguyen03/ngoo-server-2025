@@ -4,7 +4,7 @@ import {
   MutationUpdateCategoryArgs,
   Resolvers,
 } from '@generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA } from '@helper';
+import { adminWrapper, JOI_ID_SCHEMA, RedisHelper } from '@helper';
 import { CategoryModel } from '@model';
 import Joi from 'joi';
 
@@ -24,9 +24,15 @@ const JOI_CATEGORY_ID = Joi.object<MutationDeleteCategoryArgs>({
 export const resolverCategory: Resolvers = {
   Query: {
     listCategory: async () => {
-      // return categories werenot deleted
+      const cachedListCategory = await RedisHelper.category.categoryAllListGet();
+      if (cachedListCategory) {
+        return cachedListCategory;
+      }
       const listCategory = await CategoryModel.find({ isDeleted: false });
-      return listCategory.map((item) => ({ categoryId: item.categoryId, name: item.name }));
+      const response = listCategory.map((item) => ({ categoryId: item.categoryId, name: item.name }));
+      await RedisHelper.category.categoryAllListSet(response);
+
+      return response;
     },
   },
 
@@ -51,11 +57,13 @@ export const resolverCategory: Resolvers = {
       if (existingActive) {
         throw new Error('Category already exist!');
       }
-
-      return {
+      const response = {
         categoryId: category.categoryId,
         name: category.name,
       };
+      await RedisHelper.category.categoryAppendArr(response);
+
+      return response;
     }),
 
     updateCategory: adminWrapper(JOI_CATEGORY, async (_root, _arg) => {
@@ -65,11 +73,13 @@ export const resolverCategory: Resolvers = {
       if (!category) {
         throw new Error('Category not found');
       }
-
-      return {
+      const response = {
         categoryId: category.categoryId,
         name: category.name,
       };
+      await RedisHelper.category.categoryUpdateSet(response);
+
+      return response;
     }),
 
     deleteCategory: adminWrapper(JOI_CATEGORY_ID, async (_root, _arg) => {
@@ -79,7 +89,7 @@ export const resolverCategory: Resolvers = {
       if (!category) {
         throw new Error('Category not found');
       }
-
+      await RedisHelper.category.categoryDel(category.categoryId);
       return true;
     }),
   },

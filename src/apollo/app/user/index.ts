@@ -14,6 +14,7 @@ import {
   JwtAuthAccessTokenInstance,
   JwtAuthRefreshTokenInstance,
   publicWrapper,
+  RedisHelper,
   TGoogleTokenPayload,
 } from '@helper';
 import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@lib';
@@ -22,7 +23,6 @@ import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
 import { isHexString } from 'ethers';
 import Joi from 'joi';
-import RedisHelper from 'src/helper/redis-helper';
 
 // const AUTH_CODE_LENGTH = 32;
 // dsaChallenge is a hex string with 132 characters long = 65 * 2 + 2 (2 is for prefix `0x`)

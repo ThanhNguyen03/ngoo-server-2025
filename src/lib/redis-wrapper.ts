@@ -101,12 +101,16 @@ class RedisKey {
   }
 
   //  JSON
-  async jsonSet<T extends RedisJSON>(value: T) {
-    await this.client.json.set(this.fullKey(), '$', value);
+  async jsonSet<T extends RedisJSON>(value: T, index?: number) {
+    const path = index !== undefined ? `$[${index}]` : '$';
+    return await this.client.json.set(this.fullKey(), path, value);
   }
-
-  async jsonGet<T>() {
-    return (await this.client.json.get(this.fullKey())) as T;
+  async jsonAppendArray<T extends RedisJSON>(value: T) {
+    return await this.client.json.arrAppend(this.fullKey(), '$', value);
+  }
+  async jsonGet<T>(): Promise<T | null> {
+    const res = await this.client.json.get(this.fullKey());
+    return (res ?? null) as T | null;
   }
 
   // pipeline

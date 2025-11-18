@@ -1,4 +1,4 @@
-type Category {
+type TCategory {
   categoryId: String!
   name: String!
 }
@@ -9,11 +9,11 @@ input CategoryInput {
 }
 
 type Query {
-  listCategory: [Category]!
+  listCategory: [TCategory]!
 }
 
 type Mutation {
-  createCategory(name: String!): Category!
-  updateCategory(category: CategoryInput!): Category!
+  createCategory(name: String!): TCategory!
+  updateCategory(category: CategoryInput!): TCategory!
   deleteCategory(categoryId: String!): Boolean
 }
