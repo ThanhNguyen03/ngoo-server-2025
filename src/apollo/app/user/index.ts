@@ -20,7 +20,7 @@ import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@lib';
 import { TUserInfo, UserInfoModel, UserModel } from '@model';
 import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
-import { isHexString, verifyMessage } from 'ethers';
+import { isHexString } from 'ethers';
 import Joi from 'joi';
 import RedisHelper from 'src/helper/redis-helper';
 
@@ -107,16 +107,17 @@ export const resolverUser: Resolvers = {
       return info;
     }),
 
-    cryptoWalletWithNone: authorizedWrapper(async (_root, _args, context) => {
-      const messageWithNonce = `Welcome to OnProver. \
-        Please sign the message to connect your wallet. \
-        This message will expire in 15 minutes. #${randomUUID()}`;
+    // TODO
+    // cryptoWalletWithNone: authorizedWrapper(async (_root, _args, context) => {
+    //   const messageWithNonce = `Welcome to OnProver. \
+    //     Please sign the message to connect your wallet. \
+    //     This message will expire in 15 minutes. #${randomUUID()}`;
 
-      // await RedisHelperUser.walletLinkingMessage(context.user.userUuid).set(messageWithNonce, {
-      //   EX: MESSAGE_WITH_NONE_CACHE_TTL_IN_SECONDS,
-      // });
-      return messageWithNonce;
-    }),
+    //   // await RedisHelperUser.walletLinkingMessage(context.user.userUuid).set(messageWithNonce, {
+    //   //   EX: MESSAGE_WITH_NONE_CACHE_TTL_IN_SECONDS,
+    //   // });
+    //   return messageWithNonce;
+    // }),
   },
 
   Mutation: {
@@ -140,7 +141,21 @@ export const resolverUser: Resolvers = {
         userInfo: newUserInfo._id,
       });
 
-      return await generateTokens(newUser.uuid);
+      const rid = randomUUID();
+      const refreshToken = await JwtAuthRefreshTokenInstance.sign({
+        name: newUserInfo.name,
+        uuid: newUser.uuid,
+        rid,
+      });
+
+      return {
+        userUuid: newUser.uuid,
+        accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
+          name: newUserInfo.name,
+          uuid: newUser.uuid,
+        }),
+        refreshToken,
+      };
     }),
 
     userLogin: publicWrapper(JOI_USER_LOGIN, async (_root, args) => {
@@ -288,50 +303,49 @@ export const resolverUser: Resolvers = {
         throw new Error('Missing auth token');
       }
 
-      if (_args.logoutEverywhere) {
+      if (logoutEverywhere) {
         // Revoke all access token and refresh token
-        return isOk(async () => {
-          // RedisHelper.account.userAccessTokenRemoveAll(context.user.userId);
-        });
+        return isOk(() => RedisHelper.account.userAccessTokenRemoveAll(context.user.userId));
       }
 
       // revoke current token
       return isOk(async () => {
         const verifiedJwtPayload = (await JwtAuthAccessTokenInstance.verifyHeader(context.user.token)).payload;
-        // await RedisHelper.account.userAccessTokenRemove(context.user.userId, verifiedJwtPayload.sid);
+        await RedisHelper.account.userAccessTokenRemove(context.user.userId, verifiedJwtPayload.sid);
       });
     }),
 
-    userConnectCryptoWallet: authorizedWrapper(JOI_USER_CONNECT_CRYPTO_WALLET, async (_root, args, context) => {
-      const { signature, address } = args;
-      const { user } = context;
+    // TODO
+    // userConnectCryptoWallet: authorizedWrapper(JOI_USER_CONNECT_CRYPTO_WALLET, async (_root, args, context) => {
+    //   const { signature, address } = args;
+    //   const { user } = context;
 
-      // const redisEntry = RedisHelperUser.walletLinkingMessage(user.userUuid);
-      const nonceMessage = 'await redisEntry.get()';
+    //   // const redisEntry = RedisHelperUser.walletLinkingMessage(user.userUuid);
+    //   const nonceMessage = 'await redisEntry.get()';
 
-      if (!nonceMessage) {
-        throw new Error('No nonce message found');
-      }
+    //   if (!nonceMessage) {
+    //     throw new Error('No nonce message found');
+    //   }
 
-      // Verify the signature
-      const recoveredAddress = verifyMessage(nonceMessage, signature).toLowerCase();
+    //   // Verify the signature
+    //   const recoveredAddress = verifyMessage(nonceMessage, signature).toLowerCase();
 
-      if (recoveredAddress !== address) {
-        throw new Error('Wallet address does not match the signature');
-      }
+    //   if (recoveredAddress !== address) {
+    //     throw new Error('Wallet address does not match the signature');
+    //   }
 
-      // Remove the challenge message from Redis
-      // await redisEntry.delete();
+    //   // Remove the challenge message from Redis
+    //   // await redisEntry.delete();
 
-      await UserModel.updateOne({ uuid: user.userId }, { walletAddress: recoveredAddress });
+    //   await UserModel.updateOne({ uuid: user.userId }, { walletAddress: recoveredAddress });
 
-      //   // Add the wallet address to the user's information in Redis
-      //   await RedisHelperUser.userInfo(user.userId.toString()).hashSet({ address: recoveredAddress });
-      return {
-        connectCompleted: true,
-        userUuid: user.userId,
-        walletAddress: recoveredAddress,
-      };
-    }),
+    //   //   // Add the wallet address to the user's information in Redis
+    //   //   await RedisHelperUser.userInfo(user.userId.toString()).hashSet({ address: recoveredAddress });
+    //   return {
+    //     connectCompleted: true,
+    //     userUuid: user.userId,
+    //     walletAddress: recoveredAddress,
+    //   };
+    // }),
   },
 };

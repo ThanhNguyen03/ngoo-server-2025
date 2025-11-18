@@ -14,11 +14,6 @@ const connect = async () => {
       dbName: config.MONGODB_TABLE_NAME,
     });
     console.log('✅ MongoDB connected');
-
-    // connect redis
-    await RedisInstance.connect();
-    console.log('✅ Redis connected');
-
     // start application
     await NGOO_API.payload();
   } catch (err) {
@@ -33,7 +28,6 @@ const connect = async () => {
 process.on('SIGINT', async () => {
   console.log('⚠️ Shutting down...');
   await RedisInstance.quit();
-  console.log('✅ Quit redis success...');
   await mongoose.disconnect();
   console.log('✅ Disconnect MongoDB...');
   console.log('✅ Done');

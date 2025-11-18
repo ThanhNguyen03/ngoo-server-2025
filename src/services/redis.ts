@@ -7,8 +7,10 @@ export const RedisInstance = RedisClient.getInstance(config.REDIS_KEY_PREFIX, {
 });
 
 // event log
+RedisInstance.event.on(ERedisEvent.Connect, () => console.log('✅ Redis connected'));
 RedisInstance.event.on(ERedisEvent.Error, (e) => console.error('Error something wrong with Redis: ', e));
 RedisInstance.event.on(ERedisEvent.Reconnect, () => console.warn('Redis reconnecting...'));
+RedisInstance.event.on(ERedisEvent.Connect, () => console.log('✅ Quit redis success...'));
 
 // domain helpers
 export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userInfo' | 'walletMessage'>(RedisInstance);

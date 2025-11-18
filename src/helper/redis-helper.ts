@@ -15,7 +15,7 @@ export const RedisHelper = {
      * @returns The number of removed items, or null if an error occurs.
      */
     userAccessTokenRemove: async (userId: string, sessionId: string): Promise<number | null> => {
-      return RedisHelperUser.userAccessToken(userId).setRemoveItem(sessionId);
+      return RedisHelperUser.userAccessToken(userId).setRemove(sessionId);
     },
 
     /**

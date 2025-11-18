@@ -56,6 +56,8 @@ export const NGOO_API = {
       }),
     );
 
+    // connect redis
+    await RedisInstance.connect();
     const httpServer = http.createServer(app);
     // define apollo server
     const server = new ApolloServer<BaseContext>({

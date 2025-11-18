@@ -1,6 +1,26 @@
 import EventEmitter from 'node:events';
 import { createClient, RedisArgument, RedisJSON, type RedisClientOptions, type RedisClientType } from 'redis';
 
+const parseHash = <T>(raw: Record<string, string>): T => {
+  const obj: any = {};
+
+  for (const [k, v] of Object.entries(raw)) {
+    if (v === '') obj[k] = null;
+    else if (v === 'true') obj[k] = true;
+    else if (v === 'false') obj[k] = false;
+    else if (!isNaN(Number(v))) obj[k] = Number(v);
+    else if (v.startsWith('{') || v.startsWith('[')) {
+      try {
+        obj[k] = JSON.parse(v);
+      } catch {
+        obj[k] = v;
+      }
+    } else obj[k] = v;
+  }
+
+  return obj as T;
+};
+
 export enum ERedisEvent {
   Connect = 'connect',
   Quit = 'quit',
@@ -30,14 +50,24 @@ class RedisKey {
       await this.client.set(this.fullKey(), value);
     }
   }
-  async setAdd(member: string) {
-    return await this.client.sAdd(this.key, member);
-  }
   async expire(exp: number) {
     await this.client.expire(this.fullKey(), exp);
   }
   async delete() {
     return await this.client.del(this.fullKey());
+  }
+  // set
+  async setAdd(member: string) {
+    return await this.client.sAdd(this.key, member);
+  }
+  async setRemove(member: string) {
+    return await this.client.sRem(this.key, member);
+  }
+  async setMembers() {
+    return await this.client.sMembers(this.key);
+  }
+  async setHas(member: string) {
+    return await this.client.sIsMember(this.key, member);
   }
 
   //  HASH
@@ -66,7 +96,8 @@ class RedisKey {
   }
 
   async hashGetAll<T>() {
-    return (await this.client.hGetAll(this.fullKey())) as T;
+    const raw = await this.client.hGetAll(this.fullKey());
+    return parseHash<T>(raw);
   }
 
   //  JSON
