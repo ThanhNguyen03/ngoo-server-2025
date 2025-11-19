@@ -39,6 +39,10 @@ class RedisKey {
     return `${this.prefix}:${this.key}`;
   }
 
+  getFullKey() {
+    return `${this.prefix}:${this.key}`;
+  }
+
   // API
   async get() {
     return await this.client.get(this.fullKey());
@@ -71,33 +75,39 @@ class RedisKey {
   }
 
   //  HASH
-  async hashSet(data: Record<string, any>) {
-    const flat: (string | number | Buffer)[] = [];
-
-    for (const [k, v] of Object.entries(data)) {
-      let value: string | number | Buffer;
-
-      if (v === null || v === undefined) {
-        value = '';
-      } else if (typeof v === 'object') {
-        value = JSON.stringify(v);
-      } else {
-        value = v;
-      }
-
-      flat.push(k, value);
+  async hashSet(keyOrObj: Record<string, any> | string, value?: any) {
+    if (value !== undefined) {
+      return this.client.hSet(
+        this.fullKey(),
+        keyOrObj as string,
+        typeof value === 'object' ? JSON.stringify(value) : value,
+      );
     }
 
+    const flat: (string | number | Buffer)[] = [];
+    for (const [k, v] of Object.entries(keyOrObj as Record<string, any>)) {
+      flat.push(k, typeof v === 'object' ? JSON.stringify(v) : v);
+    }
     return this.client.hSet(this.fullKey(), flat as any);
   }
+  async hashGet<T>(field: RedisArgument) {
+    const raw = await this.client.hGet(this.fullKey(), field);
+    if (!raw) {
+      return null;
+    }
 
-  async hashGet(field: RedisArgument) {
-    return await this.client.hGet(this.fullKey(), field);
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return raw as T;
+    }
   }
-
   async hashGetAll<T>() {
     const raw = await this.client.hGetAll(this.fullKey());
     return parseHash<T>(raw);
+  }
+  async hashDel(field: RedisArgument) {
+    return await this.client.hDel(this.fullKey(), field);
   }
 
   //  JSON

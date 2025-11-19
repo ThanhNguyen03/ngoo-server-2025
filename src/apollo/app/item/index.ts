@@ -3,11 +3,20 @@ import {
   MutationCreateItemArgs,
   MutationDeleteItemArgs,
   MutationUpdateItemArgs,
-  QueryGetItemByCategoryArgs,
+  QueryItemByCategoryArgs,
+  QueryItemByIdArgs,
   Resolvers,
 } from '@generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, schemaPagination, sortQuery, TPagination } from '@helper';
-import { CategoryModel, ItemModel, TCategory, TItem } from '@model';
+import {
+  adminWrapper,
+  JOI_ID_SCHEMA,
+  publicWrapper,
+  RedisHelper,
+  schemaPagination,
+  sortQuery,
+  TPagination,
+} from '@helper';
+import { CategoryModel, ItemModel, TCategory } from '@model';
 import Joi from 'joi';
 
 enum EItemQuery {
@@ -48,27 +57,15 @@ const JOI_ITEM_ID = Joi.object<MutationDeleteItemArgs>({
   itemId: JOI_ID_SCHEMA,
 });
 
-const JOI_ITEM_BY_CATEGORY_ID = Joi.object<QueryGetItemByCategoryArgs>({
+const JOI_ITEM_BY_CATEGORY_ID = Joi.object<QueryItemByCategoryArgs>({
   categoryId: JOI_ID_SCHEMA,
+});
+const JOI_ITEM_BY_ID = Joi.object<QueryItemByIdArgs>({
+  itemId: JOI_ID_SCHEMA,
 });
 
 const JOI_LIST_ITEM = Joi.object<Omit<TPagination, 'total'>>({
   ...schemaPagination(Object.values(EItemQuery)),
-});
-
-const returnResponse = (item: TItem) => ({
-  itemId: item.itemId,
-  name: item.name,
-  image: item.image,
-  price: item.price,
-  description: item.description,
-  discountPercent: item.discountPercent,
-  requireOption: item.requireOption,
-  additionalOption: item.additionalOption,
-  status: item.status,
-  category: item.category,
-  createdAt: item.createdAt.getTime(),
-  updatedAt: item.updatedAt.getTime(),
 });
 
 export const resolverItem: Resolvers = {
@@ -111,9 +108,11 @@ export const resolverItem: Resolvers = {
       };
     }),
 
-    getItemByCategory: publicWrapper(JOI_ITEM_BY_CATEGORY_ID, async (_root, _args) => {
+    itemByCategory: publicWrapper(JOI_ITEM_BY_CATEGORY_ID, async (_root, _args) => {
       const { categoryId } = _args;
-      const result = await ItemModel.findOne({ categoryId }).populate<{ category: TCategory }>('category').exec();
+      const result = await ItemModel.findOne({ categoryId, isDeleted: false })
+        .populate<{ category: TCategory }>('category')
+        .exec();
       if (!result) {
         throw new Error('Item not found!');
       }
@@ -131,6 +130,51 @@ export const resolverItem: Resolvers = {
         createdAt: result.createdAt.getTime(),
         updatedAt: result.updatedAt.getTime(),
       };
+    }),
+
+    itemById: publicWrapper(JOI_ITEM_BY_ID, async (_root, _args) => {
+      const { itemId } = _args;
+      const cacheItemById = await RedisHelper.item.itemByIdGet(itemId);
+      if (cacheItemById) {
+        return {
+          itemId: cacheItemById.itemId,
+          name: cacheItemById.name,
+          image: cacheItemById.image,
+          price: cacheItemById.price,
+          description: cacheItemById.description,
+          discountPercent: cacheItemById.discountPercent,
+          requireOption: cacheItemById.requireOption,
+          additionalOption: cacheItemById.additionalOption,
+          status: cacheItemById.status,
+          categoryName: cacheItemById.name,
+          createdAt: cacheItemById.createdAt,
+          updatedAt: cacheItemById.updatedAt,
+        };
+      }
+      const result = await ItemModel.findOne({ itemId, isDeleted: false })
+        .populate<{ category: TCategory }>('category')
+        .exec();
+      if (!result) {
+        throw new Error('Item not found!');
+      }
+
+      const response = {
+        itemId: result.itemId,
+        name: result.name,
+        image: result.image,
+        price: result.price,
+        description: result.description,
+        discountPercent: result.discountPercent,
+        requireOption: result.requireOption,
+        additionalOption: result.additionalOption,
+        status: result.status,
+        categoryName: result.category.name,
+        createdAt: result.createdAt.getTime(),
+        updatedAt: result.updatedAt.getTime(),
+      };
+
+      await RedisHelper.item.itemByIdSet(itemId, response);
+      return response;
     }),
   },
 

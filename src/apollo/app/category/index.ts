@@ -39,7 +39,23 @@ export const resolverCategory: Resolvers = {
   Mutation: {
     createCategory: adminWrapper(JOI_CATEGORY_NAME, async (_root, _arg) => {
       const { name } = _arg;
+      const cacheCategory = await RedisHelper.category.categoryGet(name);
+      if (cacheCategory) {
+        throw new Error('Category already exist!');
+      }
 
+      const existingActive = await CategoryModel.findOne({
+        name,
+        isDeleted: false,
+      });
+      if (existingActive) {
+        const response = {
+          categoryId: existingActive.categoryId,
+          name: existingActive.name,
+        };
+        await RedisHelper.category.categorySet(response);
+        throw new Error('Category already exist!');
+      }
       const category = await CategoryModel.findOneAndUpdate(
         { name },
         {
@@ -49,35 +65,36 @@ export const resolverCategory: Resolvers = {
         { new: true, upsert: true },
       );
 
-      const existingActive = await CategoryModel.findOne({
-        name,
-        isDeleted: false,
-      });
-
-      if (existingActive) {
-        throw new Error('Category already exist!');
-      }
       const response = {
         categoryId: category.categoryId,
         name: category.name,
       };
-      await RedisHelper.category.categoryAppendArr(response);
+      await RedisHelper.category.categorySet(response);
 
       return response;
     }),
 
     updateCategory: adminWrapper(JOI_CATEGORY, async (_root, _arg) => {
       const { categoryId, name } = _arg.category;
-      const category = await CategoryModel.findOneAndUpdate({ categoryId, isDeleted: false }, { name }, { new: true });
 
-      if (!category) {
+      const oldCategory = await CategoryModel.findOne({ categoryId, isDeleted: false });
+      if (!oldCategory) {
         throw new Error('Category not found');
       }
+
+      // Update cache
+      if (oldCategory.name !== name) {
+        oldCategory.name = name;
+        await oldCategory.save();
+        await RedisHelper.category.categoryDel(oldCategory.name);
+      }
+
       const response = {
-        categoryId: category.categoryId,
-        name: category.name,
+        categoryId: oldCategory.categoryId,
+        name,
       };
-      await RedisHelper.category.categoryUpdateSet(response);
+
+      await RedisHelper.category.categorySet(response);
 
       return response;
     }),
@@ -89,7 +106,7 @@ export const resolverCategory: Resolvers = {
       if (!category) {
         throw new Error('Category not found');
       }
-      await RedisHelper.category.categoryDel(category.categoryId);
+      await RedisHelper.category.categoryDel(category.name);
       return true;
     }),
   },

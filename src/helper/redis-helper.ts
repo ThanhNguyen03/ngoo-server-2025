@@ -89,7 +89,8 @@ export const RedisHelper = {
      * @returns The information of full list of category or null if it's not existed
      */
     categoryAllListGet: async (): Promise<TCategory[] | null> => {
-      return await RedisHelperCategory.category('category').jsonGet<TCategory[]>();
+      const raw = await RedisHelperCategory.category('list').hashGetAll<Record<string, TCategory>>();
+      return Object.values(raw);
     },
 
     /**
@@ -98,52 +99,41 @@ export const RedisHelper = {
      * @returns The result of the set operation, or null
      */
     categoryAllListSet: async (listCategory: TCategory[]): Promise<void> => {
-      await RedisHelperCategory.category('category').jsonSet<TCategory[]>(listCategory);
-      await RedisHelperCategory.category('category').expire(ONE_HOUR_EXPIRATION_TIME_SEC);
+      const fullKey = RedisHelperCategory.category('list').getFullKey();
+      const pipe = RedisHelperCategory.category('list').pipeline();
+      pipe.del(fullKey);
+      for (const category of listCategory) {
+        pipe.hSet(fullKey, category.name, JSON.stringify(category));
+      }
+      pipe.expire(fullKey, ONE_HOUR_EXPIRATION_TIME_SEC);
+      await pipe.exec();
+    },
+
+    /**
+     * Gets the information of current category in Redis.
+     * @param categoryName - The name of category to be saved.
+     * @returns The result of the set operation, or null
+     */
+    categoryGet: async (categoryName: string) => {
+      return await RedisHelperCategory.category('list').hashGet<TCategory>(categoryName);
     },
 
     /**
      * Sets the information of current category in Redis.
-     * @param category - The data of category to be saved.
-     * @returns The result of the set operation, or null
-     */
-    categoryAppendArr: async (category: TCategory) => {
-      // append into array
-      await RedisHelperCategory.category('category').jsonAppendArray(category);
-      await RedisHelperCategory.category('category').expire(ONE_HOUR_EXPIRATION_TIME_SEC);
-    },
-
-    /**
-     * Replace the information of current category in Redis.
      * @param category - The data of category to be updated.
      * @returns The result of the set operation, or null
      */
-    categoryUpdateSet: async (category: TCategory) => {
-      const allCategory = await RedisHelper.category.categoryAllListGet();
-      if (allCategory && allCategory.length > 0) {
-        const idx = allCategory.findIndex((c) => c.categoryId === category.categoryId);
-        if (idx >= 0) {
-          await RedisHelperCategory.category('category').jsonSet(category, idx);
-          await RedisHelperCategory.category('category').expire(ONE_HOUR_EXPIRATION_TIME_SEC);
-        } else {
-          await RedisHelper.category.categoryAppendArr(category);
-        }
-      } else {
-        await RedisHelper.category.categoryAllListSet([category]);
-      }
+    categorySet: async (category: TCategory) => {
+      await RedisHelperCategory.category('list').hashSet(category.name, category);
     },
 
     /**
      * Removes a category from the list category in Redis.
-     * @param categoryId - The unique identifier of the category.
+     * @param categoryName - The unique name of the category.
      * @returns The number of removed items, or null if an error occurs.
      */
-    categoryDel: async (categoryId: string) => {
-      const allCategory = await RedisHelper.category.categoryAllListGet();
-      if (allCategory) {
-        const filtered = allCategory.filter((c) => c.categoryId !== categoryId);
-        await RedisHelper.category.categoryAllListSet(filtered);
-      }
+    categoryDel: async (categoryName: string) => {
+      await RedisHelperCategory.category('list').hashDel(categoryName);
     },
   },
 
