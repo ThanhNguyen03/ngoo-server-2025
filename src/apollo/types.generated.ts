@@ -455,7 +455,7 @@ export type TUserAuth = {
 export type TUserInfo = {
   __typename?: 'TUserInfo';
   address?: Maybe<Scalars['String']['output']>;
-  authMethod: EAuthMethod;
+  authMethods: Array<Maybe<EAuthMethod>>;
   email: Scalars['String']['output'];
   name?: Maybe<Scalars['String']['output']>;
   phoneNumber?: Maybe<Scalars['String']['output']>;
@@ -816,7 +816,7 @@ export type TUserAuthResolvers<ContextType = TAppContext, ParentType extends Res
 
 export type TUserInfoResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserInfo'] = ResolversParentTypes['TUserInfo']> = {
   address?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  authMethod?: Resolver<ResolversTypes['EAuthMethod'], ParentType, ContextType>;
+  authMethods?: Resolver<Array<Maybe<ResolversTypes['EAuthMethod']>>, ParentType, ContextType>;
   email?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   name?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;

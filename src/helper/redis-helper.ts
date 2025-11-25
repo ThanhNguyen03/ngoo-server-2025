@@ -74,11 +74,11 @@ export const RedisHelper = {
      * @param data - The data of user to be saved.
      * @returns The result of the set operation, or null
      */
-    userInfoSet: async (userId: string, data: TUserInfo): Promise<number | null> => {
-      const safeData = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v ?? '']));
+    userInfoSet: async (user: TUserInfo): Promise<number | null> => {
+      const safeData = Object.fromEntries(Object.entries(user).map(([k, v]) => [k, v ?? '']));
 
-      const result = await RedisHelperUser.userInfo(userId).hashSet(safeData);
-      await RedisHelperUser.userInfo(userId).expire(ONE_HOUR_EXPIRATION_TIME_SEC);
+      const result = await RedisHelperUser.userInfo(user.uuid).hashSet(safeData);
+      await RedisHelperUser.userInfo(user.uuid).expire(ONE_HOUR_EXPIRATION_TIME_SEC);
       return result;
     },
   },

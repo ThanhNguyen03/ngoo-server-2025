@@ -20,7 +20,7 @@ type TUserInfo {
   name: String
   walletAddress: String
   role: ERole!
-  authMethod: EAuthMethod!
+  authMethods: [EAuthMethod]!
   address: String
   phoneNumber: String
 }

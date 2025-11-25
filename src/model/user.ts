@@ -6,7 +6,7 @@ interface IUser {
   email: string;
   password: string;
   role: ERole;
-  authMethod: EAuthMethod;
+  authMethods: EAuthMethod[];
   userInfo: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -20,7 +20,7 @@ const UserSchema = new Schema<TUser>(
     uuid: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     role: { type: String, enum: ['USER', 'ADMIN'], default: ERole.User },
-    authMethod: { type: String, enum: ['GOOGLE', 'CREDENTIAL'], required: true },
+    authMethods: { type: [String], enum: Object.values(EAuthMethod), required: true, default: [] },
     password: { type: String },
     userInfo: { type: Schema.Types.ObjectId, ref: 'UserInfo', required: true },
     lastLoginAt: { type: Date },
