@@ -125,6 +125,7 @@ export const RedisHelper = {
      */
     categorySet: async (category: TCategory) => {
       await RedisHelperCategory.category('list').hashSet(category.name, category);
+      await RedisHelperCategory.category('list').expire(ONE_HOUR_EXPIRATION_TIME_SEC);
     },
 
     /**
@@ -151,16 +152,24 @@ export const RedisHelper = {
 
     /**
      * Sets the information of current item in Redis.
-     * @param itemId - The unique identifier of the item.
-     * @param data - The data of user to be saved.
+     * @param item - The data of user to be saved.
      * @returns The result of the set operation, or null
      */
-    itemByIdSet: async (itemId: string, data: TItemResponse): Promise<number | null> => {
-      const safeData = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v ?? '']));
+    itemByIdSet: async (item: TItemResponse): Promise<number | null> => {
+      const safeData = Object.fromEntries(Object.entries(item).map(([k, v]) => [k, v ?? '']));
 
-      const result = await RedisHelperItem.itemById(itemId).hashSet(safeData);
-      await RedisHelperItem.itemById(itemId).expire(ONE_HOUR_EXPIRATION_TIME_SEC);
+      const result = await RedisHelperItem.itemById(item.itemId).hashSet(safeData);
+      await RedisHelperItem.itemById(item.itemId).expire(ONE_HOUR_EXPIRATION_TIME_SEC);
       return result;
+    },
+
+    /**
+     * Remove the information of current item in Redis.
+     * @param itemId - The unique identifier of the item.
+     * @returns The result of the set operation, or null
+     */
+    itemByIdDel: async (itemId: string) => {
+      await RedisHelperItem.itemById(itemId).delete();
     },
   },
 };

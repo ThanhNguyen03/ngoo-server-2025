@@ -43,7 +43,7 @@ export type CreateAuditLogInput = {
 
 export type CreateItemInput = {
   additionalOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
-  categoryId: Scalars['String']['input'];
+  categoryName: Scalars['String']['input'];
   description?: InputMaybe<Scalars['String']['input']>;
   discountPercent?: InputMaybe<Scalars['Float']['input']>;
   image: Scalars['String']['input'];
@@ -244,7 +244,7 @@ export type Query = {
   cryptoWalletWithNone: Scalars['String']['output'];
   getAuditLog?: Maybe<TAuditLog>;
   getOrder: TOrderResponse;
-  itemByCategory: TItemResponse;
+  itemByCategory: TListItemResponse;
   itemById: TItemResponse;
   listAuditLog: Array<TAuditLog>;
   listCategory: Array<Maybe<TCategory>>;
@@ -266,7 +266,9 @@ export type QueryGetOrderArgs = {
 
 
 export type QueryItemByCategoryArgs = {
-  categoryId: Scalars['String']['input'];
+  categoryName: Scalars['String']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -472,7 +474,7 @@ export type TUserInfoSnapshot = {
 
 export type UpdateItemInput = {
   additionalOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
-  categoryId?: InputMaybe<Scalars['String']['input']>;
+  categoryName?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   discountPercent?: InputMaybe<Scalars['Float']['input']>;
   image?: InputMaybe<Scalars['String']['input']>;
@@ -675,7 +677,7 @@ export type QueryResolvers<ContextType = TAppContext, ParentType extends Resolve
   cryptoWalletWithNone?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   getAuditLog?: Resolver<Maybe<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryGetAuditLogArgs, 'id'>>;
   getOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<QueryGetOrderArgs, 'orderId'>>;
-  itemByCategory?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<QueryItemByCategoryArgs, 'categoryId'>>;
+  itemByCategory?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, RequireFields<QueryItemByCategoryArgs, 'categoryName'>>;
   itemById?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<QueryItemByIdArgs, 'itemId'>>;
   listAuditLog?: Resolver<Array<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryListAuditLogArgs, 'targetId' | 'userId'>>;
   listCategory?: Resolver<Array<Maybe<ResolversTypes['TCategory']>>, ParentType, ContextType>;

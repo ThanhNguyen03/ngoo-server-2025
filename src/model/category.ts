@@ -11,8 +11,8 @@ export type TCategory = ICategory;
 
 const CategorySchema = new Schema<TCategory>(
   {
-    categoryId: { type: String, required: true, default: () => randomUUID() },
-    name: { type: String, require: true, unique: true },
+    categoryId: { type: String, required: true, unique: true, default: () => randomUUID() },
+    name: { type: String, required: true, unique: true },
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true, versionKey: false },
