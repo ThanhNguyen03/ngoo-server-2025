@@ -27,6 +27,7 @@ const connect = async () => {
 
 process.on('SIGINT', async () => {
   console.log('⚠️ Shutting down...');
+  await RedisInstance.redis.flushAll();
   await RedisInstance.quit();
   await mongoose.disconnect();
   console.log('✅ Disconnect MongoDB...');
