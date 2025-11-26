@@ -1,6 +1,7 @@
 import { ESort, OrderItemInput, QueryByInput, TQueryBy } from '@generated/graphql';
 import { TItem } from '@model';
 import Joi from 'joi';
+import { SortOrder } from 'mongoose';
 
 export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';
 export const JOI_ID_SCHEMA = Joi.string()
@@ -29,13 +30,15 @@ export const schemaPagination = (queryList: string[]) => ({
 });
 
 export const sortQuery = (query: TQueryBy[]) => {
-  const sort: Record<string, 1 | -1> = {};
+  const sort: Record<string, SortOrder> = {};
 
   for (const q of query) {
     if (q.sort) {
       sort[q.column!] = q.sort === 'asc' ? 1 : -1;
     }
   }
+
+  sort.createdAt = -1;
 
   return sort;
 };

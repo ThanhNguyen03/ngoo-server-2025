@@ -39,7 +39,7 @@ const JOI_CONFIRM_PAYMENT = Joi.object<MutationConfirmPaymentArgs>({
     paymentMethod: Joi.string()
       .valid(...Object.values(EPaymentMethod))
       .required(),
-    paypalTransactionId: Joi.string().alphanum(),
+    paypalOrderId: Joi.string().alphanum(),
     txHash: Joi.string().alphanum(),
     codTransactionId: Joi.string().alphanum(),
   }),
@@ -66,7 +66,7 @@ export const resolverPayment: Resolvers = {
         paypalTransaction: paymentHistory.paypalTransaction,
         codTransactionId: paymentHistory.codTransactionId,
         createdAt: paymentHistory.createdAt.getTime(),
-        updatedAt: paymentHistory.createdAt.getTime(),
+        updatedAt: paymentHistory.updatedAt.getTime(),
       };
     }),
 
@@ -92,7 +92,7 @@ export const resolverPayment: Resolvers = {
           paypalTransaction: history.paypalTransaction,
           codTransactionId: history.codTransactionId,
           createdAt: history.createdAt.getTime(),
-          updatedAt: history.createdAt.getTime(),
+          updatedAt: history.updatedAt.getTime(),
         };
       });
 
@@ -134,17 +134,17 @@ export const resolverPayment: Resolvers = {
           paypalTransaction: existedPayment.paypalTransaction,
           codTransactionId: existedPayment.codTransactionId,
           createdAt: existedPayment.createdAt.getTime(),
-          updatedAt: existedPayment.createdAt.getTime(),
+          updatedAt: existedPayment.updatedAt.getTime(),
         };
       }
 
       // Paypal
       if (order.paymentMethod === EPaymentMethod.Paypal) {
         if (!paypalOrderId) {
-          throw new Error('Paypal Order Id is required for PayPal payment');
+          throw new Error('Paypal order ID is required for PayPal payment');
         }
         if (order.paypalOrderId !== paypalOrderId) {
-          throw new Error('Paypal Order Id mismatch with server record');
+          throw new Error('Paypal order ID mismatch!');
         }
 
         // Create payment record first (status Pending)
@@ -204,7 +204,7 @@ export const resolverPayment: Resolvers = {
       // COD
       if (order.paymentMethod === EPaymentMethod.Cod) {
         if (!codTransactionId) {
-          throw new Error('codTransactionId is required for COD');
+          throw new Error('COD transaction ID is required!');
         }
 
         const newPayment = await PaymentModel.create({
@@ -229,11 +229,11 @@ export const resolverPayment: Resolvers = {
           paypalTransaction: populated.paypalTransaction,
           codTransactionId: populated.codTransactionId,
           createdAt: populated.createdAt.getTime(),
-          updatedAt: populated.createdAt.getTime(),
+          updatedAt: populated.updatedAt.getTime(),
         };
       }
 
-      throw new Error('Unsupported payment method');
+      throw new Error('Unsupported payment method!');
     }),
   },
 };
