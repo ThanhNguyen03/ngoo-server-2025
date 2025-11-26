@@ -7,6 +7,7 @@ import {
   MutationUserLogoutArgs,
   MutationUserRegisterArgs,
   Resolvers,
+  TUserInfo as TUserInfoResponse,
 } from '@generated/graphql';
 import {
   authorizedWrapper,
@@ -14,13 +15,15 @@ import {
   JwtAuthAccessTokenInstance,
   JwtAuthRefreshTokenInstance,
   publicWrapper,
+  RedisHelper,
   TGoogleTokenPayload,
+  TRefreshTokenPayload,
 } from '@helper';
 import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@lib';
 import { TUserInfo, UserInfoModel, UserModel } from '@model';
 import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
-import { isHexString, verifyMessage } from 'ethers';
+import { isHexString } from 'ethers';
 import Joi from 'joi';
 
 // const AUTH_CODE_LENGTH = 32;
@@ -30,7 +33,7 @@ export const DSA_SIGNATURE_BYTE_LENGTH = 65;
 const JOI_PASSWPORD = Joi.string()
   .min(8)
   .max(16)
-  .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9.,])[A-Za-z\d\S]{8,16}$/)
+  .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9.,]).{8,16}$/)
   .messages({
     'string.empty': 'Password is required',
     'string.min': 'Password must be at least 8 characters',
@@ -73,68 +76,50 @@ const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalle
   address: JOI_ERC55_ADDRESS.required(),
 });
 
-const generateTokens = async (userUuid: string, id?: { sid: string; rid: string }) => {
-  let { sid, rid } = id || { sid: '', rid: '' };
-  if (!id) {
-    sid = randomUUID(); // session id
-    rid = randomUUID(); // redis id
-  }
-
-  // Access Token
-  const accessToken = await JwtAuthAccessTokenInstance.sign({
-    uuid: userUuid,
-    sid,
-  });
-
-  // Refresh Token
-  const refreshToken = await JwtAuthRefreshTokenInstance.sign({
-    uuid: userUuid,
-    rid,
-  });
-
-  return {
-    accessToken,
-    refreshToken,
-    userUuid,
-  };
-};
-
 export const resolverUser: Resolvers = {
   Query: {
     userInfo: authorizedWrapper(async (_root, _args, context) => {
       const { userId } = context.user;
+      const userInfoCached = await RedisHelper.account.userInfoGet(userId);
+
+      if (userInfoCached && Object.keys(userInfoCached).length > 0) {
+        return {
+          ...userInfoCached,
+        };
+      }
 
       const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
       if (!user) {
         throw new Error('User not found');
       }
 
-      const info = {
+      const info: TUserInfoResponse = {
         uuid: user.uuid,
         email: user.email,
         name: user.userInfo.name,
         role: user.role,
-        authMethod: user.authMethod!,
+        authMethods: user.authMethods,
         address: user.userInfo.address,
         phoneNumber: user.userInfo.phoneNumber,
       };
 
       // Cache user info
-      // await RedisHelper.account.userInfoSet(user.id, userInfo);
+      await RedisHelper.account.userInfoSet(info);
 
       return info;
     }),
 
-    cryptoWalletWithNone: authorizedWrapper(async (_root, _args, context) => {
-      const messageWithNonce = `Welcome to OnProver. \
-        Please sign the message to connect your wallet. \
-        This message will expire in 15 minutes. #${randomUUID()}`;
+    // TODO
+    // cryptoWalletWithNone: authorizedWrapper(async (_root, _args, context) => {
+    //   const messageWithNonce = `Welcome to OnProver. \
+    //     Please sign the message to connect your wallet. \
+    //     This message will expire in 15 minutes. #${randomUUID()}`;
 
-      // await RedisHelperUser.walletLinkingMessage(context.user.userUuid).set(messageWithNonce, {
-      //   EX: MESSAGE_WITH_NONE_CACHE_TTL_IN_SECONDS,
-      // });
-      return messageWithNonce;
-    }),
+    //   // await RedisHelperUser.walletLinkingMessage(context.user.userUuid).set(messageWithNonce, {
+    //   //   EX: MESSAGE_WITH_NONE_CACHE_TTL_IN_SECONDS,
+    //   // });
+    //   return messageWithNonce;
+    // }),
   },
 
   Mutation: {
@@ -154,18 +139,52 @@ export const resolverUser: Resolvers = {
         email,
         password: hashedPassword,
         role: ERole.User,
-        authMethod: EAuthMethod.Credential,
+        authMethods: [EAuthMethod.Credential],
         userInfo: newUserInfo._id,
       });
 
-      return await generateTokens(newUser.uuid);
+      const rid = randomUUID();
+      const refreshToken = await JwtAuthRefreshTokenInstance.sign({
+        name: newUserInfo.name,
+        uuid: newUser.uuid,
+        rid,
+      });
+
+      // cache userInfo
+      const safeInfo: TUserInfoResponse = {
+        uuid: newUser.uuid,
+        email: newUser.email,
+        name: newUserInfo.name,
+        role: newUser.role,
+        authMethods: newUser.authMethods,
+        address: newUserInfo.address,
+        phoneNumber: newUserInfo.phoneNumber,
+      };
+      await RedisHelper.account.userInfoSet(safeInfo);
+
+      return {
+        userUuid: newUser.uuid,
+        accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
+          name: newUserInfo.name,
+          uuid: newUser.uuid,
+        }),
+        refreshToken,
+      };
     }),
 
     userLogin: publicWrapper(JOI_USER_LOGIN, async (_root, args) => {
       const { token, email, password } = args;
-
-      const sid = randomUUID(); // session id
-      const rid = randomUUID(); // redis id
+      const rid = randomUUID();
+      let user: TUserInfoResponse = {
+        uuid: '',
+        name: '',
+        email: '',
+        walletAddress: '',
+        role: ERole.User,
+        authMethods: [EAuthMethod.Google],
+        address: '',
+        phoneNumber: '',
+      };
 
       if (token) {
         // Verify Google token
@@ -174,6 +193,7 @@ export const resolverUser: Resolvers = {
           throw new Error('Invalid Google token');
         }
 
+        const nameFromGoogle = (payload.name ?? '').trim();
         // Find
         const existingUser = await UserModel.findOne({ email: payload.email })
           .populate<{ userInfo: TUserInfo }>('userInfo')
@@ -181,48 +201,108 @@ export const resolverUser: Resolvers = {
         if (!existingUser) {
           // If don't have create new user
           const newUserInfo = await UserInfoModel.create({
-            name: payload.name,
+            name: nameFromGoogle,
           });
 
           const newUser = await UserModel.create({
             uuid: randomUUID(),
             email: payload.email,
             role: ERole.User,
-            authMethod: EAuthMethod.Google,
+            authMethods: [EAuthMethod.Google],
             userInfo: newUserInfo._id,
             lastLoginAt: new Date(),
           });
 
-          return await generateTokens(newUser.uuid, { sid, rid });
+          user = {
+            uuid: newUser.uuid,
+            email: newUser.email,
+            name: newUserInfo.name,
+            role: newUser.role,
+            authMethods: newUser.authMethods,
+          };
+        } else {
+          if (!existingUser.authMethods.includes(EAuthMethod.Google)) {
+            existingUser.authMethods.push(EAuthMethod.Google);
+          }
+          // Update last login
+          existingUser.lastLoginAt = new Date();
+
+          await existingUser.save();
+
+          user = {
+            uuid: existingUser.uuid,
+            email: existingUser.email,
+            name: existingUser.userInfo.name,
+            role: existingUser.role,
+            authMethods: existingUser.authMethods,
+            walletAddress: existingUser.userInfo.walletAddress,
+            address: existingUser.userInfo.address,
+            phoneNumber: existingUser.userInfo.phoneNumber,
+          };
         }
 
-        // Update last login
-        existingUser.lastLoginAt = new Date();
-        existingUser.authMethod = EAuthMethod.Google;
+        await RedisHelper.account.userInfoSet(user);
+        const refreshToken = await JwtAuthRefreshTokenInstance.sign({
+          name: user.name || '',
+          uuid: user.uuid,
+          rid,
+        });
 
-        if (existingUser.userInfo && payload.name) {
-          existingUser.userInfo.name = payload.name;
-        }
-
-        existingUser.save();
-
-        return await generateTokens(existingUser.uuid, { sid, rid });
+        return {
+          userUuid: user.uuid,
+          accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
+            name: user.name || '',
+            uuid: user.uuid,
+          }),
+          refreshToken,
+        };
       }
 
       if (email && password) {
-        const user = await UserModel.findOne({ email });
-        if (!user || !user.password) {
-          throw new Error('Invalid credentials');
+        const existingUser = await UserModel.findOne({ email }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+        if (!existingUser) {
+          throw new Error('Account not existed!');
         }
-        const isValid = await verify(user.password, password);
+        if (!existingUser.password) {
+          throw new Error('Account is created with Google!');
+        }
+
+        const isValid = await verify(existingUser.password, password);
         if (!isValid) {
-          throw new Error('Invalid credentials');
+          throw new Error('Wrong password');
         }
         // Update last login
-        user.lastLoginAt = new Date();
-        user.save();
+        existingUser.lastLoginAt = new Date();
+        existingUser.authMethods = existingUser.authMethods || [];
+        if (!existingUser.authMethods.includes(EAuthMethod.Credential)) {
+          existingUser.authMethods.push(EAuthMethod.Credential);
+        }
+        await existingUser.save();
 
-        return await generateTokens(user.uuid, { sid, rid });
+        const refreshToken = await JwtAuthRefreshTokenInstance.sign({
+          name: existingUser.userInfo.name || '',
+          uuid: existingUser.uuid,
+          rid,
+        });
+
+        await RedisHelper.account.userInfoSet({
+          uuid: existingUser.uuid,
+          email: existingUser.email,
+          name: existingUser.userInfo.name,
+          role: existingUser.role,
+          authMethods: existingUser.authMethods,
+          address: existingUser.userInfo.address,
+          phoneNumber: existingUser.userInfo.phoneNumber,
+        });
+
+        return {
+          userUuid: existingUser.uuid,
+          accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
+            name: existingUser.userInfo.name || '',
+            uuid: existingUser.uuid,
+          }),
+          refreshToken,
+        };
       }
 
       throw new Error('Invalid credentials');
@@ -231,7 +311,7 @@ export const resolverUser: Resolvers = {
     refreshToken: authorizedWrapper(JOI_REFRESH_TOKEN, async (_root, _args) => {
       const { refreshToken } = _args;
 
-      let payload;
+      let payload: TRefreshTokenPayload;
       try {
         const verified = await JwtAuthRefreshTokenInstance.verify(refreshToken);
         payload = verified.payload;
@@ -239,10 +319,7 @@ export const resolverUser: Resolvers = {
         throw new Error('Invalid refresh token');
       }
 
-      const { uuid, rid } = payload;
-      // Check rid existed in Redis
-      // const exists = await RedisHelper.refreshToken.exists(uuid, rid);
-      // if (!exists) throw new Error("Refresh token revoked");
+      const { uuid } = payload;
 
       // Creat new session
       const newSid = randomUUID();
@@ -258,8 +335,7 @@ export const resolverUser: Resolvers = {
         rid: newRid,
       });
 
-      // Set new rid into Redis and del older rid
-      // await RedisHelper.refreshToken.replace(uuid, rid, newRid);
+      await RedisHelper.account.userAccessTokenAdd(uuid, newSid);
 
       return {
         accessToken: newAccessToken,
@@ -276,50 +352,49 @@ export const resolverUser: Resolvers = {
         throw new Error('Missing auth token');
       }
 
-      if (_args.logoutEverywhere) {
+      if (logoutEverywhere) {
         // Revoke all access token and refresh token
-        return isOk(async () => {
-          // RedisHelper.account.userAccessTokenRemoveAll(context.user.userId);
-        });
+        return isOk(() => RedisHelper.account.userAccessTokenRemoveAll(context.user.userId));
       }
 
       // revoke current token
       return isOk(async () => {
         const verifiedJwtPayload = (await JwtAuthAccessTokenInstance.verifyHeader(context.user.token)).payload;
-        // await RedisHelper.account.userAccessTokenRemove(context.user.userId, verifiedJwtPayload.sid);
+        await RedisHelper.account.userAccessTokenRemove(context.user.userId, verifiedJwtPayload.sid);
       });
     }),
 
-    userConnectCryptoWallet: authorizedWrapper(JOI_USER_CONNECT_CRYPTO_WALLET, async (_root, args, context) => {
-      const { signature, address } = args;
-      const { user } = context;
+    // TODO
+    // userConnectCryptoWallet: authorizedWrapper(JOI_USER_CONNECT_CRYPTO_WALLET, async (_root, args, context) => {
+    //   const { signature, address } = args;
+    //   const { user } = context;
 
-      // const redisEntry = RedisHelperUser.walletLinkingMessage(user.userUuid);
-      const nonceMessage = 'await redisEntry.get()';
+    //   // const redisEntry = RedisHelperUser.walletLinkingMessage(user.userUuid);
+    //   const nonceMessage = 'await redisEntry.get()';
 
-      if (!nonceMessage) {
-        throw new Error('No nonce message found');
-      }
+    //   if (!nonceMessage) {
+    //     throw new Error('No nonce message found');
+    //   }
 
-      // Verify the signature
-      const recoveredAddress = verifyMessage(nonceMessage, signature).toLowerCase();
+    //   // Verify the signature
+    //   const recoveredAddress = verifyMessage(nonceMessage, signature).toLowerCase();
 
-      if (recoveredAddress !== address) {
-        throw new Error('Wallet address does not match the signature');
-      }
+    //   if (recoveredAddress !== address) {
+    //     throw new Error('Wallet address does not match the signature');
+    //   }
 
-      // Remove the challenge message from Redis
-      // await redisEntry.delete();
+    //   // Remove the challenge message from Redis
+    //   // await redisEntry.delete();
 
-      await UserModel.updateOne({ uuid: user.userId }, { walletAddress: recoveredAddress });
+    //   await UserModel.updateOne({ uuid: user.userId }, { walletAddress: recoveredAddress });
 
-      //   // Add the wallet address to the user's information in Redis
-      //   await RedisHelperUser.userInfo(user.userId.toString()).hashSet({ address: recoveredAddress });
-      return {
-        connectCompleted: true,
-        userUuid: user.userId,
-        walletAddress: recoveredAddress,
-      };
-    }),
+    //   //   // Add the wallet address to the user's information in Redis
+    //   //   await RedisHelperUser.userInfo(user.userId.toString()).hashSet({ address: recoveredAddress });
+    //   return {
+    //     connectCompleted: true,
+    //     userUuid: user.userId,
+    //     walletAddress: recoveredAddress,
+    //   };
+    // }),
   },
 };

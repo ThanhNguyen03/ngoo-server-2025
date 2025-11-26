@@ -19,4 +19,6 @@ const UserInfoSchema = new Schema<TUserInfo>(
   { timestamps: true, versionKey: false },
 );
 
+UserInfoSchema.index({ name: 1 });
+
 export const UserInfoModel = model<TUserInfo>('UserInfo', UserInfoSchema);

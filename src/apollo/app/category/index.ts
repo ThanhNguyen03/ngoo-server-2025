@@ -4,7 +4,7 @@ import {
   MutationUpdateCategoryArgs,
   Resolvers,
 } from '@generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA } from '@helper';
+import { adminWrapper, JOI_ID_SCHEMA, RedisHelper } from '@helper';
 import { CategoryModel } from '@model';
 import Joi from 'joi';
 
@@ -24,16 +24,38 @@ const JOI_CATEGORY_ID = Joi.object<MutationDeleteCategoryArgs>({
 export const resolverCategory: Resolvers = {
   Query: {
     listCategory: async () => {
-      // return categories werenot deleted
+      const cachedListCategory = await RedisHelper.category.categoryAllListGet();
+      if (cachedListCategory) {
+        return cachedListCategory;
+      }
       const listCategory = await CategoryModel.find({ isDeleted: false });
-      return listCategory.map((item) => ({ categoryId: item.categoryId, name: item.name }));
+      const response = listCategory.map((item) => ({ categoryId: item.categoryId, name: item.name }));
+      await RedisHelper.category.categoryAllListSet(response);
+
+      return response;
     },
   },
 
   Mutation: {
     createCategory: adminWrapper(JOI_CATEGORY_NAME, async (_root, _arg) => {
       const { name } = _arg;
+      const cacheCategory = await RedisHelper.category.categoryGet(name);
+      if (cacheCategory) {
+        throw new Error('Category already exist!');
+      }
 
+      const existingActive = await CategoryModel.findOne({
+        name,
+        isDeleted: false,
+      });
+      if (existingActive) {
+        const response = {
+          categoryId: existingActive.categoryId,
+          name: existingActive.name,
+        };
+        await RedisHelper.category.categorySet(response);
+        throw new Error('Category already exist!');
+      }
       const category = await CategoryModel.findOneAndUpdate(
         { name },
         {
@@ -43,33 +65,38 @@ export const resolverCategory: Resolvers = {
         { new: true, upsert: true },
       );
 
-      const existingActive = await CategoryModel.findOne({
-        name,
-        isDeleted: false,
-      });
-
-      if (existingActive) {
-        throw new Error('Category already exist!');
-      }
-
-      return {
+      const response = {
         categoryId: category.categoryId,
         name: category.name,
       };
+      await RedisHelper.category.categorySet(response);
+
+      return response;
     }),
 
     updateCategory: adminWrapper(JOI_CATEGORY, async (_root, _arg) => {
       const { categoryId, name } = _arg.category;
-      const category = await CategoryModel.findOneAndUpdate({ categoryId, isDeleted: false }, { name }, { new: true });
 
-      if (!category) {
+      const oldCategory = await CategoryModel.findOne({ categoryId, isDeleted: false });
+      if (!oldCategory) {
         throw new Error('Category not found');
       }
 
-      return {
-        categoryId: category.categoryId,
-        name: category.name,
+      // Update cache
+      if (oldCategory.name !== name) {
+        oldCategory.name = name;
+        await oldCategory.save();
+        await RedisHelper.category.categoryDel(oldCategory.name);
+      }
+
+      const response = {
+        categoryId: oldCategory.categoryId,
+        name,
       };
+
+      await RedisHelper.category.categorySet(response);
+
+      return response;
     }),
 
     deleteCategory: adminWrapper(JOI_CATEGORY_ID, async (_root, _arg) => {
@@ -79,7 +106,7 @@ export const resolverCategory: Resolvers = {
       if (!category) {
         throw new Error('Category not found');
       }
-
+      await RedisHelper.category.categoryDel(category.name);
       return true;
     }),
   },

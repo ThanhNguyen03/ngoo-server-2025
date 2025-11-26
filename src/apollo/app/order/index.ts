@@ -7,7 +7,7 @@ import {
   Resolvers,
   TUserInfoSnapshot,
 } from '@generated/graphql';
-import { authorizedWrapper, calculateOrderItemPrice, createPayPalOrderBody, JOI_ID_SCHEMA } from '@helper';
+import { authorizedWrapper, calculateOrderItemPrice, createPayPalOrderBody, JOI_ID_SCHEMA, RedisHelper } from '@helper';
 import { ItemModel, OrderModel, TUserInfo, UserModel } from '@model';
 import { randomUUID } from 'crypto';
 import Joi from 'joi';
@@ -43,7 +43,7 @@ export const resolverOrder: Resolvers = {
       const { orderId } = _args;
       const order = await OrderModel.findOne({ orderId });
       if (!order) {
-        throw new Error('Order isnot existed!');
+        throw new Error('Order is not existed!');
       }
 
       return {
@@ -61,24 +61,36 @@ export const resolverOrder: Resolvers = {
 
   Mutation: {
     createOrder: authorizedWrapper(JOI_CREATE_ORDER, async (_root, { input }, context) => {
-      // TODO: get from redis
-      const user = await UserModel.findOne({ uuid: context.user.userId })
-        .populate<{ userInfo: TUserInfo }>('userInfo')
-        .exec();
+      const { userId } = context.user;
 
-      if (!user) {
-        throw new Error('Authorization Error!');
+      let userInfo = await RedisHelper.account.userInfoGet(userId);
+      if (!userInfo) {
+        const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+        if (!user) {
+          throw new Error('Authorization Error!');
+        }
+        userInfo = {
+          uuid: user.uuid,
+          email: user.email,
+          name: user.userInfo.name,
+          walletAddress: user.userInfo.walletAddress,
+          role: user.role,
+          authMethods: user.authMethods,
+          address: user.userInfo.address,
+          phoneNumber: user.userInfo.phoneNumber,
+        };
+        await RedisHelper.account.userInfoSet(userInfo);
       }
 
-      if (!user.userInfo.address || !user.userInfo.phoneNumber) {
-        throw new Error('Anonymous User info data Error!');
+      if (!userInfo.address || !userInfo.phoneNumber) {
+        throw new Error('Anonymous user info data Error!');
       }
 
       const userInfoSnapshot: TUserInfoSnapshot = {
-        name: user.userInfo.name,
-        address: user.userInfo.address,
-        phoneNumber: user.userInfo.phoneNumber,
-        email: user.email,
+        name: userInfo.name,
+        address: userInfo.address,
+        phoneNumber: userInfo.phoneNumber,
+        email: userInfo.email,
       };
 
       const itemIds = input.items.map((o) => o.itemId);
@@ -118,7 +130,7 @@ export const resolverOrder: Resolvers = {
             paypalApproveUrl: approveUrl,
             paypalOrderId: result.id,
             createdAt: newOrder.createdAt.getTime(),
-            updatedAt: newOrder.createdAt.getTime(),
+            updatedAt: newOrder.updatedAt.getTime(),
           };
         } catch (err) {
           newOrder.orderStatus = EOrderStatus.Cancelled;
@@ -135,7 +147,7 @@ export const resolverOrder: Resolvers = {
         orderId: newOrder.orderId,
         codPaymentData: randomUUID(),
         createdAt: newOrder.createdAt.getTime(),
-        updatedAt: newOrder.createdAt.getTime(),
+        updatedAt: newOrder.updatedAt.getTime(),
       };
     }),
   },

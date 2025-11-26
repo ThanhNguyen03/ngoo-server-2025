@@ -1,11 +1,12 @@
 import { jose, JWTAuthentication } from '@lib';
-import { TUser } from '@model';
+import { TUser, TUserInfo } from '@model';
 import { config } from './config';
 
-export const ACCESS_TOKEN_EXP = '15m';
+export const ACCESS_TOKEN_EXP = '60m';
 export const REFRESH_TOKEN_EXP = '30d';
+export const JWT_EXPIRATION_TIME_SEC = 60 * 60 * 24 * 30; // 30 days
 
-export type TTokenPayload = jose.JWTPayload & Pick<TUser, 'uuid'>;
+export type TTokenPayload = jose.JWTPayload & Pick<TUserInfo & TUser, 'uuid' | 'name'>;
 
 export type TAccessTokenPayload = TTokenPayload & {
   /** Session ID to identify the user's session. This can be stored in for

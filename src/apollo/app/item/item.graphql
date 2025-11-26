@@ -40,7 +40,7 @@ input CreateItemInput {
   requireOption: [ItemOptionInput]
   additionalOption: [ItemOptionInput]
   status: [EItemStatus]
-  categoryId: String!
+  categoryName: String!
 }
 
 input UpdateItemInput {
@@ -53,7 +53,7 @@ input UpdateItemInput {
   requireOption: [ItemOptionInput]
   additionalOption: [ItemOptionInput]
   status: [EItemStatus]
-  categoryId: String
+  categoryName: String
 }
 
 type TListItemResponse {
@@ -66,7 +66,8 @@ type TListItemResponse {
 
 type Query {
   listItem(offset: Int, limit: Int, query: [QueryByInput]): TListItemResponse!
-  getItemByCategory(categoryId: String!): TItemResponse!
+  itemByCategory(offset: Int, limit: Int, categoryName: String!): TListItemResponse!
+  itemById(itemId: String!): TItemResponse!
 }
 
 type Mutation {
