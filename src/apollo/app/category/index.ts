@@ -25,7 +25,7 @@ export const resolverCategory: Resolvers = {
   Query: {
     listCategory: publicWrapper(async () => {
       const cachedListCategory = await RedisHelper.category.categoryAllListGet();
-      if (cachedListCategory) {
+      if (cachedListCategory && cachedListCategory.length > 0) {
         return cachedListCategory;
       }
       const listCategory = await CategoryModel.find({ isDeleted: false });
