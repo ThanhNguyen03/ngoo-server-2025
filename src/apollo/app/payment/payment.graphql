@@ -53,6 +53,7 @@ input ConfirmPaymentInput {
 type Query {
   paymentHistory(paymentId: String!): TPaymentResponse!
   listPaymentHistory(offset: Int, limit: Int, query: [QueryByInput]): TListPaymentResponse!
+  listPaymentByDate(limit: Int, startDate: Int!, endDate: Int!): [TPaymentResponse]!
 }
 
 type Mutation {

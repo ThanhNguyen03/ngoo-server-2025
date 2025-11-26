@@ -249,6 +249,7 @@ export type Query = {
   listAuditLog: Array<TAuditLog>;
   listCategory: Array<Maybe<TCategory>>;
   listItem: TListItemResponse;
+  listPaymentByDate: Array<Maybe<TPaymentResponse>>;
   listPaymentHistory: TListPaymentResponse;
   paymentHistory: TPaymentResponse;
   userInfo: TUserInfo;
@@ -291,6 +292,13 @@ export type QueryListItemArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
   query?: InputMaybe<Array<InputMaybe<QueryByInput>>>;
+};
+
+
+export type QueryListPaymentByDateArgs = {
+  endDate: Scalars['Int']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  startDate: Scalars['Int']['input'];
 };
 
 
@@ -682,6 +690,7 @@ export type QueryResolvers<ContextType = TAppContext, ParentType extends Resolve
   listAuditLog?: Resolver<Array<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryListAuditLogArgs, 'targetId' | 'userId'>>;
   listCategory?: Resolver<Array<Maybe<ResolversTypes['TCategory']>>, ParentType, ContextType>;
   listItem?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, Partial<QueryListItemArgs>>;
+  listPaymentByDate?: Resolver<Array<Maybe<ResolversTypes['TPaymentResponse']>>, ParentType, ContextType, RequireFields<QueryListPaymentByDateArgs, 'endDate' | 'startDate'>>;
   listPaymentHistory?: Resolver<ResolversTypes['TListPaymentResponse'], ParentType, ContextType, Partial<QueryListPaymentHistoryArgs>>;
   paymentHistory?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<QueryPaymentHistoryArgs, 'paymentId'>>;
   userInfo?: Resolver<ResolversTypes['TUserInfo'], ParentType, ContextType>;

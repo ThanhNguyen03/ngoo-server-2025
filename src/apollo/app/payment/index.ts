@@ -3,6 +3,7 @@ import {
   EPaymentMethod,
   EPaymentStatus,
   MutationConfirmPaymentArgs,
+  QueryListPaymentByDateArgs,
   QueryPaymentHistoryArgs,
   Resolvers,
   TPaymentResponse,
@@ -31,6 +32,12 @@ const JOI_PAYMENT_ID = Joi.object<QueryPaymentHistoryArgs>({
 
 const JOI_LIST_PAYMENT = Joi.object<Omit<TPagination, 'total'>>({
   ...schemaPagination(Object.values(EPaymentQuery)),
+});
+
+const JOI_LIST_PAYMENT_BY_DATE = Joi.object<QueryListPaymentByDateArgs>({
+  limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
+  startDate: Joi.number().integer().min(0).required(),
+  endDate: Joi.number().integer().min(0).required(),
 });
 
 const JOI_CONFIRM_PAYMENT = Joi.object<MutationConfirmPaymentArgs>({
@@ -103,6 +110,34 @@ export const resolverPayment: Resolvers = {
         total,
         records,
       };
+    }),
+
+    listPaymentByDate: authorizedWrapper(JOI_LIST_PAYMENT_BY_DATE, async (_root, _args) => {
+      const { startDate, endDate, limit } = _args;
+      const payments = await PaymentModel.find({
+        createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) },
+      })
+        .populate<{ order: TOrder }>('order')
+        .limit(limit || 20)
+        .sort({ createdAt: -1 })
+        .lean();
+
+      const records: TPaymentResponse[] = payments.map((history) => ({
+        paymentId: history.paymentId,
+        orderId: history.order.orderId,
+        paymentMethod: history.order.paymentMethod,
+        totalPrice: history.order.totalPrice,
+        status: history.status,
+        userInfo: history.order.userInfoSnapshot,
+        items: history.order.items,
+        txHash: history.txHash,
+        paypalTransaction: history.paypalTransaction,
+        codTransactionId: history.codTransactionId,
+        createdAt: history.createdAt.getTime(),
+        updatedAt: history.updatedAt.getTime(),
+      }));
+
+      return records;
     }),
   },
 
