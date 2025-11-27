@@ -360,7 +360,7 @@ export type TItemOption = {
 
 export type TItemResponse = {
   __typename?: 'TItemResponse';
-  additionalOption?: Maybe<Array<Maybe<TItemOption>>>;
+  additionalOption: Array<TItemOption>;
   categoryName: Scalars['String']['output'];
   createdAt: Scalars['Timestamp']['output'];
   description?: Maybe<Scalars['String']['output']>;
@@ -369,7 +369,7 @@ export type TItemResponse = {
   itemId: Scalars['String']['output'];
   name: Scalars['String']['output'];
   price: Scalars['Float']['output'];
-  requireOption?: Maybe<Array<Maybe<TItemOption>>>;
+  requireOption: Array<TItemOption>;
   status?: Maybe<Array<Maybe<EItemStatus>>>;
   updatedAt: Scalars['Timestamp']['output'];
 };
@@ -399,7 +399,7 @@ export type TOrderItem = {
   name: Scalars['String']['output'];
   note?: Maybe<Scalars['String']['output']>;
   price: Scalars['Float']['output'];
-  selectedOptions?: Maybe<Array<Maybe<TItemOption>>>;
+  selectedOptions: Array<TItemOption>;
 };
 
 export type TOrderResponse = {
@@ -730,7 +730,7 @@ export type TItemOptionResolvers<ContextType = TAppContext, ParentType extends R
 };
 
 export type TItemResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItemResponse'] = ResolversParentTypes['TItemResponse']> = {
-  additionalOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
+  additionalOption?: Resolver<Array<ResolversTypes['TItemOption']>, ParentType, ContextType>;
   categoryName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
@@ -739,7 +739,7 @@ export type TItemResponseResolvers<ContextType = TAppContext, ParentType extends
   itemId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
-  requireOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
+  requireOption?: Resolver<Array<ResolversTypes['TItemOption']>, ParentType, ContextType>;
   status?: Resolver<Maybe<Array<Maybe<ResolversTypes['EItemStatus']>>>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
 };
@@ -766,7 +766,7 @@ export type TOrderItemResolvers<ContextType = TAppContext, ParentType extends Re
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
-  selectedOptions?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
+  selectedOptions?: Resolver<Array<ResolversTypes['TItemOption']>, ParentType, ContextType>;
 };
 
 export type TOrderResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderResponse'] = ResolversParentTypes['TOrderResponse']> = {
