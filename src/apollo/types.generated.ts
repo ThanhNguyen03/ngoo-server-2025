@@ -236,11 +236,12 @@ export type Query = {
   cryptoWalletWithNone: Scalars['String']['output'];
   getAuditLog?: Maybe<TAuditLog>;
   getOrder: TOrderResponse;
-  itemByCategory: TListItemResponse;
   itemById: TItemResponse;
   listAuditLog: Array<TAuditLog>;
   listCategory: Array<TCategory>;
   listItem: TListItemResponse;
+  listItemByCategory: TListItemResponse;
+  listItemByStatus: TListItemResponse;
   listPaymentHistory: TListPaymentResponse;
   paymentHistory: TPaymentResponse;
   userInfo: TUserInfo;
@@ -254,13 +255,6 @@ export type QueryGetAuditLogArgs = {
 
 export type QueryGetOrderArgs = {
   orderId: Scalars['String']['input'];
-};
-
-
-export type QueryItemByCategoryArgs = {
-  categoryName: Scalars['String']['input'];
-  limit?: InputMaybe<Scalars['Int']['input']>;
-  offset?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -283,6 +277,20 @@ export type QueryListItemArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
   query?: InputMaybe<Array<InputMaybe<QueryByInput>>>;
+};
+
+
+export type QueryListItemByCategoryArgs = {
+  categoryName: Scalars['String']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type QueryListItemByStatusArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  status: Array<InputMaybe<EItemStatus>>;
 };
 
 
@@ -360,7 +368,7 @@ export type TItemOption = {
 
 export type TItemResponse = {
   __typename?: 'TItemResponse';
-  additionalOption: Array<TItemOption>;
+  additionalOption?: Maybe<Array<TItemOption>>;
   categoryName: Scalars['String']['output'];
   createdAt: Scalars['Timestamp']['output'];
   description?: Maybe<Scalars['String']['output']>;
@@ -670,11 +678,12 @@ export type QueryResolvers<ContextType = TAppContext, ParentType extends Resolve
   cryptoWalletWithNone?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   getAuditLog?: Resolver<Maybe<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryGetAuditLogArgs, 'id'>>;
   getOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<QueryGetOrderArgs, 'orderId'>>;
-  itemByCategory?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, RequireFields<QueryItemByCategoryArgs, 'categoryName'>>;
   itemById?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<QueryItemByIdArgs, 'itemId'>>;
   listAuditLog?: Resolver<Array<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryListAuditLogArgs, 'targetId' | 'userId'>>;
   listCategory?: Resolver<Array<ResolversTypes['TCategory']>, ParentType, ContextType>;
   listItem?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, Partial<QueryListItemArgs>>;
+  listItemByCategory?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, RequireFields<QueryListItemByCategoryArgs, 'categoryName'>>;
+  listItemByStatus?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, RequireFields<QueryListItemByStatusArgs, 'status'>>;
   listPaymentHistory?: Resolver<ResolversTypes['TListPaymentResponse'], ParentType, ContextType, Partial<QueryListPaymentHistoryArgs>>;
   paymentHistory?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<QueryPaymentHistoryArgs, 'paymentId'>>;
   userInfo?: Resolver<ResolversTypes['TUserInfo'], ParentType, ContextType>;
@@ -730,7 +739,7 @@ export type TItemOptionResolvers<ContextType = TAppContext, ParentType extends R
 };
 
 export type TItemResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItemResponse'] = ResolversParentTypes['TItemResponse']> = {
-  additionalOption?: Resolver<Array<ResolversTypes['TItemOption']>, ParentType, ContextType>;
+  additionalOption?: Resolver<Maybe<Array<ResolversTypes['TItemOption']>>, ParentType, ContextType>;
   categoryName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;

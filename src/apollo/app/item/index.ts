@@ -3,8 +3,9 @@ import {
   MutationCreateItemArgs,
   MutationDeleteItemArgs,
   MutationUpdateItemArgs,
-  QueryItemByCategoryArgs,
   QueryItemByIdArgs,
+  QueryListItemByCategoryArgs,
+  QueryListItemByStatusArgs,
   Resolvers,
   TItemResponse,
 } from '@generated/graphql';
@@ -59,9 +60,16 @@ const JOI_ITEM_ID = Joi.object<MutationDeleteItemArgs>({
   itemId: JOI_ID_SCHEMA,
 });
 
-const JOI_ITEM_BY_CATEGORY_ID = Joi.object<QueryItemByCategoryArgs>({
+const JOI_ITEM_BY_CATEGORY_ID = Joi.object<QueryListItemByCategoryArgs>({
   offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   categoryName: Joi.string().trim().min(5).max(30).required(),
+  limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
+});
+const JOI_ITEM_BY_CATEGORY_STATUS = Joi.object<QueryListItemByStatusArgs>({
+  offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
+  status: Joi.array()
+    .items(Joi.string().valid(...Object.values(EItemStatus)))
+    .required(),
   limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
 });
 const JOI_ITEM_BY_ID = Joi.object<QueryItemByIdArgs>({
@@ -102,7 +110,7 @@ export const resolverItem: Resolvers = {
             description: item.description,
             discountPercent: item.discountPercent,
             requireOption: item.requireOption,
-            additionalOption: item.additionalOption || [],
+            additionalOption: item.additionalOption,
             status: item.status,
             categoryName: item.category.name,
             createdAt: item.createdAt.getTime(),
@@ -112,7 +120,7 @@ export const resolverItem: Resolvers = {
       };
     }),
 
-    itemByCategory: publicWrapper(JOI_ITEM_BY_CATEGORY_ID, async (_root, _args) => {
+    listItemByCategory: publicWrapper(JOI_ITEM_BY_CATEGORY_ID, async (_root, _args) => {
       const { offset = 0, limit = 20, categoryName } = _args;
       const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
       if (!category) {
@@ -143,7 +151,49 @@ export const resolverItem: Resolvers = {
             description: item.description,
             discountPercent: item.discountPercent,
             requireOption: item.requireOption,
-            additionalOption: item.additionalOption || [],
+            additionalOption: item.additionalOption,
+            status: item.status,
+            categoryName: item.category.name,
+            createdAt: item.createdAt.getTime(),
+            updatedAt: item.updatedAt.getTime(),
+          };
+        }),
+      };
+    }),
+
+    listItemByStatus: publicWrapper(JOI_ITEM_BY_CATEGORY_STATUS, async (_root, _args) => {
+      const { offset = 0, limit = 20, status } = _args;
+
+      const filter = {
+        isDeleted: false,
+        status: { $in: status },
+      };
+
+      const [listItem, total] = await Promise.all([
+        ItemModel.find(filter)
+          .populate<{ category: TCategory }>('category')
+          .skip(offset ?? 0)
+          .limit(limit ?? 20)
+          .sort({ createdAt: -1 })
+          .lean(),
+        ItemModel.countDocuments(filter),
+      ]);
+
+      return {
+        offset: offset ?? 0,
+        limit: limit ?? 20,
+        total,
+        query: [],
+        records: listItem.map((item) => {
+          return {
+            itemId: item.itemId,
+            name: item.name,
+            image: item.image,
+            price: item.price,
+            description: item.description,
+            discountPercent: item.discountPercent,
+            requireOption: item.requireOption,
+            additionalOption: item.additionalOption,
             status: item.status,
             categoryName: item.category.name,
             createdAt: item.createdAt.getTime(),
@@ -165,7 +215,7 @@ export const resolverItem: Resolvers = {
           description: cacheItemById.description,
           discountPercent: cacheItemById.discountPercent,
           requireOption: cacheItemById.requireOption,
-          additionalOption: cacheItemById.additionalOption || [],
+          additionalOption: cacheItemById.additionalOption,
           status: cacheItemById.status,
           categoryName: cacheItemById.categoryName,
           createdAt: cacheItemById.createdAt,
@@ -187,7 +237,7 @@ export const resolverItem: Resolvers = {
         description: result.description,
         discountPercent: result.discountPercent,
         requireOption: result.requireOption,
-        additionalOption: result.additionalOption || [],
+        additionalOption: result.additionalOption,
         status: result.status,
         categoryName: result.category.name,
         createdAt: result.createdAt.getTime(),
@@ -243,7 +293,7 @@ export const resolverItem: Resolvers = {
         description: item.description,
         discountPercent: item.discountPercent,
         requireOption: item.requireOption,
-        additionalOption: item.additionalOption || [],
+        additionalOption: item.additionalOption,
         status: item.status,
         categoryName: item.category.name,
         createdAt: item.createdAt.getTime(),
@@ -293,7 +343,7 @@ export const resolverItem: Resolvers = {
         description: item.description,
         discountPercent: item.discountPercent,
         requireOption: item.requireOption,
-        additionalOption: item.additionalOption || [],
+        additionalOption: item.additionalOption,
         status: item.status,
         categoryName: item.category.name,
         createdAt: item.createdAt.getTime(),
