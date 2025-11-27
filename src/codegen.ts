@@ -10,7 +10,7 @@ const config: CodegenConfig = {
     './src/apollo/types.generated.ts': {
       plugins: ['typescript', 'typescript-resolvers'],
       config: {
-        contextType: '@/helper#TAppContext',
+        contextType: '@helper#TAppContext',
         scalars: {
           BigInt: {
             input: 'bigint',

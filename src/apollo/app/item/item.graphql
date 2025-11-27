@@ -17,8 +17,8 @@ type TItemResponse {
   price: Float!
   description: String
   discountPercent: Float
-  requireOption: [TItemOption]
-  additionalOption: [TItemOption]
+  requireOption: [TItemOption!]!
+  additionalOption: [TItemOption!]
   status: [EItemStatus]
   categoryName: String!
   createdAt: Timestamp!
@@ -61,12 +61,13 @@ type TListItemResponse {
   limit: Int!
   total: Int!
   query: [TQueryBy]!
-  records: [TItemResponse]!
+  records: [TItemResponse!]!
 }
 
 type Query {
   listItem(offset: Int, limit: Int, query: [QueryByInput]): TListItemResponse!
-  itemByCategory(offset: Int, limit: Int, categoryName: String!): TListItemResponse!
+  listItemByCategory(offset: Int, limit: Int, categoryName: String!): TListItemResponse!
+  listItemByStatus(offset: Int, limit: Int, status: [EItemStatus]!): TListItemResponse!
   itemById(itemId: String!): TItemResponse!
 }
 

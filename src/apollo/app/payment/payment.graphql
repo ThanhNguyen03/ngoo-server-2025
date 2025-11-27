@@ -10,7 +10,7 @@ enum EPaymentStatus {
   FAILED
 }
 
-type PaypalPayment {
+type TPaypalPayment {
   paypalPayerEmail: String!
   paypalCaptureId: String!
   payerId: String!
@@ -26,7 +26,7 @@ type TPaymentResponse {
   userInfo: TUserInfoSnapshot!
   items: [TOrderItem]!
   txHash: String
-  paypalTransaction: PaypalPayment
+  paypalTransaction: TPaypalPayment
   codTransactionId: String
   createdAt: Timestamp!
   updatedAt: Timestamp!

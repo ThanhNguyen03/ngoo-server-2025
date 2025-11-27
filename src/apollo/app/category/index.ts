@@ -4,7 +4,7 @@ import {
   MutationUpdateCategoryArgs,
   Resolvers,
 } from '@generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA, RedisHelper } from '@helper';
+import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, RedisHelper } from '@helper';
 import { CategoryModel } from '@model';
 import Joi from 'joi';
 
@@ -23,9 +23,9 @@ const JOI_CATEGORY_ID = Joi.object<MutationDeleteCategoryArgs>({
 
 export const resolverCategory: Resolvers = {
   Query: {
-    listCategory: async () => {
+    listCategory: publicWrapper(async () => {
       const cachedListCategory = await RedisHelper.category.categoryAllListGet();
-      if (cachedListCategory) {
+      if (cachedListCategory && cachedListCategory.length > 0) {
         return cachedListCategory;
       }
       const listCategory = await CategoryModel.find({ isDeleted: false });
@@ -33,7 +33,7 @@ export const resolverCategory: Resolvers = {
       await RedisHelper.category.categoryAllListSet(response);
 
       return response;
-    },
+    }),
   },
 
   Mutation: {

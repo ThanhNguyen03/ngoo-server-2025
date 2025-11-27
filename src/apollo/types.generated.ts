@@ -1,5 +1,5 @@
 import { GraphQLResolveInfo, GraphQLScalarType, GraphQLScalarTypeConfig } from 'graphql';
-import { TAppContext } from '@/helper';
+import { TAppContext } from '@helper';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = Maybe<T>;
 export type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
@@ -231,24 +231,17 @@ export type PaginationInput = {
   query?: InputMaybe<Array<InputMaybe<QueryByInput>>>;
 };
 
-export type PaypalPayment = {
-  __typename?: 'PaypalPayment';
-  payerId: Scalars['String']['output'];
-  paypalCaptureId: Scalars['String']['output'];
-  paypalPayerEmail: Scalars['String']['output'];
-  rawResponse?: Maybe<Scalars['Object']['output']>;
-};
-
 export type Query = {
   __typename?: 'Query';
   cryptoWalletWithNone: Scalars['String']['output'];
   getAuditLog?: Maybe<TAuditLog>;
   getOrder: TOrderResponse;
-  itemByCategory: TListItemResponse;
   itemById: TItemResponse;
   listAuditLog: Array<TAuditLog>;
-  listCategory: Array<Maybe<TCategory>>;
+  listCategory: Array<TCategory>;
   listItem: TListItemResponse;
+  listItemByCategory: TListItemResponse;
+  listItemByStatus: TListItemResponse;
   listPaymentHistory: TListPaymentResponse;
   paymentHistory: TPaymentResponse;
   userInfo: TUserInfo;
@@ -262,13 +255,6 @@ export type QueryGetAuditLogArgs = {
 
 export type QueryGetOrderArgs = {
   orderId: Scalars['String']['input'];
-};
-
-
-export type QueryItemByCategoryArgs = {
-  categoryName: Scalars['String']['input'];
-  limit?: InputMaybe<Scalars['Int']['input']>;
-  offset?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -291,6 +277,20 @@ export type QueryListItemArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
   query?: InputMaybe<Array<InputMaybe<QueryByInput>>>;
+};
+
+
+export type QueryListItemByCategoryArgs = {
+  categoryName: Scalars['String']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type QueryListItemByStatusArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  status: Array<InputMaybe<EItemStatus>>;
 };
 
 
@@ -368,7 +368,7 @@ export type TItemOption = {
 
 export type TItemResponse = {
   __typename?: 'TItemResponse';
-  additionalOption?: Maybe<Array<Maybe<TItemOption>>>;
+  additionalOption?: Maybe<Array<TItemOption>>;
   categoryName: Scalars['String']['output'];
   createdAt: Scalars['Timestamp']['output'];
   description?: Maybe<Scalars['String']['output']>;
@@ -377,7 +377,7 @@ export type TItemResponse = {
   itemId: Scalars['String']['output'];
   name: Scalars['String']['output'];
   price: Scalars['Float']['output'];
-  requireOption?: Maybe<Array<Maybe<TItemOption>>>;
+  requireOption: Array<TItemOption>;
   status?: Maybe<Array<Maybe<EItemStatus>>>;
   updatedAt: Scalars['Timestamp']['output'];
 };
@@ -387,7 +387,7 @@ export type TListItemResponse = {
   limit: Scalars['Int']['output'];
   offset: Scalars['Int']['output'];
   query: Array<Maybe<TQueryBy>>;
-  records: Array<Maybe<TItemResponse>>;
+  records: Array<TItemResponse>;
   total: Scalars['Int']['output'];
 };
 
@@ -407,7 +407,7 @@ export type TOrderItem = {
   name: Scalars['String']['output'];
   note?: Maybe<Scalars['String']['output']>;
   price: Scalars['Float']['output'];
-  selectedOptions?: Maybe<Array<Maybe<TItemOption>>>;
+  selectedOptions: Array<TItemOption>;
 };
 
 export type TOrderResponse = {
@@ -431,12 +431,20 @@ export type TPaymentResponse = {
   orderId: Scalars['String']['output'];
   paymentId: Scalars['String']['output'];
   paymentMethod: EPaymentMethod;
-  paypalTransaction?: Maybe<PaypalPayment>;
+  paypalTransaction?: Maybe<TPaypalPayment>;
   status: EPaymentStatus;
   totalPrice: Scalars['Float']['output'];
   txHash?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['Timestamp']['output'];
   userInfo: TUserInfoSnapshot;
+};
+
+export type TPaypalPayment = {
+  __typename?: 'TPaypalPayment';
+  payerId: Scalars['String']['output'];
+  paypalCaptureId: Scalars['String']['output'];
+  paypalPayerEmail: Scalars['String']['output'];
+  rawResponse?: Maybe<Scalars['Object']['output']>;
 };
 
 export type TQueryBy = {
@@ -580,7 +588,6 @@ export type ResolversTypes = {
   Object: ResolverTypeWrapper<Scalars['Object']['output']>;
   OrderItemInput: OrderItemInput;
   PaginationInput: PaginationInput;
-  PaypalPayment: ResolverTypeWrapper<PaypalPayment>;
   Query: ResolverTypeWrapper<Record<PropertyKey, never>>;
   QueryByInput: QueryByInput;
   String: ResolverTypeWrapper<Scalars['String']['output']>;
@@ -597,6 +604,7 @@ export type ResolversTypes = {
   TOrderItem: ResolverTypeWrapper<TOrderItem>;
   TOrderResponse: ResolverTypeWrapper<TOrderResponse>;
   TPaymentResponse: ResolverTypeWrapper<TPaymentResponse>;
+  TPaypalPayment: ResolverTypeWrapper<TPaypalPayment>;
   TQueryBy: ResolverTypeWrapper<TQueryBy>;
   TUserAuth: ResolverTypeWrapper<TUserAuth>;
   TUserInfo: ResolverTypeWrapper<TUserInfo>;
@@ -620,7 +628,6 @@ export type ResolversParentTypes = {
   Object: Scalars['Object']['output'];
   OrderItemInput: OrderItemInput;
   PaginationInput: PaginationInput;
-  PaypalPayment: PaypalPayment;
   Query: Record<PropertyKey, never>;
   QueryByInput: QueryByInput;
   String: Scalars['String']['output'];
@@ -637,6 +644,7 @@ export type ResolversParentTypes = {
   TOrderItem: TOrderItem;
   TOrderResponse: TOrderResponse;
   TPaymentResponse: TPaymentResponse;
+  TPaypalPayment: TPaypalPayment;
   TQueryBy: TQueryBy;
   TUserAuth: TUserAuth;
   TUserInfo: TUserInfo;
@@ -666,22 +674,16 @@ export interface ObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTyp
   name: 'Object';
 }
 
-export type PaypalPaymentResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['PaypalPayment'] = ResolversParentTypes['PaypalPayment']> = {
-  payerId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  paypalCaptureId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  paypalPayerEmail?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  rawResponse?: Resolver<Maybe<ResolversTypes['Object']>, ParentType, ContextType>;
-};
-
 export type QueryResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
   cryptoWalletWithNone?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   getAuditLog?: Resolver<Maybe<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryGetAuditLogArgs, 'id'>>;
   getOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<QueryGetOrderArgs, 'orderId'>>;
-  itemByCategory?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, RequireFields<QueryItemByCategoryArgs, 'categoryName'>>;
   itemById?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<QueryItemByIdArgs, 'itemId'>>;
   listAuditLog?: Resolver<Array<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryListAuditLogArgs, 'targetId' | 'userId'>>;
-  listCategory?: Resolver<Array<Maybe<ResolversTypes['TCategory']>>, ParentType, ContextType>;
+  listCategory?: Resolver<Array<ResolversTypes['TCategory']>, ParentType, ContextType>;
   listItem?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, Partial<QueryListItemArgs>>;
+  listItemByCategory?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, RequireFields<QueryListItemByCategoryArgs, 'categoryName'>>;
+  listItemByStatus?: Resolver<ResolversTypes['TListItemResponse'], ParentType, ContextType, RequireFields<QueryListItemByStatusArgs, 'status'>>;
   listPaymentHistory?: Resolver<ResolversTypes['TListPaymentResponse'], ParentType, ContextType, Partial<QueryListPaymentHistoryArgs>>;
   paymentHistory?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<QueryPaymentHistoryArgs, 'paymentId'>>;
   userInfo?: Resolver<ResolversTypes['TUserInfo'], ParentType, ContextType>;
@@ -737,7 +739,7 @@ export type TItemOptionResolvers<ContextType = TAppContext, ParentType extends R
 };
 
 export type TItemResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItemResponse'] = ResolversParentTypes['TItemResponse']> = {
-  additionalOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
+  additionalOption?: Resolver<Maybe<Array<ResolversTypes['TItemOption']>>, ParentType, ContextType>;
   categoryName?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   description?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
@@ -746,7 +748,7 @@ export type TItemResponseResolvers<ContextType = TAppContext, ParentType extends
   itemId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
-  requireOption?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
+  requireOption?: Resolver<Array<ResolversTypes['TItemOption']>, ParentType, ContextType>;
   status?: Resolver<Maybe<Array<Maybe<ResolversTypes['EItemStatus']>>>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
 };
@@ -755,7 +757,7 @@ export type TListItemResponseResolvers<ContextType = TAppContext, ParentType ext
   limit?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   offset?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   query?: Resolver<Array<Maybe<ResolversTypes['TQueryBy']>>, ParentType, ContextType>;
-  records?: Resolver<Array<Maybe<ResolversTypes['TItemResponse']>>, ParentType, ContextType>;
+  records?: Resolver<Array<ResolversTypes['TItemResponse']>, ParentType, ContextType>;
   total?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
@@ -773,7 +775,7 @@ export type TOrderItemResolvers<ContextType = TAppContext, ParentType extends Re
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
-  selectedOptions?: Resolver<Maybe<Array<Maybe<ResolversTypes['TItemOption']>>>, ParentType, ContextType>;
+  selectedOptions?: Resolver<Array<ResolversTypes['TItemOption']>, ParentType, ContextType>;
 };
 
 export type TOrderResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderResponse'] = ResolversParentTypes['TOrderResponse']> = {
@@ -795,12 +797,19 @@ export type TPaymentResponseResolvers<ContextType = TAppContext, ParentType exte
   orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paymentId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
-  paypalTransaction?: Resolver<Maybe<ResolversTypes['PaypalPayment']>, ParentType, ContextType>;
+  paypalTransaction?: Resolver<Maybe<ResolversTypes['TPaypalPayment']>, ParentType, ContextType>;
   status?: Resolver<ResolversTypes['EPaymentStatus'], ParentType, ContextType>;
   totalPrice?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
   txHash?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   updatedAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
   userInfo?: Resolver<ResolversTypes['TUserInfoSnapshot'], ParentType, ContextType>;
+};
+
+export type TPaypalPaymentResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TPaypalPayment'] = ResolversParentTypes['TPaypalPayment']> = {
+  payerId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  paypalCaptureId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  paypalPayerEmail?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  rawResponse?: Resolver<Maybe<ResolversTypes['Object']>, ParentType, ContextType>;
 };
 
 export type TQueryByResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TQueryBy'] = ResolversParentTypes['TQueryBy']> = {
@@ -839,7 +848,6 @@ export interface TimestampScalarConfig extends GraphQLScalarTypeConfig<Resolvers
 export type Resolvers<ContextType = TAppContext> = {
   Mutation?: MutationResolvers<ContextType>;
   Object?: GraphQLScalarType;
-  PaypalPayment?: PaypalPaymentResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
   TAuditDiff?: TAuditDiffResolvers<ContextType>;
   TAuditLog?: TAuditLogResolvers<ContextType>;
@@ -854,6 +862,7 @@ export type Resolvers<ContextType = TAppContext> = {
   TOrderItem?: TOrderItemResolvers<ContextType>;
   TOrderResponse?: TOrderResponseResolvers<ContextType>;
   TPaymentResponse?: TPaymentResponseResolvers<ContextType>;
+  TPaypalPayment?: TPaypalPaymentResolvers<ContextType>;
   TQueryBy?: TQueryByResolvers<ContextType>;
   TUserAuth?: TUserAuthResolvers<ContextType>;
   TUserInfo?: TUserInfoResolvers<ContextType>;
