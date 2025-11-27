@@ -61,7 +61,7 @@ type TListItemResponse {
   limit: Int!
   total: Int!
   query: [TQueryBy]!
-  records: [TItemResponse]!
+  records: [TItemResponse!]!
 }
 
 type Query {

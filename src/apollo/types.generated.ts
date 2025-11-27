@@ -379,7 +379,7 @@ export type TListItemResponse = {
   limit: Scalars['Int']['output'];
   offset: Scalars['Int']['output'];
   query: Array<Maybe<TQueryBy>>;
-  records: Array<Maybe<TItemResponse>>;
+  records: Array<TItemResponse>;
   total: Scalars['Int']['output'];
 };
 
@@ -748,7 +748,7 @@ export type TListItemResponseResolvers<ContextType = TAppContext, ParentType ext
   limit?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   offset?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   query?: Resolver<Array<Maybe<ResolversTypes['TQueryBy']>>, ParentType, ContextType>;
-  records?: Resolver<Array<Maybe<ResolversTypes['TItemResponse']>>, ParentType, ContextType>;
+  records?: Resolver<Array<ResolversTypes['TItemResponse']>, ParentType, ContextType>;
   total?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
