@@ -22,7 +22,7 @@ COPY --from=builder /usr/src/app/build ./build
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/package.json ./package.json
 
-COPY --from=builder /usr/src/app/src/**/*.graphql ./src/
+COPY --from=builder /usr/src/app/src/apollo ./src/apollo
 
 RUN chown -R appuser:appuser /usr/src/app
 USER appuser
