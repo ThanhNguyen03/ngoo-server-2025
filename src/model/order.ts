@@ -17,7 +17,7 @@ interface IOrderItem {
   amount: number;
   price: number;
   discountPercent?: number;
-  selectedOptions?: TItemOption[];
+  selectedOptions: TItemOption[];
 }
 
 interface IOrder {
@@ -102,3 +102,4 @@ OrderSchema.index({ createdAt: -1 });
 OrderSchema.index({ orderStatus: 1 });
 
 export const OrderModel = model<TOrder>('Order', OrderSchema);
+
