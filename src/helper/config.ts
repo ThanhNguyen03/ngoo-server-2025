@@ -1,5 +1,5 @@
-import Joi from 'joi';
 import 'dotenv/config';
+import Joi from 'joi';
 
 export const camelToSnakeCase = (str: string) => str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 
@@ -18,6 +18,7 @@ export type TTableName = typeof NGOO_TABLE;
 
 const envSchema = Joi.object({
   PORT: Joi.number().required(),
+  HOST: Joi.string().required(),
   APP_URL: Joi.string().required(),
   NODE_ENV: Joi.string().valid('local', 'test', 'prod').required(),
 
@@ -61,6 +62,7 @@ if (error) {
 
 export const config = {
   PORT: envVars.PORT,
+  HOST: envVars.HOST,
   APP_URL: envVars.APP_URL,
   NODE_ENV: envVars.NODE_ENV,
 
