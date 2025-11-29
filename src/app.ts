@@ -136,7 +136,7 @@ export const NGOO_API = {
     );
 
     await new Promise<void>((resolve) => {
-      httpServer.listen({ port: config.PORT }, resolve);
+      httpServer.listen({ port: config.PORT }, config.HOST, resolve);
     });
 
     console.debug(`Server ready at ${config.APP_URL}:${config.PORT}/graphql`);
