@@ -50,7 +50,7 @@ const envSchema = Joi.object({
   // NGOO_CHAIN_ID: Joi.string().required(),
   // NGOO_SIGNER: Joi.string().required(),
   // MONAD_RPC_URL: Joi.string().required(),
-});
+}).unknown(true);
 
 const { value: envVars, error } = envSchema.validate(process.env, {
   abortEarly: false,
@@ -86,7 +86,7 @@ export const config = {
   PAYPAL_CLIENT_SECRET: envVars.PAYPAL_CLIENT_SECRET,
   PAYPAL_MODE: envVars.PAYPAL_MODE,
 
-  // TODO: crypto
+  // crypto
   // NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS,
   // NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID,
   // NGOO_SIGNER: envVars.NGOO_SIGNER,
