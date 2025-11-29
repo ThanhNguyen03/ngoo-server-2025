@@ -101,6 +101,17 @@ export const NGOO_API = {
 
     await server.start();
 
+    app.use('/graphql', (req, res, next) => {
+      const ip = req.ip;
+      const allowedHosts = ['127.0.0.1', '::1'];
+
+      if (!ip || !allowedHosts.includes(ip)) {
+        return res.status(403).send('Forbidden');
+      }
+
+      next();
+    });
+
     app.use(
       '/graphql',
       expressMiddleware(server, {
