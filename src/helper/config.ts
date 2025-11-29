@@ -19,7 +19,7 @@ export type TTableName = typeof NGOO_TABLE;
 const envSchema = Joi.object({
   PORT: Joi.number().required(),
   HOST: Joi.string().required(),
-  APP_URL: Joi.string().required(),
+  APP_URL: Joi.string(),
   NODE_ENV: Joi.string().valid('local', 'test', 'prod').required(),
 
   // secret
@@ -46,11 +46,11 @@ const envSchema = Joi.object({
   PAYPAL_MODE: Joi.string().valid('sandbox', 'live').required(),
 
   // crypto
-  NGOO_CONTRACT_ADDRESS: Joi.string().required(),
-  NGOO_CHAIN_ID: Joi.string().required(),
-  NGOO_SIGNER: Joi.string().required(),
-  MONAD_RPC_URL: Joi.string().required(),
-}).unknown(true);
+  // NGOO_CONTRACT_ADDRESS: Joi.string().required(),
+  // NGOO_CHAIN_ID: Joi.string().required(),
+  // NGOO_SIGNER: Joi.string().required(),
+  // MONAD_RPC_URL: Joi.string().required(),
+});
 
 const { value: envVars, error } = envSchema.validate(process.env, {
   abortEarly: false,
@@ -86,11 +86,11 @@ export const config = {
   PAYPAL_CLIENT_SECRET: envVars.PAYPAL_CLIENT_SECRET,
   PAYPAL_MODE: envVars.PAYPAL_MODE,
 
-  // crypto
-  NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS,
-  NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID,
-  NGOO_SIGNER: envVars.NGOO_SIGNER,
-  MONAD_RPC_URL: envVars.MONAD_RPC_URL,
+  // TODO: crypto
+  // NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS,
+  // NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID,
+  // NGOO_SIGNER: envVars.NGOO_SIGNER,
+  // MONAD_RPC_URL: envVars.MONAD_RPC_URL,
 };
 
 export const TABLE_NAME: TTableName = (() => {
