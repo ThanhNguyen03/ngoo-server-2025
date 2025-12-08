@@ -222,7 +222,7 @@ export type OrderItemInput = {
   amount: Scalars['Int']['input'];
   itemId: Scalars['String']['input'];
   note?: InputMaybe<Scalars['String']['input']>;
-  selectedOptions?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
+  selectedOptions?: InputMaybe<Array<ItemOptionInput>>;
 };
 
 export type PaginationInput = {
