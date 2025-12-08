@@ -50,7 +50,7 @@ input OrderItemInput {
   itemId: String!
   amount: Int!
   note: String
-  selectedOptions: [ItemOptionInput]
+  selectedOptions: [ItemOptionInput!]
 }
 
 input CreateOrderInput {
