@@ -58,6 +58,7 @@ export type CreateOrderInput = {
   items: Array<OrderItemInput>;
   paymentMethod: EPaymentMethod;
   returnUrl: Scalars['String']['input'];
+  userInfo: UserInfoSnapshotInput;
 };
 
 export enum EAuditAction {
@@ -217,7 +218,6 @@ export type MutationUserRegisterArgs = {
   password: Scalars['String']['input'];
 };
 
-/** Input types */
 export type OrderItemInput = {
   amount: Scalars['Int']['input'];
   itemId: Scalars['String']['input'];
@@ -476,7 +476,7 @@ export type TUserInfoSnapshot = {
   __typename?: 'TUserInfoSnapshot';
   address: Scalars['String']['output'];
   email: Scalars['String']['output'];
-  name?: Maybe<Scalars['String']['output']>;
+  name: Scalars['String']['output'];
   phoneNumber: Scalars['String']['output'];
 };
 
@@ -491,6 +491,14 @@ export type UpdateItemInput = {
   price?: InputMaybe<Scalars['Float']['input']>;
   requireOption?: InputMaybe<Array<InputMaybe<ItemOptionInput>>>;
   status?: InputMaybe<Array<InputMaybe<EItemStatus>>>;
+};
+
+/** Input types */
+export type UserInfoSnapshotInput = {
+  address: Scalars['String']['input'];
+  email: Scalars['String']['input'];
+  name: Scalars['String']['input'];
+  phoneNumber: Scalars['String']['input'];
 };
 
 
@@ -611,6 +619,7 @@ export type ResolversTypes = {
   TUserInfoSnapshot: ResolverTypeWrapper<TUserInfoSnapshot>;
   Timestamp: ResolverTypeWrapper<Scalars['Timestamp']['output']>;
   UpdateItemInput: UpdateItemInput;
+  UserInfoSnapshotInput: UserInfoSnapshotInput;
 };
 
 /** Mapping between all available schema types and the resolvers parents */
@@ -651,6 +660,7 @@ export type ResolversParentTypes = {
   TUserInfoSnapshot: TUserInfoSnapshot;
   Timestamp: Scalars['Timestamp']['output'];
   UpdateItemInput: UpdateItemInput;
+  UserInfoSnapshotInput: UserInfoSnapshotInput;
 };
 
 export type MutationResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
@@ -837,7 +847,7 @@ export type TUserInfoResolvers<ContextType = TAppContext, ParentType extends Res
 export type TUserInfoSnapshotResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserInfoSnapshot'] = ResolversParentTypes['TUserInfoSnapshot']> = {
   address?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   email?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
-  name?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+  name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   phoneNumber?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 

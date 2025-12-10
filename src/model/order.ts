@@ -3,8 +3,8 @@ import { randomUUID } from 'crypto';
 import { Schema, Types, model } from 'mongoose';
 import { TItemOption } from './item';
 
-export type TUserInfoSnapshot = {
-  name?: string;
+type TUserInfoSnapshot = {
+  name: string;
   address: string;
   phoneNumber: string;
   email: string;
@@ -102,4 +102,3 @@ OrderSchema.index({ createdAt: -1 });
 OrderSchema.index({ orderStatus: 1 });
 
 export const OrderModel = model<TOrder>('Order', OrderSchema);
-

@@ -6,7 +6,7 @@ enum EOrderStatus {
 }
 
 type TUserInfoSnapshot {
-  name: String
+  name: String!
   address: String!
   phoneNumber: String!
   email: String!
@@ -46,6 +46,13 @@ type TOrderResponse {
 """
 Input types
 """
+input UserInfoSnapshotInput {
+  name: String!
+  address: String!
+  phoneNumber: String!
+  email: String!
+}
+
 input OrderItemInput {
   itemId: String!
   amount: Int!
@@ -56,6 +63,7 @@ input OrderItemInput {
 input CreateOrderInput {
   items: [OrderItemInput!]!
   paymentMethod: EPaymentMethod!
+  userInfo: UserInfoSnapshotInput!
   returnUrl: String!
   cancelUrl: String!
 }

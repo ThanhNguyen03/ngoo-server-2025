@@ -87,10 +87,10 @@ export const resolverOrder: Resolvers = {
       }
 
       const userInfoSnapshot: TUserInfoSnapshot = {
-        name: userInfo.name,
-        address: userInfo.address,
-        phoneNumber: userInfo.phoneNumber,
-        email: userInfo.email,
+        name: input.userInfo.name,
+        address: input.userInfo.address,
+        phoneNumber: input.userInfo.phoneNumber,
+        email: input.userInfo.email,
       };
 
       const itemIds = input.items.map((o) => o.itemId);
