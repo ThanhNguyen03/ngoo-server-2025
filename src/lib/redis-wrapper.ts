@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import EventEmitter from 'node:events';
 import { createClient, RedisArgument, RedisJSON, type RedisClientOptions, type RedisClientType } from 'redis';
 
@@ -62,16 +63,16 @@ class RedisKey {
   }
   // set
   async setAdd(member: string) {
-    return await this.client.sAdd(this.key, member);
+    return await this.client.sAdd(this.fullKey(), member);
   }
   async setRemove(member: string) {
-    return await this.client.sRem(this.key, member);
+    return await this.client.sRem(this.fullKey(), member);
   }
   async setMembers() {
-    return await this.client.sMembers(this.key);
+    return await this.client.sMembers(this.fullKey());
   }
   async setHas(member: string) {
-    return await this.client.sIsMember(this.key, member);
+    return await this.client.sIsMember(this.fullKey(), member);
   }
 
   //  HASH
@@ -194,5 +195,34 @@ export class RedisClient {
     if (this._client.isOpen) {
       await this._client.quit();
     }
+  }
+}
+
+export class RedisLock {
+  constructor(private redisClient: RedisClient) {}
+
+  private fullKey(key: string) {
+    return `${this.redisClient.prefixValue}:lock:${key}`;
+  }
+
+  async acquire(key: string, ttlMs: number): Promise<string | null> {
+    const value = randomUUID();
+    const result = await this.redisClient.redis.set(this.fullKey(key), value, { PX: ttlMs, NX: true });
+    return result === 'OK' ? value : null;
+  }
+
+  async release(key: string, value: string) {
+    const lua = `
+      if redis.call("GET", KEYS[1]) == ARGV[1]
+      then
+        return redis.call("DEL", KEYS[1])
+      else
+        return 0
+      end
+    `;
+    await this.redisClient.redis.eval(lua, {
+      keys: [this.fullKey(key)],
+      arguments: [value],
+    });
   }
 }

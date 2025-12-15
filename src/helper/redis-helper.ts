@@ -1,6 +1,6 @@
 import { TCategory, TItemResponse, TUserInfo } from '@generated/graphql';
 import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload } from '@helper';
-import { RedisHelperCategory, RedisHelperItem, RedisHelperUser } from '@service';
+import { RedisHelperCategory, RedisHelperItem, RedisHelperUser, RedisLockHelper } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
 
@@ -170,6 +170,21 @@ export const RedisHelper = {
      */
     itemByIdDel: async (itemId: string) => {
       await RedisHelperItem.itemById(itemId).delete();
+    },
+  },
+
+  lock: {
+    withLock: async <T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> => {
+      const lockValue = await RedisLockHelper.acquire(key, ttl);
+      if (!lockValue) {
+        throw new Error('Resource is locked');
+      }
+
+      try {
+        return await fn();
+      } finally {
+        await RedisLockHelper.release(key, lockValue);
+      }
     },
   },
 };
