@@ -97,7 +97,7 @@ const OrderSchema = new Schema<TOrder>(
     versionKey: false,
   },
 );
+
 OrderSchema.index({ 'userInfoSnapshot.email': 1, createdAt: -1 });
-OrderSchema.index({ orderId: 1 });
 
 export const OrderModel = model<TOrder>('Order', OrderSchema);

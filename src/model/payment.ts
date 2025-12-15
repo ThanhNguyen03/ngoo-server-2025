@@ -58,7 +58,6 @@ PaymentSchema.index({ createdAt: -1 });
 PaymentSchema.index({ status: 1, createdAt: -1 });
 PaymentSchema.index({ userId: 1, createdAt: -1 });
 PaymentSchema.index({ userId: 1, status: 1, createdAt: -1 });
-PaymentSchema.index({ 'paypalTransaction.paypalCaptureId': 1 }, { unique: true, sparse: true });
 
 PaymentSchema.index({ codTransactionId: 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ txHash: 1 }, { unique: true, sparse: true });
