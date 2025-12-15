@@ -8,7 +8,6 @@ type TCreatePayPalOrderBodyInput = {
   totalPrice: number;
   orders: OrderItemInput[];
   listItemInfo: TItem[];
-  orderMongoId: Types.ObjectId;
   orderId: string;
 };
 
@@ -44,7 +43,7 @@ type TCreatePayPalOrderBodyInput = {
  * - `customId` allows mapping PayPal → MongoDB later
  */
 export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput): Promise<OrderRequest> => {
-  const { totalPrice, orders, orderMongoId, orderId, listItemInfo } = input;
+  const { totalPrice, orders, orderId, listItemInfo } = input;
 
   const paypalItems = listItemInfo.map((item) => {
     return {
@@ -73,7 +72,7 @@ export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput):
             },
           },
         },
-        customId: orderMongoId.toString(),
+        customId: orderId,
         invoiceId: `INV-${orderId}`, // must be unique
         items: paypalItems,
       },

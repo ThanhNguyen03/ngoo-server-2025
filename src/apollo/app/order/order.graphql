@@ -1,8 +1,9 @@
 enum EOrderStatus {
+  CREATED
   PENDING
-  COMPLETED
+  PAID
   CANCELLED
-  DELIVERING
+  COMPLETED
 }
 
 type TUserInfoSnapshot {
@@ -23,17 +24,15 @@ type TOrderItem {
 
 type TCreateOrderResponse {
   orderId: String!
-  paypalOrderId: String
+  transactionId: String
   paypalApproveUrl: String
-  cryptoPaymentData: String
-  codPaymentData: String
   createdAt: Timestamp!
   updatedAt: Timestamp!
 }
 
 type TOrderResponse {
   orderId: String!
-  paypalOrderId: String
+  transactionId: String
   userInfoSnapshot: TUserInfoSnapshot!
   items: [TOrderItem]!
   totalPrice: Int!
@@ -41,6 +40,14 @@ type TOrderResponse {
   orderStatus: EOrderStatus!
   createdAt: Timestamp!
   updatedAt: Timestamp!
+}
+
+type TListOrderResponse {
+  offset: Int!
+  limit: Int!
+  total: Int!
+  query: [TQueryBy]!
+  records: [TOrderResponse]!
 }
 
 """
@@ -69,7 +76,8 @@ input CreateOrderInput {
 }
 
 type Query {
-  getOrder(orderId: String!): TOrderResponse!
+  getUserOrder(orderId: String!): TOrderResponse!
+  getAllOrder(orderId: String!): TListOrderResponse!
 }
 
 type Mutation {
