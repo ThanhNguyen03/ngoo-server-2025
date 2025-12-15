@@ -1,3 +1,4 @@
+import { ERole } from '@generated/graphql';
 import { jose, JWTAuthentication } from '@lib';
 import { TUser, TUserInfo } from '@model';
 import { config } from './config';
@@ -13,11 +14,13 @@ export type TAccessTokenPayload = TTokenPayload & {
    * example Redis to efficiently manage user sessions instead of storing the
    * entire JWT token. */
   sid: string;
+  role: ERole;
 };
 
 export type TRefreshTokenPayload = TTokenPayload & {
   /** Refresh token ID */
   rid: string;
+  role: ERole;
 };
 
 export type TGoogleTokenPayload = jose.JWTPayload &

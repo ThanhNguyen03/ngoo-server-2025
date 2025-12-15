@@ -1,6 +1,6 @@
-import { TCategory, TItemResponse, TUserInfo } from '@generated/graphql';
+import { ERole, TCategory, TItemResponse, TUserInfo } from '@generated/graphql';
 import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload } from '@helper';
-import { RedisHelperCategory, RedisHelperItem, RedisHelperUser } from '@service';
+import { RedisHelperCategory, RedisHelperItem, RedisHelperUser, RedisLockHelper } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
 
@@ -9,6 +9,11 @@ export const BEARER_LENGTH = 7; // 7 is length of `Bearer + space`
 
 export const RedisHelper = {
   account: {
+    isUserAccessTokenRevoked: async (userId: string, sid: string): Promise<boolean> => {
+      const exists = await RedisHelperUser.userAccessToken(userId).setHas(sid);
+      return !exists;
+    },
+
     /**
      * Removes a specific token from the user access token list in Redis.
      * @param userId - TBigSerial
@@ -43,12 +48,13 @@ export const RedisHelper = {
      * @param user - The user information required to generate the JWT.
      * @returns The generated JWT token or null if an error occurs.
      */
-    userAccessTokenCreateAndAdd: async (user: TTokenPayload): Promise<string> => {
+    userAccessTokenCreateAndAdd: async (user: TTokenPayload, role?: ERole): Promise<string> => {
       const sid = randomUUID();
       const jwtToken = await JwtAuthAccessTokenInstance.sign({
         ...user,
         uuid: user.uuid,
         sid,
+        role: role ?? ERole.User,
       });
       const numberOfSavedToken = await RedisHelper.account.userAccessTokenAdd(user.uuid, sid);
 
@@ -170,6 +176,21 @@ export const RedisHelper = {
      */
     itemByIdDel: async (itemId: string) => {
       await RedisHelperItem.itemById(itemId).delete();
+    },
+  },
+
+  lock: {
+    withLock: async <T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> => {
+      const lockValue = await RedisLockHelper.acquire(key, ttl);
+      if (!lockValue) {
+        throw new Error('Resource is locked');
+      }
+
+      try {
+        return await fn();
+      } finally {
+        await RedisLockHelper.release(key, lockValue);
+      }
     },
   },
 };

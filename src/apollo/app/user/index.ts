@@ -79,12 +79,13 @@ const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalle
 export const resolverUser: Resolvers = {
   Query: {
     userInfo: authorizedWrapper(async (_root, _args, context) => {
-      const { userId } = context.user;
+      const { userId, role } = context.user;
       const userInfoCached = await RedisHelper.account.userInfoGet(userId);
 
       if (userInfoCached && Object.keys(userInfoCached).length > 0) {
         return {
           ...userInfoCached,
+          role,
         };
       }
 
@@ -97,7 +98,7 @@ export const resolverUser: Resolvers = {
         uuid: user.uuid,
         email: user.email,
         name: user.userInfo.name,
-        role: user.role,
+        role,
         authMethods: user.authMethods,
         address: user.userInfo.address,
         phoneNumber: user.userInfo.phoneNumber,
@@ -148,6 +149,7 @@ export const resolverUser: Resolvers = {
         name: newUserInfo.name,
         uuid: newUser.uuid,
         rid,
+        role: ERole.User,
       });
 
       // cache userInfo
@@ -246,6 +248,7 @@ export const resolverUser: Resolvers = {
           name: user.name || '',
           uuid: user.uuid,
           rid,
+          role: user.role,
         });
 
         return {
@@ -283,6 +286,7 @@ export const resolverUser: Resolvers = {
           name: existingUser.userInfo.name || '',
           uuid: existingUser.uuid,
           rid,
+          role: existingUser.role,
         });
 
         await RedisHelper.account.userInfoSet({
@@ -319,7 +323,7 @@ export const resolverUser: Resolvers = {
         throw new Error('Invalid refresh token');
       }
 
-      const { uuid } = payload;
+      const { uuid, role } = payload;
 
       // Creat new session
       const newSid = randomUUID();
@@ -328,11 +332,13 @@ export const resolverUser: Resolvers = {
       const newAccessToken = await JwtAuthAccessTokenInstance.sign({
         uuid,
         sid: newSid,
+        role,
       });
 
       const newRefreshToken = await JwtAuthRefreshTokenInstance.sign({
         uuid,
         rid: newRid,
+        role,
       });
 
       await RedisHelper.account.userAccessTokenAdd(uuid, newSid);

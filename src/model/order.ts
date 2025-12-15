@@ -3,8 +3,8 @@ import { randomUUID } from 'crypto';
 import { Schema, Types, model } from 'mongoose';
 import { TItemOption } from './item';
 
-export type TUserInfoSnapshot = {
-  name?: string;
+type TUserInfoSnapshot = {
+  name: string;
   address: string;
   phoneNumber: string;
   email: string;
@@ -22,7 +22,7 @@ interface IOrderItem {
 
 interface IOrder {
   orderId: string;
-  paypalOrderId: string;
+  transactionId: string;
   userInfoSnapshot: TUserInfoSnapshot;
   items: IOrderItem[];
   totalPrice: number;
@@ -68,7 +68,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
 const OrderSchema = new Schema<TOrder>(
   {
     orderId: { type: String, required: true, unique: true, default: () => randomUUID() },
-    paypalOrderId: { type: String, sparse: true },
+    transactionId: { type: String, sparse: true },
     userInfoSnapshot: {
       name: { type: String },
       address: { type: String, required: true },
@@ -88,8 +88,8 @@ const OrderSchema = new Schema<TOrder>(
     },
     orderStatus: {
       type: String,
-      enum: ['PENDING', 'COMPLETED', 'CANCELLED', 'DELIVERING'],
-      default: EOrderStatus.Pending,
+      enum: ['CREATED', 'PENDING', 'PAID', 'CANCELLED', 'COMPLETED'],
+      default: EOrderStatus.Created,
     },
   },
   {
@@ -98,8 +98,6 @@ const OrderSchema = new Schema<TOrder>(
   },
 );
 
-OrderSchema.index({ createdAt: -1 });
-OrderSchema.index({ orderStatus: 1 });
+OrderSchema.index({ 'userInfoSnapshot.email': 1, createdAt: -1 });
 
 export const OrderModel = model<TOrder>('Order', OrderSchema);
-

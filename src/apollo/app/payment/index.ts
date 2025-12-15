@@ -3,21 +3,24 @@ import {
   EPaymentMethod,
   EPaymentStatus,
   MutationConfirmPaymentArgs,
-  QueryPaymentHistoryArgs,
+  QueryPaymentUserHistoryArgs,
   Resolvers,
   TPaymentResponse,
+  TUserPaymentResponse,
 } from '@generated/graphql';
 import {
+  adminWrapper,
   authorizedWrapper,
   capturePaypalOrder,
   JOI_ID_SCHEMA,
+  RedisHelper,
   schemaPagination,
   sortQuery,
   TPagination,
 } from '@helper';
-import { OrderModel, PaymentModel, TOrder } from '@model';
-import { Order } from '@paypal/paypal-server-sdk';
+import { OrderModel, PaymentModel, TOrder, TUserInfo, UserModel } from '@model';
 import Joi from 'joi';
+import mongoose from 'mongoose';
 
 enum EPaymentQuery {
   Status = 'status',
@@ -25,7 +28,7 @@ enum EPaymentQuery {
   TotalPrice = 'totalPrice',
 }
 
-const JOI_PAYMENT_ID = Joi.object<QueryPaymentHistoryArgs>({
+const JOI_PAYMENT_ID = Joi.object<QueryPaymentUserHistoryArgs>({
   paymentId: JOI_ID_SCHEMA,
 });
 
@@ -36,21 +39,42 @@ const JOI_LIST_PAYMENT = Joi.object<Omit<TPagination, 'total'>>({
 const JOI_CONFIRM_PAYMENT = Joi.object<MutationConfirmPaymentArgs>({
   paymentInput: Joi.object({
     orderId: JOI_ID_SCHEMA,
-    paymentMethod: Joi.string()
-      .valid(...Object.values(EPaymentMethod))
-      .required(),
-    paypalOrderId: Joi.string().alphanum(),
-    txHash: Joi.string().alphanum(),
-    codTransactionId: Joi.string().alphanum(),
+    transactionId: Joi.string().required(),
   }),
 });
 
+const ORDER_CREATE_LOCK_TTL = 5_000;
+const PAYMENT_LOCK_TTL = 10_000;
 export const resolverPayment: Resolvers = {
   Query: {
-    paymentHistory: authorizedWrapper(JOI_PAYMENT_ID, async (_root, _args) => {
+    paymentUserHistory: authorizedWrapper(JOI_PAYMENT_ID, async (_root, _args, context) => {
+      const { userId } = context.user;
+
+      let userInfo = await RedisHelper.account.userInfoGet(userId);
+      if (!userInfo) {
+        const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+        if (!user) {
+          throw new Error('Authorization Error!');
+        }
+        userInfo = {
+          uuid: user.uuid,
+          email: user.email,
+          name: user.userInfo.name,
+          walletAddress: user.userInfo.walletAddress,
+          role: user.role,
+          authMethods: user.authMethods,
+          address: user.userInfo.address,
+          phoneNumber: user.userInfo.phoneNumber,
+        };
+        await RedisHelper.account.userInfoSet(userInfo);
+      }
+
       const { paymentId } = _args;
-      const paymentHistory = await PaymentModel.findOne({ paymentId }).populate<{ order: TOrder }>('order').exec();
-      if (!paymentHistory) {
+      const paymentHistory = await PaymentModel.findOne({ paymentId, userId }).populate<{
+        order: TOrder;
+      }>('order');
+
+      if (!paymentHistory || !paymentHistory.order) {
         throw new Error('Payment not exist!');
       }
 
@@ -62,15 +86,67 @@ export const resolverPayment: Resolvers = {
         status: paymentHistory.status,
         userInfo: paymentHistory.order.userInfoSnapshot,
         items: paymentHistory.order.items,
-        txHash: paymentHistory.txHash,
-        paypalTransaction: paymentHistory.paypalTransaction,
-        codTransactionId: paymentHistory.codTransactionId,
+        transactionId: paymentHistory.order.transactionId,
         createdAt: paymentHistory.createdAt.getTime(),
         updatedAt: paymentHistory.updatedAt.getTime(),
       };
     }),
 
-    listPaymentHistory: authorizedWrapper(JOI_LIST_PAYMENT, async (_root, _args) => {
+    listUserPaymentHistory: authorizedWrapper(JOI_LIST_PAYMENT, async (_root, _args, context) => {
+      const { userId } = context.user;
+
+      let userInfo = await RedisHelper.account.userInfoGet(userId);
+      if (!userInfo) {
+        const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+        if (!user) {
+          throw new Error('Authorization Error!');
+        }
+        userInfo = {
+          uuid: user.uuid,
+          email: user.email,
+          name: user.userInfo.name,
+          walletAddress: user.userInfo.walletAddress,
+          role: user.role,
+          authMethods: user.authMethods,
+          address: user.userInfo.address,
+          phoneNumber: user.userInfo.phoneNumber,
+        };
+        await RedisHelper.account.userInfoSet(userInfo);
+      }
+
+      const { offset, limit, query } = _args;
+      const sort = sortQuery(query);
+
+      const [listPaymentHistory, total] = await Promise.all([
+        PaymentModel.find({ userId }).populate<{ order: TOrder }>('order').skip(offset).limit(limit).sort(sort).lean(),
+        PaymentModel.countDocuments({ userId }),
+      ]);
+
+      const records: TUserPaymentResponse[] = listPaymentHistory.map((history) => {
+        return {
+          paymentId: history.paymentId,
+          orderId: history.order.orderId,
+          paymentMethod: history.order.paymentMethod,
+          totalPrice: history.order.totalPrice,
+          status: history.status,
+          userInfo: history.order.userInfoSnapshot,
+          items: history.order.items,
+          transactionId: history.order.transactionId,
+          createdAt: history.createdAt.getTime(),
+          updatedAt: history.updatedAt.getTime(),
+        };
+      });
+
+      return {
+        offset,
+        limit,
+        query,
+        total,
+        records,
+      };
+    }),
+
+    listPaymentHistory: adminWrapper(JOI_LIST_PAYMENT, async (_root, _args) => {
       const { offset, limit, query } = _args;
       const sort = sortQuery(query);
 
@@ -107,67 +183,139 @@ export const resolverPayment: Resolvers = {
   },
 
   Mutation: {
-    confirmPayment: authorizedWrapper(JOI_CONFIRM_PAYMENT, async (_root, { paymentInput }) => {
-      const { orderId, paypalOrderId, txHash, codTransactionId } = paymentInput;
+    confirmPayment: authorizedWrapper(JOI_CONFIRM_PAYMENT, async (_root, { paymentInput }, context) => {
+      const { orderId, transactionId } = paymentInput;
+      const { userId } = context.user;
 
-      const order = await OrderModel.findOne({ orderId });
-      if (!order) {
-        throw new Error('This payment is paying for not exist order!');
+      if (!transactionId) {
+        throw new Error('Invalid transaction ID!');
+      }
+      if (!orderId) {
+        throw new Error('Invalid order ID!');
       }
 
-      // existed paid order fail
-      const existedPayment = await PaymentModel.findOne({
-        order: order._id,
-        status: EPaymentStatus.Successful,
-      }).populate<{ order: TOrder }>('order');
-
-      if (existedPayment) {
-        return {
-          paymentId: existedPayment.paymentId,
-          orderId: existedPayment.order.orderId,
-          paymentMethod: existedPayment.order.paymentMethod,
-          totalPrice: existedPayment.order.totalPrice,
-          status: existedPayment.status,
-          userInfo: existedPayment.order.userInfoSnapshot,
-          items: existedPayment.order.items,
-          txHash: existedPayment.txHash,
-          paypalTransaction: existedPayment.paypalTransaction,
-          codTransactionId: existedPayment.codTransactionId,
-          createdAt: existedPayment.createdAt.getTime(),
-          updatedAt: existedPayment.updatedAt.getTime(),
-        };
-      }
-
-      // Paypal
-      if (order.paymentMethod === EPaymentMethod.Paypal) {
-        if (!paypalOrderId) {
-          throw new Error('Paypal order ID is required for PayPal payment');
-        }
-        if (order.paypalOrderId !== paypalOrderId) {
-          throw new Error('Paypal order ID mismatch!');
+      return await RedisHelper.lock.withLock(orderId, PAYMENT_LOCK_TTL, async () => {
+        let userInfo = await RedisHelper.account.userInfoGet(userId);
+        if (!userInfo) {
+          const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+          if (!user) {
+            throw new Error('Authorization Error!');
+          }
+          userInfo = {
+            uuid: user.uuid,
+            email: user.email,
+            name: user.userInfo.name,
+            walletAddress: user.userInfo.walletAddress,
+            role: user.role,
+            authMethods: user.authMethods,
+            address: user.userInfo.address,
+            phoneNumber: user.userInfo.phoneNumber,
+          };
+          await RedisHelper.account.userInfoSet(userInfo);
         }
 
-        // Create payment record first (status Pending)
-        const newPaypalPayment = await PaymentModel.create({
+        const order = await OrderModel.findOne({ orderId, 'userInfoSnapshot.email': userInfo.email, transactionId });
+        if (!order) {
+          throw new Error('Not exist order!');
+        }
+
+        // existed payment by transaction hash
+        const existedPaymentByTxH = await PaymentModel.findOne({
           order: order._id,
-          status: EPaymentStatus.Pending,
-        });
+          userId,
+          $or: [
+            { 'paypalTransaction.paypalCaptureId': transactionId },
+            { codTransactionId: transactionId },
+            { txHash: transactionId },
+          ],
+        }).populate<{ order: TOrder }>('order');
 
-        let captureResult: { result: Order; paypalCaptureId: string; paypalPayerEmail: string; payerId: string } = {
-          result: {},
-          paypalCaptureId: '',
-          paypalPayerEmail: '',
-          payerId: '',
-        };
+        if (existedPaymentByTxH) {
+          return {
+            paymentId: existedPaymentByTxH.paymentId,
+            orderId: existedPaymentByTxH.order.orderId,
+            paymentMethod: existedPaymentByTxH.order.paymentMethod,
+            totalPrice: existedPaymentByTxH.order.totalPrice,
+            status: existedPaymentByTxH.status,
+            userInfo: existedPaymentByTxH.order.userInfoSnapshot,
+            items: existedPaymentByTxH.order.items,
+            transactionId: existedPaymentByTxH.order.transactionId,
+            createdAt: existedPaymentByTxH.createdAt.getTime(),
+            updatedAt: existedPaymentByTxH.updatedAt.getTime(),
+          };
+        }
+
+        // existed payment by order
+        const existedPaymentByOrder = await PaymentModel.findOne({
+          order: order._id,
+          userId,
+          status: { $in: [EPaymentStatus.Processing, EPaymentStatus.Success] },
+        }).populate<{ order: TOrder }>('order');
+
+        if (existedPaymentByOrder) {
+          return {
+            paymentId: existedPaymentByOrder.paymentId,
+            orderId: existedPaymentByOrder.order.orderId,
+            paymentMethod: existedPaymentByOrder.order.paymentMethod,
+            totalPrice: existedPaymentByOrder.order.totalPrice,
+            status: existedPaymentByOrder.status,
+            userInfo: existedPaymentByOrder.order.userInfoSnapshot,
+            items: existedPaymentByOrder.order.items,
+            transactionId: existedPaymentByOrder.order.transactionId,
+            createdAt: existedPaymentByOrder.createdAt.getTime(),
+            updatedAt: existedPaymentByOrder.updatedAt.getTime(),
+          };
+        }
+
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        // Create payment record first (status Pending)
+        const [newPayment] = await PaymentModel.create(
+          [
+            {
+              order: order._id,
+              status: EPaymentStatus.Processing,
+              userId,
+            },
+          ],
+          { session },
+        );
 
         try {
-          captureResult = await capturePaypalOrder(paypalOrderId, newPaypalPayment);
+          // Paypal
+          if (order.paymentMethod === EPaymentMethod.Paypal) {
+            const captureResult = await capturePaypalOrder(transactionId, newPayment);
 
-          // update order
-          order.orderStatus = EOrderStatus.Completed;
-          await order.save();
+            // update order
+            order.orderStatus = EOrderStatus.Paid;
+            await order.save({ session });
 
-          const populated = await newPaypalPayment.populate<{ order: TOrder }>('order');
+            // Update payment
+            newPayment.paypalTransaction = {
+              paypalCaptureId: captureResult.paypalCaptureId,
+              paypalPayerEmail: captureResult.paypalPayerEmail,
+              payerId: captureResult.payerId,
+              rawResponse: captureResult.result as Record<string, unknown>,
+            };
+            newPayment.status = EPaymentStatus.Success;
+            await newPayment.save({ session });
+          }
+
+          // COD
+          if (order.paymentMethod === EPaymentMethod.Cod) {
+            newPayment.codTransactionId = transactionId;
+            await newPayment.save({ session });
+          }
+
+          // Crypto
+          if (order.paymentMethod === EPaymentMethod.Crypto) {
+            // TODO
+            throw new Error('Crypto payment not implemented yet');
+          }
+
+          await session.commitTransaction();
+          session.endSession();
+          const populated = await newPayment.populate<{ order: TOrder }>('order');
           return {
             paymentId: populated.paymentId,
             orderId: populated.order.orderId,
@@ -176,64 +324,67 @@ export const resolverPayment: Resolvers = {
             status: populated.status,
             userInfo: populated.order.userInfoSnapshot,
             items: populated.order.items,
-            txHash: populated.txHash,
-            paypalTransaction: populated.paypalTransaction,
-            codTransactionId: populated.codTransactionId,
+            transactionId,
             createdAt: populated.createdAt.getTime(),
             updatedAt: populated.updatedAt.getTime(),
           };
         } catch (err) {
-          newPaypalPayment.status = EPaymentStatus.Failed;
-          newPaypalPayment.paypalTransaction = {
-            paypalCaptureId: captureResult.paypalCaptureId,
-            paypalPayerEmail: captureResult.paypalPayerEmail,
-            payerId: captureResult.payerId,
-            rawResponse: captureResult.result as Record<string, unknown>,
-          };
-          await newPaypalPayment.save();
-          throw err instanceof Error ? err : new Error('PayPal capture failed');
+          await session.abortTransaction();
+          session.endSession();
+          throw err;
         }
+      });
+    }),
+
+    approveCODPayment: adminWrapper(JOI_CONFIRM_PAYMENT, async (_root, { paymentInput }) => {
+      const { orderId, transactionId } = paymentInput;
+
+      if (!transactionId) {
+        throw new Error('Invalid transaction ID!');
+      }
+      if (!orderId) {
+        throw new Error('Invalid order ID!');
       }
 
-      // Crypto
-      if (order.paymentMethod === EPaymentMethod.Crypto) {
-        // TODO
-        throw new Error('Crypto payment not implemented yet');
-      }
-
-      // COD
-      if (order.paymentMethod === EPaymentMethod.Cod) {
-        if (!codTransactionId) {
-          throw new Error('COD transaction ID is required!');
+      return await RedisHelper.lock.withLock(orderId, PAYMENT_LOCK_TTL, async () => {
+        const order = await OrderModel.findOne({ orderId, transactionId });
+        if (!order) {
+          throw new Error('Not exist order!');
         }
 
-        const newPayment = await PaymentModel.create({
+        // existed payment by transaction hash
+        const existedPayment = await PaymentModel.findOne({
           order: order._id,
-          codTransactionId,
-          status: EPaymentStatus.Successful,
-        });
+          status: { $in: [EPaymentStatus.Processing, EPaymentStatus.Success] },
+          $or: [{ codTransactionId: transactionId }],
+        }).populate<{ order: TOrder }>('order');
 
-        order.orderStatus = EOrderStatus.Completed;
-        await order.save();
+        if (!existedPayment) {
+          throw new Error('Invalid COD payment');
+        }
 
-        const populated = await newPayment.populate<{ order: TOrder }>('order');
+        if (existedPayment.status === EPaymentStatus.Processing) {
+          // update order
+          order.orderStatus = EOrderStatus.Paid;
+          await order.save();
+
+          existedPayment.status = EPaymentStatus.Success;
+          await existedPayment.save();
+        }
+
         return {
-          paymentId: populated.paymentId,
-          orderId: populated.order.orderId,
-          paymentMethod: populated.order.paymentMethod,
-          totalPrice: populated.order.totalPrice,
-          status: populated.status,
-          userInfo: populated.order.userInfoSnapshot,
-          items: populated.order.items,
-          txHash: populated.txHash,
-          paypalTransaction: populated.paypalTransaction,
-          codTransactionId: populated.codTransactionId,
-          createdAt: populated.createdAt.getTime(),
-          updatedAt: populated.updatedAt.getTime(),
+          paymentId: existedPayment.paymentId,
+          orderId: existedPayment.order.orderId,
+          paymentMethod: existedPayment.order.paymentMethod,
+          totalPrice: existedPayment.order.totalPrice,
+          status: existedPayment.status,
+          userInfo: existedPayment.order.userInfoSnapshot,
+          items: existedPayment.order.items,
+          transactionId: existedPayment.order.transactionId,
+          createdAt: existedPayment.createdAt.getTime(),
+          updatedAt: existedPayment.updatedAt.getTime(),
         };
-      }
-
-      throw new Error('Unsupported payment method!');
+      });
     }),
   },
 };
