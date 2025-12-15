@@ -141,7 +141,7 @@ export const capturePaypalOrder = async (
     rawResponse: result as Record<string, unknown>,
   };
 
-  newPayment.status = capture.status === 'COMPLETED' ? EPaymentStatus.Successful : EPaymentStatus.Failed;
+  newPayment.status = capture.status === 'COMPLETED' ? EPaymentStatus.Success : EPaymentStatus.Failed;
   await newPayment.save();
 
   return { result, paypalCaptureId: captureId, paypalPayerEmail, payerId };

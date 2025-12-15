@@ -136,6 +136,7 @@ export const NGOO_API = {
                 token,
                 userId: decoded.payload.uuid,
                 sid: decoded.payload.sid,
+                role: decoded.payload.role,
               },
             };
           } catch (err) {

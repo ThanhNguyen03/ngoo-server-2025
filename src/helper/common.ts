@@ -3,6 +3,7 @@ import { UserModel } from '@model';
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
 import { JwtAuthAccessTokenInstance, TAccessTokenPayload } from './jwt.js';
+import RedisHelper from './redis-helper.js';
 
 export enum EUserAuthenticationStatus {
   Guest,
@@ -29,6 +30,7 @@ export type TAppContext = {
         readonly token: string;
         userId: string;
         sid: string;
+        role: ERole;
       };
 };
 
@@ -94,16 +96,14 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
         }
       }
 
-      // const isRevoked = await RedisHelper.account.isUserAccessTokenRevoked(
-      //   verifiedJwtPayload.id,
-      //   verifiedJwtPayload.sid,
-      // );
-      // if (isRevoked) {
-      //   authContext = createUnauthContext(new Error('Revoked access token'));
-
-      //   break;
-      // }
-      authContext = createUnauthContext(new Error('Revoked access token'));
+      const isRevoked = await RedisHelper.account.isUserAccessTokenRevoked(
+        verifiedJwtPayload.uuid,
+        verifiedJwtPayload.sid,
+      );
+      if (isRevoked) {
+        authContext = createUnauthContext(new Error('Revoked access token'));
+        break;
+      }
 
       authContext = {
         ...context,
@@ -112,6 +112,7 @@ export async function authenticateUser(context: TAppContext): Promise<TOptionalA
           token: context.user.token,
           userId: verifiedJwtPayload.uuid,
           sid: verifiedJwtPayload.sid,
+          role: verifiedJwtPayload.role,
         },
       };
       break;
@@ -324,6 +325,11 @@ export function adminWrapper<TArgs, TValidatedArgs, TResult>(
         throw new Error('Unhandled user kind');
     }
 
+    // Check role from JWT
+    if (authContext.user.role !== ERole.Admin) {
+      throw new Error('Forbidden: Admin privileges required');
+    }
+
     // No schema case
     if (!resolverOrUndefined) {
       return (schemaOrResolver as THandler<TArgs, TAuthorizedContext, TResult>)(root, args, authContext, info);
@@ -334,9 +340,6 @@ export function adminWrapper<TArgs, TValidatedArgs, TResult>(
     const resolver = resolverOrUndefined;
 
     const user = await UserModel.findById(authContext.user.userId);
-    if (!user || (user && user.role !== ERole.Admin)) {
-      throw new Error('Forbidden: Admin privileges required');
-    }
 
     // Safety: The context is guaranteed to be authenticated at this point.
     return validationWrapper(schema, (_root, _args, _context, _info) =>
