@@ -1,5 +1,5 @@
 import { config } from '@helper';
-import { ERedisEvent, RedisClient, RedisHelperDerive } from '@lib';
+import { ERedisEvent, RedisClient, RedisHelperDerive, RedisLock } from '@lib';
 
 /** Setup redis */
 export const RedisInstance = RedisClient.getInstance(config.REDIS_KEY_PREFIX, {
@@ -18,5 +18,6 @@ export const RedisHelperCategory = RedisHelperDerive<'category'>(RedisInstance);
 export const RedisHelperItem = RedisHelperDerive<
   'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById'
 >(RedisInstance);
+export const RedisLockHelper = new RedisLock(RedisInstance);
 
 export default RedisInstance;

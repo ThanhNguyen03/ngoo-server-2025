@@ -5,9 +5,10 @@ enum EPaymentMethod {
 }
 
 enum EPaymentStatus {
-  PENDING
-  SUCCESSFUL
+  PROCESSING
+  SUCCESS
   FAILED
+  CANCELLED
 }
 
 type TPaypalPayment {
@@ -15,6 +16,19 @@ type TPaypalPayment {
   paypalCaptureId: String!
   payerId: String!
   rawResponse: Object
+}
+
+type TUserPaymentResponse {
+  paymentId: String!
+  orderId: String!
+  paymentMethod: EPaymentMethod!
+  totalPrice: Float!
+  status: EPaymentStatus!
+  userInfo: TUserInfoSnapshot!
+  items: [TOrderItem]!
+  transactionId: String
+  createdAt: Timestamp!
+  updatedAt: Timestamp!
 }
 
 type TPaymentResponse {
@@ -32,6 +46,14 @@ type TPaymentResponse {
   updatedAt: Timestamp!
 }
 
+type TListPaymentUserResponse {
+  offset: Int!
+  limit: Int!
+  total: Int!
+  query: [TQueryBy]!
+  records: [TUserPaymentResponse]!
+}
+
 type TListPaymentResponse {
   offset: Int!
   limit: Int!
@@ -45,16 +67,16 @@ Input types
 """
 input ConfirmPaymentInput {
   orderId: String!
-  paypalOrderId: String
-  txHash: String
-  codTransactionId: String
+  transactionId: String!
 }
 
 type Query {
-  paymentHistory(paymentId: String!): TPaymentResponse!
+  paymentUserHistory(paymentId: String!): TUserPaymentResponse!
+  listUserPaymentHistory(offset: Int, limit: Int, query: [QueryByInput]): TListPaymentUserResponse!
   listPaymentHistory(offset: Int, limit: Int, query: [QueryByInput]): TListPaymentResponse!
 }
 
 type Mutation {
   confirmPayment(paymentInput: ConfirmPaymentInput!): TPaymentResponse!
+  approveCODPayment(paymentInput: ConfirmPaymentInput!): TPaymentResponse!
 }

@@ -22,6 +22,7 @@ const PaypalPaymentShema = new Schema<TPaypalPayment>(
 interface IPayment {
   paymentId: string;
   order: Types.ObjectId; // ref Order
+  userId: string;
   status: EPaymentStatus;
   txHash?: string; // blockchain Payment hash (for crypto)
   paypalTransaction?: TPaypalPayment; // for Paypal
@@ -36,10 +37,11 @@ const PaymentSchema = new Schema<TPayment>(
   {
     paymentId: { type: String, required: true, unique: true, default: () => randomUUID() },
     order: { type: Schema.Types.ObjectId, ref: 'Order', required: true },
+    userId: { type: String, required: true, index: true },
     status: {
       type: String,
-      enum: ['PENDING', 'SUCCESSFUL', 'FAILED'],
-      default: EPaymentStatus.Pending,
+      enum: ['PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED'],
+      default: EPaymentStatus.Processing,
     },
     txHash: { type: String, trim: true },
     paypalTransaction: { type: PaypalPaymentShema },
@@ -53,7 +55,13 @@ const PaymentSchema = new Schema<TPayment>(
 
 PaymentSchema.index({ order: 1 });
 PaymentSchema.index({ createdAt: -1 });
-PaymentSchema.index({ txHash: 1 });
 PaymentSchema.index({ status: 1, createdAt: -1 });
+PaymentSchema.index({ userId: 1, createdAt: -1 });
+PaymentSchema.index({ userId: 1, status: 1, createdAt: -1 });
+PaymentSchema.index({ 'paypalTransaction.paypalCaptureId': 1 }, { unique: true, sparse: true });
+
+PaymentSchema.index({ codTransactionId: 1 }, { unique: true, sparse: true });
+PaymentSchema.index({ txHash: 1 }, { unique: true, sparse: true });
+PaymentSchema.index({ order: 1, userId: 1 }, { unique: true });
 
 export const PaymentModel = model<TPayment>('Payment', PaymentSchema);
