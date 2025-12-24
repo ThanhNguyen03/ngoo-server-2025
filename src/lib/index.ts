@@ -1,5 +1,5 @@
-import Joi from 'joi';
 import { isAddress } from 'ethers';
+import Joi from 'joi';
 
 export type THexString = `0x${string}`;
 export type TBigSerial = string | bigint;
@@ -36,4 +36,5 @@ export default isOk;
 export * from './authen';
 export * from './byte-buffer';
 export * from './fixed-float';
+export * from './paypal-auth';
 export * from './redis-wrapper';

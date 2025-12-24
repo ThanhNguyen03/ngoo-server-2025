@@ -1,6 +1,7 @@
 import {
   EOrderStatus,
   EPaymentMethod,
+  EPaymentStatus,
   MutationCreateOrderArgs,
   OrderItemInput,
   QueryGetUserOrderArgs,
@@ -19,9 +20,10 @@ import {
   sortQuery,
   TPagination,
 } from '@helper';
-import { ItemModel, OrderModel, TUserInfo, UserModel } from '@model';
+import { ItemModel, OrderModel, PaymentModel, TUserInfo, UserModel } from '@model';
 import { randomBytes, randomUUID } from 'crypto';
 import Joi from 'joi';
+import mongoose from 'mongoose';
 import { ordersController } from 'src/services/paypal';
 import { JOI_ITEM_OPTION } from '../item';
 
@@ -177,67 +179,78 @@ export const resolverOrder: Resolvers = {
       const totalPrice = await calculateOrderItemPrice(input.items, dbItems);
       const orderId = randomUUID();
 
-      if (input.paymentMethod === EPaymentMethod.Paypal) {
-        try {
+      const session = await mongoose.startSession();
+      session.startTransaction();
+      try {
+        let transactionId: string | undefined;
+        let paypalApproveUrl: string | undefined;
+        // Paypal
+        if (input.paymentMethod === EPaymentMethod.Paypal) {
           const orderBody = await createPayPalOrderBody({
             totalPrice: totalPrice,
             orders: input.items,
             orderId,
             listItemInfo: dbItems,
+            returnUrl: input.returnUrl,
+            cancelUrl: input.cancelUrl,
           });
           const { result } = await ordersController.createOrder({ body: orderBody });
           if (!result || !result.links || !result.id) {
             throw new Error('Failed to create Paypal order!');
           }
-
-          const approveUrl = result.links.find((l) => l.rel === 'approve')!.href;
-
-          const newOrder = await OrderModel.create({
-            orderId,
-            transactionId: result.id,
-            userInfoSnapshot,
-            items: input.items,
-            totalPrice,
-            orderStatus: EOrderStatus.Created,
-            paymentMethod: input.paymentMethod,
-          });
-
-          return {
-            orderId: newOrder.orderId,
-            paypalApproveUrl: approveUrl,
-            transactionId: result.id,
-            createdAt: newOrder.createdAt.getTime(),
-            updatedAt: newOrder.updatedAt.getTime(),
-          };
-        } catch (err) {
-          throw err;
+          transactionId = result.id;
+          paypalApproveUrl = result.links.find((l) => l.rel === 'approve')!.href;
         }
-      }
 
-      if (input.paymentMethod === EPaymentMethod.Cod) {
-        const newOrder = await OrderModel.create({
-          orderId,
-          userInfoSnapshot,
-          items: input.items,
-          totalPrice,
-          orderStatus: EOrderStatus.Created,
-          paymentMethod: input.paymentMethod,
-        });
+        if (input.paymentMethod === EPaymentMethod.Cod) {
+          transactionId = randomBytes(32).toString('hex');
+        }
+        if (input.paymentMethod === EPaymentMethod.Crypto) {
+          // TODO
+          throw new Error('Crypto payment not implemented yet');
+        }
+
+        const [newOrder] = await OrderModel.create(
+          [
+            {
+              orderId,
+              transactionId,
+              userInfoSnapshot,
+              items: input.items,
+              totalPrice,
+              orderStatus: EOrderStatus.Created,
+              paymentMethod: input.paymentMethod,
+            },
+          ],
+          { session },
+        );
+
+        await PaymentModel.create(
+          [
+            {
+              order: newOrder._id,
+              userId,
+              status: EPaymentStatus.Processing,
+            },
+          ],
+          { session },
+        );
+
+        await session.commitTransaction();
+        session.endSession();
 
         return {
           orderId: newOrder.orderId,
-          transactionId: randomBytes(32).toString('hex'),
+          paypalApproveUrl,
+          transactionId,
           createdAt: newOrder.createdAt.getTime(),
           updatedAt: newOrder.updatedAt.getTime(),
         };
+      } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        throw err;
       }
-
-      if (input.paymentMethod === EPaymentMethod.Crypto) {
-        // TODO
-        throw new Error('Crypto payment not implemented yet');
-      }
-
-      throw new Error('Invalid payment method');
     }),
   },
 };

@@ -43,6 +43,7 @@ const envSchema = Joi.object({
   // paypal
   PAYPAL_CLIENT_ID: Joi.string().required(),
   PAYPAL_CLIENT_SECRET: Joi.string().required(),
+  PAYPAL_WEBHOOK_ID: Joi.string().required(),
   PAYPAL_MODE: Joi.string().valid('sandbox', 'live').required(),
 
   // crypto
@@ -84,7 +85,9 @@ export const config = {
   // paypal
   PAYPAL_CLIENT_ID: envVars.PAYPAL_CLIENT_ID,
   PAYPAL_CLIENT_SECRET: envVars.PAYPAL_CLIENT_SECRET,
+  PAYPAL_WEBHOOK_ID: envVars.PAYPAL_WEBHOOK_ID,
   PAYPAL_MODE: envVars.PAYPAL_MODE,
+  PAYPAL_BASE_URL: envVars.PAYPAL_MODE === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com',
 
   // crypto
   // NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS,

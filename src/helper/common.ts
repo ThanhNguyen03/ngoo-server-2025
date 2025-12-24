@@ -1,5 +1,4 @@
 import { ERole } from '@generated/graphql';
-import { UserModel } from '@model';
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
 import { JwtAuthAccessTokenInstance, TAccessTokenPayload } from './jwt.js';
@@ -338,8 +337,6 @@ export function adminWrapper<TArgs, TValidatedArgs, TResult>(
     // With schema case
     const schema = schemaOrResolver as Joi.ObjectSchema<TValidatedArgs>;
     const resolver = resolverOrUndefined;
-
-    const user = await UserModel.findById(authContext.user.userId);
 
     // Safety: The context is guaranteed to be authenticated at this point.
     return validationWrapper(schema, (_root, _args, _context, _info) =>
