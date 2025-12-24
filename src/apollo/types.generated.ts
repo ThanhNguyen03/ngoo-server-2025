@@ -27,7 +27,6 @@ export type CategoryInput = {
 /** Input types */
 export type ConfirmPaymentInput = {
   orderId: Scalars['String']['input'];
-  transactionId: Scalars['String']['input'];
 };
 
 export type CreateAuditLogInput = {
@@ -84,6 +83,7 @@ export enum EOrderStatus {
   Cancelled = 'CANCELLED',
   Completed = 'COMPLETED',
   Created = 'CREATED',
+  Failed = 'FAILED',
   Paid = 'PAID',
   Pending = 'PENDING'
 }
@@ -129,7 +129,6 @@ export type ItemOptionInput = {
 export type Mutation = {
   __typename?: 'Mutation';
   approveCODPayment: TPaymentResponse;
-  confirmPayment: TPaymentResponse;
   createAuditLog: TAuditLog;
   createCategory: TCategory;
   createItem: TItemResponse;
@@ -147,11 +146,6 @@ export type Mutation = {
 
 
 export type MutationApproveCodPaymentArgs = {
-  paymentInput: ConfirmPaymentInput;
-};
-
-
-export type MutationConfirmPaymentArgs = {
   paymentInput: ConfirmPaymentInput;
 };
 
@@ -475,6 +469,13 @@ export type TPaymentResponse = {
   userInfo: TUserInfoSnapshot;
 };
 
+export type TPaymentSocketResponse = {
+  __typename?: 'TPaymentSocketResponse';
+  orderId: Scalars['String']['output'];
+  paymentId: Scalars['String']['output'];
+  status: EPaymentStatus;
+};
+
 export type TPaypalPayment = {
   __typename?: 'TPaypalPayment';
   payerId: Scalars['String']['output'];
@@ -664,6 +665,7 @@ export type ResolversTypes = {
   TOrderItem: ResolverTypeWrapper<TOrderItem>;
   TOrderResponse: ResolverTypeWrapper<TOrderResponse>;
   TPaymentResponse: ResolverTypeWrapper<TPaymentResponse>;
+  TPaymentSocketResponse: ResolverTypeWrapper<TPaymentSocketResponse>;
   TPaypalPayment: ResolverTypeWrapper<TPaypalPayment>;
   TQueryBy: ResolverTypeWrapper<TQueryBy>;
   TUserAuth: ResolverTypeWrapper<TUserAuth>;
@@ -708,6 +710,7 @@ export type ResolversParentTypes = {
   TOrderItem: TOrderItem;
   TOrderResponse: TOrderResponse;
   TPaymentResponse: TPaymentResponse;
+  TPaymentSocketResponse: TPaymentSocketResponse;
   TPaypalPayment: TPaypalPayment;
   TQueryBy: TQueryBy;
   TUserAuth: TUserAuth;
@@ -721,7 +724,6 @@ export type ResolversParentTypes = {
 
 export type MutationResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
   approveCODPayment?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<MutationApproveCodPaymentArgs, 'paymentInput'>>;
-  confirmPayment?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<MutationConfirmPaymentArgs, 'paymentInput'>>;
   createAuditLog?: Resolver<ResolversTypes['TAuditLog'], ParentType, ContextType, RequireFields<MutationCreateAuditLogArgs, 'input'>>;
   createCategory?: Resolver<ResolversTypes['TCategory'], ParentType, ContextType, RequireFields<MutationCreateCategoryArgs, 'name'>>;
   createItem?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<MutationCreateItemArgs, 'input'>>;
@@ -888,6 +890,12 @@ export type TPaymentResponseResolvers<ContextType = TAppContext, ParentType exte
   userInfo?: Resolver<ResolversTypes['TUserInfoSnapshot'], ParentType, ContextType>;
 };
 
+export type TPaymentSocketResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TPaymentSocketResponse'] = ResolversParentTypes['TPaymentSocketResponse']> = {
+  orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  paymentId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  status?: Resolver<ResolversTypes['EPaymentStatus'], ParentType, ContextType>;
+};
+
 export type TPaypalPaymentResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TPaypalPayment'] = ResolversParentTypes['TPaypalPayment']> = {
   payerId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paypalCaptureId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -960,6 +968,7 @@ export type Resolvers<ContextType = TAppContext> = {
   TOrderItem?: TOrderItemResolvers<ContextType>;
   TOrderResponse?: TOrderResponseResolvers<ContextType>;
   TPaymentResponse?: TPaymentResponseResolvers<ContextType>;
+  TPaymentSocketResponse?: TPaymentSocketResponseResolvers<ContextType>;
   TPaypalPayment?: TPaypalPaymentResolvers<ContextType>;
   TQueryBy?: TQueryByResolvers<ContextType>;
   TUserAuth?: TUserAuthResolvers<ContextType>;

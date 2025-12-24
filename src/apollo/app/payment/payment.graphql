@@ -67,7 +67,6 @@ Input types
 """
 input ConfirmPaymentInput {
   orderId: String!
-  transactionId: String!
 }
 
 type Query {
@@ -77,6 +76,5 @@ type Query {
 }
 
 type Mutation {
-  confirmPayment(paymentInput: ConfirmPaymentInput!): TPaymentResponse!
   approveCODPayment(paymentInput: ConfirmPaymentInput!): TPaymentResponse!
 }

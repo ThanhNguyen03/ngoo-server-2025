@@ -9,6 +9,8 @@ type TCreatePayPalOrderBodyInput = {
   orders: OrderItemInput[];
   listItemInfo: TItem[];
   orderId: string;
+  cancelUrl?: string;
+  returnUrl?: string;
 };
 
 /**
@@ -43,7 +45,7 @@ type TCreatePayPalOrderBodyInput = {
  * - `customId` allows mapping PayPal → MongoDB later
  */
 export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput): Promise<OrderRequest> => {
-  const { totalPrice, orders, orderId, listItemInfo } = input;
+  const { totalPrice, orders, orderId, listItemInfo, cancelUrl, returnUrl } = input;
 
   const paypalItems = listItemInfo.map((item) => {
     return {
@@ -77,6 +79,10 @@ export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput):
         items: paypalItems,
       },
     ],
+    applicationContext: {
+      cancelUrl,
+      returnUrl,
+    },
   };
 };
 
@@ -145,4 +151,14 @@ export const capturePaypalOrder = async (
   await newPayment.save();
 
   return { result, paypalCaptureId: captureId, paypalPayerEmail, payerId };
+};
+
+export const retryProcessing = async <T>(callback: () => Promise<T>, retries = 3, delay = 1500): Promise<T> => {
+  try {
+    return await callback();
+  } catch (err) {
+    if (retries <= 0) throw err;
+    await new Promise((r) => setTimeout(r, delay));
+    return retryProcessing(callback, retries - 1, delay * 2);
+  }
 };

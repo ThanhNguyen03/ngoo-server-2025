@@ -4,6 +4,7 @@ enum EOrderStatus {
   PAID
   CANCELLED
   COMPLETED
+  FAILED
 }
 
 type TUserInfoSnapshot {
