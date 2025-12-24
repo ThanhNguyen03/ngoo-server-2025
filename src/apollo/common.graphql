@@ -21,3 +21,9 @@ input PaginationInput {
   limit: Int
   query: [QueryByInput]
 }
+
+type TPaymentSocketResponse {
+  orderId: String!
+  paymentId: String!
+  status: EPaymentStatus!
+}

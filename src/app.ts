@@ -13,10 +13,11 @@ import {
   ApolloServerPluginLandingPageProductionDefault,
 } from '@apollo/server/plugin/landingPage/default';
 import { config, EUserAuthenticationStatus, JwtAuthAccessTokenInstance, TAppContext } from '@helper';
-import { RedisInstance } from '@service';
+import { initSocket, RedisInstance } from '@service';
 import { RedisStore } from 'connect-redis';
 import { randomUUID } from 'crypto';
 import session from 'express-session';
+import router from './services/paypal-webhook';
 
 const HSTS_HELMET_MAX_AGE_IN_SECONDS = 30 * 24 * 3600; // 30 days
 const COOKIE_SESSION_MAX_AGE_IN_SECONDS = 24 * 3600; // 1 day
@@ -26,6 +27,7 @@ export const NGOO_API = {
   payload: async () => {
     const app = express();
 
+    // --- Middleware ---
     app.use(express.json());
     // protect
     app.use(
@@ -55,11 +57,18 @@ export const NGOO_API = {
         credentials: true,
       }),
     );
-
-    // connect redis
-    await RedisInstance.connect();
     const httpServer = http.createServer(app);
-    // define apollo server
+
+    // --- Redis Session ---
+    await RedisInstance.connect();
+
+    const redisStore: RedisStore = new RedisStore({
+      client: RedisInstance.redis,
+      prefix: `${config.REDIS_KEY_PREFIX}-express-session-`,
+      disableTouch: true, // Disables resetting the TTL when every time a user interacts with the server
+    });
+
+    // --- Apollo Server ---
     const server = new ApolloServer<BaseContext>({
       typeDefs: TypedefApp,
       resolvers: ResolverApp,
@@ -76,13 +85,6 @@ export const NGOO_API = {
       ],
       includeStacktraceInErrorResponses: config.NODE_ENV === 'local',
     });
-
-    const redisStore: RedisStore = new RedisStore({
-      client: RedisInstance.redis,
-      prefix: `${config.REDIS_KEY_PREFIX}-express-session-`,
-      disableTouch: true, // Disables resetting the TTL when every time a user interacts with the server
-    });
-
     app.use(
       session({
         genid: () => randomUUID(),
@@ -146,6 +148,12 @@ export const NGOO_API = {
         },
       }) as Application,
     );
+
+    // --- Init Socket ---
+    initSocket(httpServer);
+
+    // --- PayPal Webhook ---
+    app.use('/webhook/paypal', router);
 
     await new Promise<void>((resolve) => {
       httpServer.listen({ port: config.PORT }, config.HOST, resolve);
