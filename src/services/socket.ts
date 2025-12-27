@@ -1,3 +1,4 @@
+import { JwtAuthAccessTokenInstance } from '@helper';
 import http from 'http';
 import { Server } from 'socket.io';
 
@@ -5,13 +6,49 @@ export let io: Server;
 
 export const initSocket = (httpServer: http.Server) => {
   io = new Server(httpServer, {
-    cors: { origin: true, credentials: true },
+    cors: {
+      origin: true,
+      credentials: true,
+    },
   });
 
-  io.on('connection', (socket) => {
-    const userId = socket.handshake.query.userId as string;
-    if (userId) {
-      socket.join(userId);
+  // SOCKET AUTH MIDDLEWARE
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token;
+      if (!token) {
+        return next(new Error('Unauthorized'));
+      }
+
+      const decoded = await JwtAuthAccessTokenInstance.verify(token);
+
+      if (!decoded.payload?.uuid) {
+        return next(new Error('Invalid token'));
+      }
+
+      // attach user info to socket
+      socket.data.user = {
+        userId: decoded.payload.uuid,
+        role: decoded.payload.role,
+        sid: decoded.payload.sid,
+      };
+
+      next();
+    } catch (err) {
+      console.error('[Socket Auth Error]', err);
+      next(new Error('Unauthorized'));
     }
+  });
+
+  // CONNECTION
+  io.on('connection', (socket) => {
+    const userId = socket.data.user.userId;
+
+    // join room = userId (trusted)
+    socket.join(userId);
+    console.log(`[socket] connected`, socket.id);
+    socket.on('disconnect', (reason) => {
+      console.log(`[socket] user disconnected`, reason);
+    });
   });
 };

@@ -27,6 +27,8 @@ export const NGOO_API = {
   payload: async () => {
     const app = express();
 
+    // --- PayPal Webhook ---
+    app.use('/webhook/paypal', express.raw({ type: 'application/json' }), router);
     // --- Middleware ---
     app.use(express.json());
     // protect
@@ -85,6 +87,7 @@ export const NGOO_API = {
       ],
       includeStacktraceInErrorResponses: config.NODE_ENV === 'local',
     });
+
     app.use(
       session({
         genid: () => randomUUID(),
@@ -151,9 +154,6 @@ export const NGOO_API = {
 
     // --- Init Socket ---
     initSocket(httpServer);
-
-    // --- PayPal Webhook ---
-    app.use('/webhook/paypal', router);
 
     await new Promise<void>((resolve) => {
       httpServer.listen({ port: config.PORT }, config.HOST, resolve);
