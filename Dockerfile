@@ -36,7 +36,6 @@ COPY --from=builder /usr/src/app/build ./build
 COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/package.json ./package.json
 COPY --from=builder /usr/src/app/.yarnrc.yml ./
-COPY --from=builder /usr/src/app/.yarn ./.yarn
 
 # If Apollo need runtime schema
 COPY --from=builder /usr/src/app/src/apollo ./src/apollo
