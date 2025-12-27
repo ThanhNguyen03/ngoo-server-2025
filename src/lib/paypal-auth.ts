@@ -30,7 +30,6 @@ export const verifyWebhookSignature = async (req: Request): Promise<boolean> => 
   if (config.NODE_ENV !== 'production') {
     return true;
   }
-
   const accessToken = await getPayPalAccessToken();
 
   const res = await axios.post(

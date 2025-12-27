@@ -7,14 +7,14 @@ import { io } from './socket';
 
 const router = express.Router();
 
-router.post('/webhook/paypal', async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const isValid = await verifyWebhookSignature(req);
     if (!isValid) {
       return res.status(400).send('Invalid webhook signature');
     }
-
-    const event = req.body;
+    const rawBody = req.body as Buffer;
+    const event = JSON.parse(rawBody.toString('utf8'));
     const resource = event.resource;
     const orderId = resource.custom_id;
 
@@ -23,7 +23,6 @@ router.post('/webhook/paypal', async (req, res) => {
       const existedPayment = await PaymentModel.findOne({
         'paypalTransaction.paypalCaptureId': resource.id,
       });
-
       if (existedPayment) {
         io.to(existedPayment.userId).emit('paymentStatus', {
           orderId,
@@ -37,7 +36,6 @@ router.post('/webhook/paypal', async (req, res) => {
       if (!order) {
         throw new Error('Order not found');
       }
-
       const payment = await PaymentModel.findOne({ order: order._id });
       if (!payment) {
         throw new Error('Payment not found');
@@ -48,7 +46,6 @@ router.post('/webhook/paypal', async (req, res) => {
           payment.status = EPaymentStatus.Success;
           order.orderStatus = EOrderStatus.Paid;
           break;
-
         case 'PAYMENT.CAPTURE.DENIED':
           payment.status = EPaymentStatus.Failed;
           order.orderStatus = EOrderStatus.Failed;
@@ -57,12 +54,10 @@ router.post('/webhook/paypal', async (req, res) => {
           payment.status = EPaymentStatus.Cancelled;
           order.orderStatus = EOrderStatus.Cancelled;
           break;
-
         case 'PAYMENT.CAPTURE.PENDING':
           payment.status = EPaymentStatus.Processing;
           order.orderStatus = EOrderStatus.Pending;
           break;
-
         default:
           return res.status(200).send('Event ignored');
       }
@@ -80,7 +75,9 @@ router.post('/webhook/paypal', async (req, res) => {
         orderId,
         paymentId: payment.paymentId,
         status: payment.status,
-      } as TPaymentSocketResponse);
+      });
+
+      console.log('socket send');
     });
 
     res.sendStatus(200);
