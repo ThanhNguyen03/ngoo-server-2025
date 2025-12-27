@@ -8,7 +8,6 @@ RUN corepack enable
 
 # Copy yarn files to cache
 COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
 
 # Install deps (Yarn v4)
 RUN yarn install --immutable
