@@ -1,4 +1,4 @@
-import { JwtAuthAccessTokenInstance } from '@helper';
+import { config, JwtAuthAccessTokenInstance } from '@helper';
 import http from 'http';
 import { Server } from 'socket.io';
 
@@ -7,7 +7,7 @@ export let io: Server;
 export const initSocket = (httpServer: http.Server) => {
   io = new Server(httpServer, {
     cors: {
-      origin: true,
+      origin: [config.FE_ORIGIN_URL],
       credentials: true,
     },
   });

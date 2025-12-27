@@ -55,7 +55,7 @@ export const NGOO_API = {
     // config CORS to allow credentials like cookies to be sent from client to server
     app.use(
       cors({
-        origin: true,
+        origin: [config.FE_ORIGIN_URL],
         credentials: true,
       }),
     );
