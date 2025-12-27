@@ -16,7 +16,7 @@ router.post('/', async (req, res) => {
     const rawBody = req.body as Buffer;
     const event = JSON.parse(rawBody.toString('utf8'));
     const resource = event.resource;
-    const orderId = resource.custom_id;
+    const orderId = resource?.custom_id || resource?.purchase_units?.[0]?.custom_id || resource?.reference_id;
 
     await retryProcessing(async () => {
       // Idempotency
@@ -76,8 +76,6 @@ router.post('/', async (req, res) => {
         paymentId: payment.paymentId,
         status: payment.status,
       });
-
-      console.log('socket send');
     });
 
     res.sendStatus(200);

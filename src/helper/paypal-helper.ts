@@ -64,6 +64,7 @@ export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput):
     intent: CheckoutPaymentIntent.Capture,
     purchaseUnits: [
       {
+        referenceId: orderId,
         amount: {
           currencyCode: 'USD',
           value: totalPrice.toFixed(2),
