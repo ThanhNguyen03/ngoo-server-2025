@@ -55,7 +55,7 @@ export const NGOO_API = {
     // config CORS to allow credentials like cookies to be sent from client to server
     app.use(
       cors({
-        origin: [config.FE_ORIGIN_URL],
+        origin: [config.FE_ALLOWED_URL],
         credentials: true,
       }),
     );
@@ -107,11 +107,9 @@ export const NGOO_API = {
     await server.start();
 
     app.use('/graphql', (req, res, next) => {
-      const ip = req.ip;
-      const allowedHosts = ['127.0.0.1', '::1'];
-
-      if (!ip || !allowedHosts.includes(ip)) {
-        return res.status(403).send('Forbidden');
+      const origin = req.headers.origin;
+      if (!origin || !(config.FE_ALLOWED_URL as string).includes(origin)) {
+        return res.status(403).send('Forbidden 403');
       }
 
       next();
