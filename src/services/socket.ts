@@ -7,7 +7,7 @@ export let io: Server;
 export const initSocket = (httpServer: http.Server) => {
   io = new Server(httpServer, {
     cors: {
-      origin: [config.FE_ORIGIN_URL],
+      origin: [config.FE_ALLOWED_URL],
       credentials: true,
     },
   });

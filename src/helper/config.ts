@@ -21,7 +21,7 @@ const envSchema = Joi.object({
   HOST: Joi.string().required(),
   APP_URL: Joi.string(),
   NODE_ENV: Joi.string().valid('local', 'test', 'prod').required(),
-  FE_ORIGIN_URL: Joi.string().uri().required(),
+  FE_ALLOWED_URL: Joi.string().uri().required(),
 
   // secret
   JWT_SECRET_KEY: Joi.string().required(),
@@ -67,7 +67,7 @@ export const config = {
   HOST: envVars.HOST,
   APP_URL: envVars.APP_URL,
   NODE_ENV: envVars.NODE_ENV,
-  FE_ORIGIN_URL: envVars.FE_ORIGIN_URL,
+  FE_ALLOWED_URL: envVars.FE_ALLOWED_URL,
 
   // secret
   JWT_SECRET_KEY: envVars.JWT_SECRET_KEY,
