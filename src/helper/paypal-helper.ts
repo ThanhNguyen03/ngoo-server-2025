@@ -1,10 +1,11 @@
-import { EPaymentStatus, OrderItemInput } from '@generated/graphql';
+import { EPaymentStatus, OrderItemInput, TUserInfoSnapshot } from '@generated/graphql';
 import { PaymentModel, TItem, TOrder, TPayment } from '@model';
 import { CheckoutPaymentIntent, OrderRequest } from '@paypal/paypal-server-sdk';
 import { ordersController } from '@service';
 import { Document, Types } from 'mongoose';
 
 type TCreatePayPalOrderBodyInput = {
+  userInfo: TUserInfoSnapshot;
   totalPrice: number;
   orders: OrderItemInput[];
   listItemInfo: TItem[];
@@ -45,7 +46,7 @@ type TCreatePayPalOrderBodyInput = {
  * - `customId` allows mapping PayPal → MongoDB later
  */
 export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput): Promise<OrderRequest> => {
-  const { totalPrice, orders, orderId, listItemInfo, cancelUrl, returnUrl } = input;
+  const { userInfo, totalPrice, orders, orderId, listItemInfo, cancelUrl, returnUrl } = input;
 
   const paypalItems = listItemInfo.map((item) => {
     return {
@@ -62,6 +63,9 @@ export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput):
 
   return {
     intent: CheckoutPaymentIntent.Capture,
+    payer: {
+      emailAddress: userInfo.email,
+    },
     purchaseUnits: [
       {
         referenceId: orderId,

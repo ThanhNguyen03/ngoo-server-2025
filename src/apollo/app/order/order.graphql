@@ -15,6 +15,7 @@ type TUserInfoSnapshot {
 }
 
 type TOrderItem {
+  image: String!
   name: String!
   amount: Int!
   price: Float!
@@ -35,7 +36,7 @@ type TOrderResponse {
   orderId: String!
   transactionId: String
   userInfoSnapshot: TUserInfoSnapshot!
-  items: [TOrderItem]!
+  items: [TOrderItem!]!
   totalPrice: Int!
   paymentMethod: EPaymentMethod!
   orderStatus: EOrderStatus!

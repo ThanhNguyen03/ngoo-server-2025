@@ -187,6 +187,7 @@ export const resolverOrder: Resolvers = {
         // Paypal
         if (input.paymentMethod === EPaymentMethod.Paypal) {
           const orderBody = await createPayPalOrderBody({
+            userInfo: userInfoSnapshot,
             totalPrice: totalPrice,
             orders: input.items,
             orderId,

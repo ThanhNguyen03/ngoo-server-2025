@@ -434,6 +434,7 @@ export type TOrderItem = {
   __typename?: 'TOrderItem';
   amount: Scalars['Int']['output'];
   discountPercent?: Maybe<Scalars['Float']['output']>;
+  image: Scalars['String']['output'];
   name: Scalars['String']['output'];
   note?: Maybe<Scalars['String']['output']>;
   price: Scalars['Float']['output'];
@@ -443,7 +444,7 @@ export type TOrderItem = {
 export type TOrderResponse = {
   __typename?: 'TOrderResponse';
   createdAt: Scalars['Timestamp']['output'];
-  items: Array<Maybe<TOrderItem>>;
+  items: Array<TOrderItem>;
   orderId: Scalars['String']['output'];
   orderStatus: EOrderStatus;
   paymentMethod: EPaymentMethod;
@@ -857,6 +858,7 @@ export type TListPaymentUserResponseResolvers<ContextType = TAppContext, ParentT
 export type TOrderItemResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderItem'] = ResolversParentTypes['TOrderItem']> = {
   amount?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
   discountPercent?: Resolver<Maybe<ResolversTypes['Float']>, ParentType, ContextType>;
+  image?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   name?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   note?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   price?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
@@ -865,7 +867,7 @@ export type TOrderItemResolvers<ContextType = TAppContext, ParentType extends Re
 
 export type TOrderResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TOrderResponse'] = ResolversParentTypes['TOrderResponse']> = {
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
-  items?: Resolver<Array<Maybe<ResolversTypes['TOrderItem']>>, ParentType, ContextType>;
+  items?: Resolver<Array<ResolversTypes['TOrderItem']>, ParentType, ContextType>;
   orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   orderStatus?: Resolver<ResolversTypes['EOrderStatus'], ParentType, ContextType>;
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
