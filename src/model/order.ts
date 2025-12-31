@@ -12,6 +12,7 @@ type TUserInfoSnapshot = {
 
 interface IOrderItem {
   item: Types.ObjectId; // ref Item
+  image: string;
   name: string;
   note?: string;
   amount: number;
