@@ -106,15 +106,6 @@ export const NGOO_API = {
 
     await server.start();
 
-    app.use('/graphql', (req, res, next) => {
-      const origin = req.headers.origin;
-      if (!origin || !(config.FE_ALLOWED_URL as string).includes(origin)) {
-        return res.status(403).send('Forbidden 403');
-      }
-
-      next();
-    });
-
     app.use(
       '/graphql',
       expressMiddleware(server, {

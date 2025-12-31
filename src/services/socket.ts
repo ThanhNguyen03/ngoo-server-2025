@@ -48,7 +48,7 @@ export const initSocket = (httpServer: http.Server) => {
     socket.join(userId);
     console.log(`[socket] connected`, socket.id);
     socket.on('disconnect', (reason) => {
-      console.log(`[socket] user disconnected`, reason);
+      console.log(`[socket] user in ${socket.id} disconnected: `, reason);
     });
   });
 };
