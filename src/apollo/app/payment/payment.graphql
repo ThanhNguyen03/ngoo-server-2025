@@ -25,7 +25,7 @@ type TUserPaymentResponse {
   totalPrice: Float!
   status: EPaymentStatus!
   userInfo: TUserInfoSnapshot!
-  items: [TOrderItem]!
+  items: [TOrderItem!]!
   transactionId: String
   createdAt: Timestamp!
   updatedAt: Timestamp!
