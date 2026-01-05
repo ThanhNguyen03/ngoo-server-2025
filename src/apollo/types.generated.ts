@@ -521,7 +521,7 @@ export type TUserInfoSnapshot = {
 export type TUserPaymentResponse = {
   __typename?: 'TUserPaymentResponse';
   createdAt: Scalars['Timestamp']['output'];
-  items: Array<Maybe<TOrderItem>>;
+  items: Array<TOrderItem>;
   orderId: Scalars['String']['output'];
   paymentId: Scalars['String']['output'];
   paymentMethod: EPaymentMethod;
@@ -936,7 +936,7 @@ export type TUserInfoSnapshotResolvers<ContextType = TAppContext, ParentType ext
 
 export type TUserPaymentResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserPaymentResponse'] = ResolversParentTypes['TUserPaymentResponse']> = {
   createdAt?: Resolver<ResolversTypes['Timestamp'], ParentType, ContextType>;
-  items?: Resolver<Array<Maybe<ResolversTypes['TOrderItem']>>, ParentType, ContextType>;
+  items?: Resolver<Array<ResolversTypes['TOrderItem']>, ParentType, ContextType>;
   orderId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paymentId?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   paymentMethod?: Resolver<ResolversTypes['EPaymentMethod'], ParentType, ContextType>;
