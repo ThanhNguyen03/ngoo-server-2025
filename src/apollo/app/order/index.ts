@@ -72,7 +72,6 @@ export const resolverOrder: Resolvers = {
           email: user.email,
           name: user.userInfo.name,
           walletAddress: user.userInfo.walletAddress,
-          role: user.role,
           authMethods: user.authMethods,
           address: user.userInfo.address,
           phoneNumber: user.userInfo.phoneNumber,
@@ -150,7 +149,6 @@ export const resolverOrder: Resolvers = {
           email: user.email,
           name: user.userInfo.name,
           walletAddress: user.userInfo.walletAddress,
-          role: user.role,
           authMethods: user.authMethods,
           address: user.userInfo.address,
           phoneNumber: user.userInfo.phoneNumber,
@@ -199,7 +197,6 @@ export const resolverOrder: Resolvers = {
           if (!result || !result.links || !result.id) {
             throw new Error('Failed to create Paypal order!');
           }
-          transactionId = result.id;
           paypalApproveUrl = result.links.find((l) => l.rel === 'approve')!.href;
         }
 
@@ -215,7 +212,7 @@ export const resolverOrder: Resolvers = {
           [
             {
               orderId,
-              transactionId,
+              transactionId: input.paymentMethod === EPaymentMethod.Cod ? transactionId! : undefined,
               userInfoSnapshot,
               items: input.items,
               totalPrice,
@@ -242,8 +239,8 @@ export const resolverOrder: Resolvers = {
 
         return {
           orderId: newOrder.orderId,
+          transactionId: input.paymentMethod === EPaymentMethod.Cod ? transactionId! : undefined,
           paypalApproveUrl,
-          transactionId,
           createdAt: newOrder.createdAt.getTime(),
           updatedAt: newOrder.updatedAt.getTime(),
         };

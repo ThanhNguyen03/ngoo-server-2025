@@ -246,7 +246,7 @@ export type Query = {
   listPaymentHistory: TListPaymentResponse;
   listUserPaymentHistory: TListPaymentUserResponse;
   paymentUserHistory: TUserPaymentResponse;
-  userInfo: TUserInfo;
+  userInfo: TUserInfoResponse;
 };
 
 
@@ -498,14 +498,13 @@ export type TUserAuth = {
   userUuid: Scalars['String']['output'];
 };
 
-export type TUserInfo = {
-  __typename?: 'TUserInfo';
+export type TUserInfoResponse = {
+  __typename?: 'TUserInfoResponse';
   address?: Maybe<Scalars['String']['output']>;
   authMethods: Array<Maybe<EAuthMethod>>;
   email: Scalars['String']['output'];
   name?: Maybe<Scalars['String']['output']>;
   phoneNumber?: Maybe<Scalars['String']['output']>;
-  role: ERole;
   uuid: Scalars['String']['output'];
   walletAddress?: Maybe<Scalars['String']['output']>;
 };
@@ -670,7 +669,7 @@ export type ResolversTypes = {
   TPaypalPayment: ResolverTypeWrapper<TPaypalPayment>;
   TQueryBy: ResolverTypeWrapper<TQueryBy>;
   TUserAuth: ResolverTypeWrapper<TUserAuth>;
-  TUserInfo: ResolverTypeWrapper<TUserInfo>;
+  TUserInfoResponse: ResolverTypeWrapper<TUserInfoResponse>;
   TUserInfoSnapshot: ResolverTypeWrapper<TUserInfoSnapshot>;
   TUserPaymentResponse: ResolverTypeWrapper<TUserPaymentResponse>;
   Timestamp: ResolverTypeWrapper<Scalars['Timestamp']['output']>;
@@ -715,7 +714,7 @@ export type ResolversParentTypes = {
   TPaypalPayment: TPaypalPayment;
   TQueryBy: TQueryBy;
   TUserAuth: TUserAuth;
-  TUserInfo: TUserInfo;
+  TUserInfoResponse: TUserInfoResponse;
   TUserInfoSnapshot: TUserInfoSnapshot;
   TUserPaymentResponse: TUserPaymentResponse;
   Timestamp: Scalars['Timestamp']['output'];
@@ -758,7 +757,7 @@ export type QueryResolvers<ContextType = TAppContext, ParentType extends Resolve
   listPaymentHistory?: Resolver<ResolversTypes['TListPaymentResponse'], ParentType, ContextType, Partial<QueryListPaymentHistoryArgs>>;
   listUserPaymentHistory?: Resolver<ResolversTypes['TListPaymentUserResponse'], ParentType, ContextType, Partial<QueryListUserPaymentHistoryArgs>>;
   paymentUserHistory?: Resolver<ResolversTypes['TUserPaymentResponse'], ParentType, ContextType, RequireFields<QueryPaymentUserHistoryArgs, 'paymentId'>>;
-  userInfo?: Resolver<ResolversTypes['TUserInfo'], ParentType, ContextType>;
+  userInfo?: Resolver<ResolversTypes['TUserInfoResponse'], ParentType, ContextType>;
 };
 
 export type TAuditDiffResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TAuditDiff'] = ResolversParentTypes['TAuditDiff']> = {
@@ -916,13 +915,12 @@ export type TUserAuthResolvers<ContextType = TAppContext, ParentType extends Res
   userUuid?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
-export type TUserInfoResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserInfo'] = ResolversParentTypes['TUserInfo']> = {
+export type TUserInfoResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserInfoResponse'] = ResolversParentTypes['TUserInfoResponse']> = {
   address?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   authMethods?: Resolver<Array<Maybe<ResolversTypes['EAuthMethod']>>, ParentType, ContextType>;
   email?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   name?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
   phoneNumber?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
-  role?: Resolver<ResolversTypes['ERole'], ParentType, ContextType>;
   uuid?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   walletAddress?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
 };
@@ -974,7 +972,7 @@ export type Resolvers<ContextType = TAppContext> = {
   TPaypalPayment?: TPaypalPaymentResolvers<ContextType>;
   TQueryBy?: TQueryByResolvers<ContextType>;
   TUserAuth?: TUserAuthResolvers<ContextType>;
-  TUserInfo?: TUserInfoResolvers<ContextType>;
+  TUserInfoResponse?: TUserInfoResponseResolvers<ContextType>;
   TUserInfoSnapshot?: TUserInfoSnapshotResolvers<ContextType>;
   TUserPaymentResponse?: TUserPaymentResponseResolvers<ContextType>;
   Timestamp?: GraphQLScalarType;
