@@ -7,7 +7,7 @@ import {
   MutationUserLogoutArgs,
   MutationUserRegisterArgs,
   Resolvers,
-  TUserInfo as TUserInfoResponse,
+  TUserInfoResponse,
 } from '@generated/graphql';
 import {
   authorizedWrapper,
@@ -85,11 +85,10 @@ export const resolverUser: Resolvers = {
       if (userInfoCached && Object.keys(userInfoCached).length > 0) {
         return {
           ...userInfoCached,
-          role,
         };
       }
 
-      const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+      const user = await UserModel.findOne({ uuid: userId, role }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
       if (!user) {
         throw new Error('User not found');
       }
@@ -98,7 +97,6 @@ export const resolverUser: Resolvers = {
         uuid: user.uuid,
         email: user.email,
         name: user.userInfo.name,
-        role,
         authMethods: user.authMethods,
         address: user.userInfo.address,
         phoneNumber: user.userInfo.phoneNumber,
@@ -157,7 +155,6 @@ export const resolverUser: Resolvers = {
         uuid: newUser.uuid,
         email: newUser.email,
         name: newUserInfo.name,
-        role: newUser.role,
         authMethods: newUser.authMethods,
         address: newUserInfo.address,
         phoneNumber: newUserInfo.phoneNumber,
@@ -182,11 +179,11 @@ export const resolverUser: Resolvers = {
         name: '',
         email: '',
         walletAddress: '',
-        role: ERole.User,
         authMethods: [EAuthMethod.Google],
         address: '',
         phoneNumber: '',
       };
+      let role = ERole.User;
 
       if (token) {
         // Verify Google token
@@ -219,9 +216,9 @@ export const resolverUser: Resolvers = {
             uuid: newUser.uuid,
             email: newUser.email,
             name: newUserInfo.name,
-            role: newUser.role,
             authMethods: newUser.authMethods,
           };
+          role = newUser.role;
         } else {
           if (!existingUser.authMethods.includes(EAuthMethod.Google)) {
             existingUser.authMethods.push(EAuthMethod.Google);
@@ -235,12 +232,12 @@ export const resolverUser: Resolvers = {
             uuid: existingUser.uuid,
             email: existingUser.email,
             name: existingUser.userInfo.name,
-            role: existingUser.role,
             authMethods: existingUser.authMethods,
             walletAddress: existingUser.userInfo.walletAddress,
             address: existingUser.userInfo.address,
             phoneNumber: existingUser.userInfo.phoneNumber,
           };
+          role = existingUser.role;
         }
 
         await RedisHelper.account.userInfoSet(user);
@@ -248,7 +245,7 @@ export const resolverUser: Resolvers = {
           name: user.name || '',
           uuid: user.uuid,
           rid,
-          role: user.role,
+          role,
         });
 
         return {
@@ -293,7 +290,6 @@ export const resolverUser: Resolvers = {
           uuid: existingUser.uuid,
           email: existingUser.email,
           name: existingUser.userInfo.name,
-          role: existingUser.role,
           authMethods: existingUser.authMethods,
           address: existingUser.userInfo.address,
           phoneNumber: existingUser.userInfo.phoneNumber,

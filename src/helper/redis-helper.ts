@@ -1,4 +1,4 @@
-import { ERole, TCategory, TItemResponse, TUserInfo } from '@generated/graphql';
+import { ERole, TCategory, TItemResponse, TUserInfoResponse } from '@generated/graphql';
 import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload } from '@helper';
 import { RedisHelperCategory, RedisHelperItem, RedisHelperUser, RedisLockHelper } from '@service';
 import assert from 'assert';
@@ -68,7 +68,7 @@ export const RedisHelper = {
      * @param userId - The unique identifier of the user.
      * @returns The information of current user or null if it's not existed
      */
-    userInfoGet: async (userId: string): Promise<TUserInfo | null> => {
+    userInfoGet: async (userId: string): Promise<TUserInfoResponse | null> => {
       // Note: Redis returns all hash values as strings.
       // Currently, TUserInfo is defined with all fields as strings, so this function works as expected.
       return RedisHelperUser.userInfo(userId).hashGetAll();
@@ -80,7 +80,7 @@ export const RedisHelper = {
      * @param data - The data of user to be saved.
      * @returns The result of the set operation, or null
      */
-    userInfoSet: async (user: TUserInfo): Promise<number | null> => {
+    userInfoSet: async (user: TUserInfoResponse): Promise<number | null> => {
       const safeData = Object.fromEntries(Object.entries(user).map(([k, v]) => [k, v ?? '']));
 
       const result = await RedisHelperUser.userInfo(user.uuid).hashSet(safeData);
