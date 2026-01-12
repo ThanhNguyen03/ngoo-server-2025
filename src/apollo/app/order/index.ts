@@ -6,8 +6,10 @@ import {
   OrderItemInput,
   QueryGetUserOrderArgs,
   Resolvers,
+  TOrderItem,
   TOrderResponse,
   TUserInfoSnapshot,
+  UserInfoSnapshotInput,
 } from '@generated/graphql';
 import {
   adminWrapper,
@@ -48,6 +50,16 @@ const JOI_CREATE_ORDER = Joi.object<MutationCreateOrderArgs>({
         }),
       )
       .required(),
+    userInfo: Joi.object<UserInfoSnapshotInput>({
+      name: Joi.string().max(25).min(8).required(),
+      address: Joi.string().min(8).required(),
+      phoneNumber: Joi.string()
+        .min(8)
+        .max(15)
+        .regex(/^[0-9]{8,15}$/)
+        .required(),
+      email: Joi.string().email().required(),
+    }).required(),
     paymentMethod: Joi.string()
       .valid(...Object.values(EPaymentMethod))
       .required(),
@@ -138,13 +150,13 @@ export const resolverOrder: Resolvers = {
     createOrder: authorizedWrapper(JOI_CREATE_ORDER, async (_root, { input }, context) => {
       const { userId } = context.user;
 
-      let userInfo = await RedisHelper.account.userInfoGet(userId);
+      const userInfo = await RedisHelper.account.userInfoGet(userId);
       if (!userInfo) {
         const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
         if (!user) {
           throw new Error('Authorization Error!');
         }
-        userInfo = {
+        const userInfoResponse = {
           uuid: user.uuid,
           email: user.email,
           name: user.userInfo.name,
@@ -153,10 +165,10 @@ export const resolverOrder: Resolvers = {
           address: user.userInfo.address,
           phoneNumber: user.userInfo.phoneNumber,
         };
-        await RedisHelper.account.userInfoSet(userInfo);
+        await RedisHelper.account.userInfoSet(userInfoResponse);
       }
 
-      if (!userInfo.address || !userInfo.phoneNumber) {
+      if (!input.userInfo.address || !input.userInfo.phoneNumber) {
         throw new Error('Anonymous user info data Error!');
       }
 
@@ -208,13 +220,31 @@ export const resolverOrder: Resolvers = {
           throw new Error('Crypto payment not implemented yet');
         }
 
+        const orderItems: TOrderItem[] = input.items.map((i) => {
+          const itemInfo = dbItems.find((d) => d.itemId === i.itemId)!;
+          const basePrice = itemInfo.discountPercent
+            ? itemInfo.price - (itemInfo.price * itemInfo.discountPercent) / 100
+            : itemInfo.price;
+
+          return {
+            item: itemInfo._id,
+            image: itemInfo.image,
+            name: itemInfo.name,
+            note: i.note,
+            amount: i.amount,
+            price: basePrice,
+            discountPercent: itemInfo.discountPercent,
+            selectedOptions: i.selectedOptions || [],
+          };
+        });
+
         const [newOrder] = await OrderModel.create(
           [
             {
               orderId,
               transactionId: input.paymentMethod === EPaymentMethod.Cod ? transactionId! : undefined,
               userInfoSnapshot,
-              items: input.items,
+              items: orderItems,
               totalPrice,
               orderStatus: EOrderStatus.Created,
               paymentMethod: input.paymentMethod,

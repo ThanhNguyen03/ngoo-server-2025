@@ -19,11 +19,13 @@ router.post('/', async (req, res) => {
     const orderId = resource?.custom_id || resource?.purchase_units?.[0]?.custom_id || resource?.reference_id;
 
     await retryProcessing(async () => {
+      console.log('start webhook');
       // Idempotency
       const existedPayment = await PaymentModel.findOne({
         'paypalTransaction.paypalCaptureId': resource.id,
       });
       if (existedPayment) {
+        console.log('send to socket existedPayment', existedPayment);
         io.to(existedPayment.userId).emit('paymentStatus', {
           orderId,
           paymentId: existedPayment.paymentId,
@@ -59,7 +61,7 @@ router.post('/', async (req, res) => {
           order.orderStatus = EOrderStatus.Pending;
           break;
         default:
-          return res.status(200).send('Event ignored');
+          return;
       }
 
       payment.paypalTransaction = {
@@ -71,6 +73,9 @@ router.post('/', async (req, res) => {
 
       await Promise.all([payment.save(), order.save()]);
 
+      console.log('payment.paypalTransaction', payment.paypalTransaction);
+
+      console.log('send to socket');
       io.to(payment.userId).emit('paymentStatus', {
         orderId,
         paymentId: payment.paymentId,
@@ -79,6 +84,7 @@ router.post('/', async (req, res) => {
     });
 
     res.sendStatus(200);
+    console.log('webhook processed successfully');
   } catch (err) {
     console.error('[PayPal Webhook Error]', err);
     res.sendStatus(500);

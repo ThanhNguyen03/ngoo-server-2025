@@ -1,6 +1,12 @@
 import { EPaymentStatus, OrderItemInput, TUserInfoSnapshot } from '@generated/graphql';
 import { PaymentModel, TItem, TOrder, TPayment } from '@model';
-import { CheckoutPaymentIntent, OrderRequest } from '@paypal/paypal-server-sdk';
+import {
+  CheckoutPaymentIntent,
+  Item,
+  ItemCategory,
+  OrderApplicationContextShippingPreference,
+  OrderRequest,
+} from '@paypal/paypal-server-sdk';
 import { ordersController } from '@service';
 import { Document, Types } from 'mongoose';
 
@@ -48,16 +54,18 @@ type TCreatePayPalOrderBodyInput = {
 export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput): Promise<OrderRequest> => {
   const { userInfo, totalPrice, orders, orderId, listItemInfo, cancelUrl, returnUrl } = input;
 
-  const paypalItems = listItemInfo.map((item) => {
+  const paypalItems: Item[] = listItemInfo.map((item) => {
+    const basePrice = item.discountPercent ? item.price - (item.price * item.discountPercent) / 100 : item.price;
+
     return {
       name: item.name,
+      category: ItemCategory.PhysicalGoods,
       quantity: orders.find((order) => order.itemId === item.itemId)!.amount.toString(),
       unitAmount: {
         currencyCode: 'USD',
-        value: item.price.toFixed(2),
+        value: basePrice.toString(),
       },
       description: item.description || '',
-      imageUrl: item.image,
     };
   });
 
@@ -80,13 +88,15 @@ export const createPayPalOrderBody = async (input: TCreatePayPalOrderBodyInput):
           },
         },
         customId: orderId,
-        invoiceId: `INV-${orderId}`, // must be unique
+        invoiceId: `INV-${orderId.slice(0, 8)}-${Date.now()}`,
+
         items: paypalItems,
       },
     ],
     applicationContext: {
       cancelUrl,
       returnUrl,
+      shippingPreference: OrderApplicationContextShippingPreference.NoShipping,
     },
   };
 };
