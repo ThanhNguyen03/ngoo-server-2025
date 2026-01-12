@@ -15,7 +15,6 @@ import {
   adminWrapper,
   authorizedWrapper,
   calculateOrderItemPrice,
-  createPayPalOrderBody,
   JOI_ID_SCHEMA,
   RedisHelper,
   schemaPagination,
@@ -23,10 +22,10 @@ import {
   TPagination,
 } from '@helper';
 import { ItemModel, OrderModel, PaymentModel, TUserInfo, UserModel } from '@model';
+import { PaypalService } from '@service';
 import { randomBytes, randomUUID } from 'crypto';
 import Joi from 'joi';
 import mongoose from 'mongoose';
-import { ordersController } from 'src/services/paypal';
 import { JOI_ITEM_OPTION } from '../item';
 
 enum EOrderQuery {
@@ -191,12 +190,17 @@ export const resolverOrder: Resolvers = {
 
       const session = await mongoose.startSession();
       session.startTransaction();
+      const paypalService = PaypalService.getInstance();
       try {
         let transactionId: string | undefined;
         let paypalApproveUrl: string | undefined;
         // Paypal
         if (input.paymentMethod === EPaymentMethod.Paypal) {
-          const orderBody = await createPayPalOrderBody({
+          const {
+            result,
+            approvalUrl,
+            paypalOrderId: paypalId,
+          } = await paypalService.createPaypalOrder({
             userInfo: userInfoSnapshot,
             totalPrice: totalPrice,
             orders: input.items,
@@ -205,11 +209,10 @@ export const resolverOrder: Resolvers = {
             returnUrl: input.returnUrl,
             cancelUrl: input.cancelUrl,
           });
-          const { result } = await ordersController.createOrder({ body: orderBody });
-          if (!result || !result.links || !result.id) {
-            throw new Error('Failed to create Paypal order!');
+          if (!approvalUrl) {
+            throw new Error('Failed to get PayPal approval URL!');
           }
-          paypalApproveUrl = result.links.find((l) => l.rel === 'approve')!.href;
+          paypalApproveUrl = approvalUrl;
         }
 
         if (input.paymentMethod === EPaymentMethod.Cod) {

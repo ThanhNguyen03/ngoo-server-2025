@@ -1,15 +1,16 @@
 import { EOrderStatus, EPaymentStatus, TPaymentSocketResponse } from '@generated/graphql';
 import { retryProcessing } from '@helper';
-import { verifyWebhookSignature } from '@lib';
 import { OrderModel, PaymentModel } from '@model';
-import express from 'express';
+import express, { type Request, type Response } from 'express';
+import { PaypalWebhook } from './paypal';
 import { io } from './socket';
 
 const router = express.Router();
+const paypalWebhook = PaypalWebhook.create();
 
-router.post('/', async (req, res) => {
+router.post('/', async (req: Request, res: Response) => {
   try {
-    const isValid = await verifyWebhookSignature(req);
+    const isValid = await paypalWebhook.verifyWebhookSignature(req);
     if (!isValid) {
       return res.status(400).send('Invalid webhook signature');
     }
