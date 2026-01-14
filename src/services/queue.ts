@@ -19,7 +19,7 @@ interface MemoryQueueOptions {
   priorityLevels?: Record<TQueuePriority, number>;
 }
 
-export class MemoryQueue extends EventEmitter {
+export class QueueService extends EventEmitter {
   private queue: Array<{
     id: string;
     event: any;
@@ -50,9 +50,9 @@ export class MemoryQueue extends EventEmitter {
     this.options = {
       maxConcurrent: options.maxConcurrent || 10,
       maxRetries: options.maxRetries || 3,
-      retryDelay: options.retryDelay || 1000,
-      maxRetryDelay: options.maxRetryDelay || 30000,
-      stalledTimeout: options.stalledTimeout || 30000,
+      retryDelay: options.retryDelay || 1000, // 1s
+      maxRetryDelay: options.maxRetryDelay || 30 * 1000, // 30s
+      stalledTimeout: options.stalledTimeout || 30 * 1000, // 30s
       priorityLevels: options.priorityLevels || {
         high: 1,
         normal: 2,
@@ -68,7 +68,15 @@ export class MemoryQueue extends EventEmitter {
       throw new Error('Queue is shutting down');
     }
 
-    const jobId = `paypal-${captureId || orderId}-${Date.now()}`;
+    // Prevent duplicate jobId
+    const baseId = `paypal-${captureId || orderId}`;
+    let jobId = `${baseId}-${Date.now()}`;
+    let counter = 1;
+
+    while (this.has(jobId)) {
+      jobId = `${baseId}-${Date.now()}-${counter}`;
+      counter++;
+    }
     const priorityValue = this.options.priorityLevels[priority];
 
     this.queue.push({
@@ -171,7 +179,6 @@ export class MemoryQueue extends EventEmitter {
   }
 
   // ========== PRIVATE METHODS ==========
-
   private spawnWorker(processor: (job: TQueueJob) => Promise<void>, workerId: number): void {
     const worker = async () => {
       console.log(`[MemoryQueue-W${workerId}] Started`);
@@ -179,10 +186,14 @@ export class MemoryQueue extends EventEmitter {
       while (!this.isShuttingDown) {
         try {
           await this.waitForJob();
-          if (this.isShuttingDown) break;
+          if (this.isShuttingDown) {
+            break;
+          }
 
           const job = this.dequeue();
-          if (!job) continue;
+          if (!job) {
+            continue;
+          }
 
           this.activeWorkers++;
           this.processing.set(job.id, {
@@ -193,22 +204,34 @@ export class MemoryQueue extends EventEmitter {
           try {
             console.log(`[MemoryQueue-W${workerId}] Processing ${job.id}, attempt ${job.attempts + 1}`);
 
-            await processor({
-              id: job.id,
-              event: job.event,
-              orderId: job.orderId,
-              captureId: job.captureId,
-              attempts: job.attempts,
-            });
+            // Add timeout to prevent stuck jobs
+            await Promise.race([
+              processor({
+                id: job.id,
+                event: job.event,
+                orderId: job.orderId,
+                captureId: job.captureId,
+                attempts: job.attempts,
+              }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error(`Job ${job.id} timeout after 30s`)), 30000)),
+            ]);
 
             console.log(`[MemoryQueue-W${workerId}] Completed ${job.id}`);
           } catch (error) {
             console.error(`[MemoryQueue-W${workerId}] Failed ${job.id}:`, error);
 
-            job.attempts++;
+            // Handle timeout differently
+            const isTimeout = error instanceof Error && error.message.includes('timeout');
+            if (isTimeout) {
+              job.attempts = 0; // Reset attempts for timeout
+            } else {
+              job.attempts++;
+            }
+
             if (job.attempts < this.options.maxRetries) {
               const delay = Math.min(this.options.retryDelay * Math.pow(2, job.attempts), this.options.maxRetryDelay);
               this.scheduleRetry(job, delay);
+
               console.log(`[MemoryQueue] Scheduled retry for ${job.id} in ${delay}ms`);
             } else {
               console.error(`[MemoryQueue] Max retries for ${job.id}`);
@@ -282,8 +305,12 @@ export class MemoryQueue extends EventEmitter {
       const aReady = !a.scheduledAt || a.scheduledAt <= Date.now();
       const bReady = !b.scheduledAt || b.scheduledAt <= Date.now();
 
-      if (aReady !== bReady) return aReady ? -1 : 1;
-      if (a.priority !== b.priority) return a.priority - b.priority;
+      if (aReady !== bReady) {
+        return aReady ? -1 : 1;
+      }
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
       return a.addedAt - b.addedAt;
     });
   }
@@ -294,12 +321,3 @@ export class MemoryQueue extends EventEmitter {
     }
   }
 }
-
-// Singleton for PayPal webhooks
-export const paypalMemoryQueue = new MemoryQueue({
-  maxConcurrent: 10,
-  maxRetries: 3,
-  retryDelay: 1000,
-  maxRetryDelay: 30000,
-  stalledTimeout: 60000, // 1 minute
-});

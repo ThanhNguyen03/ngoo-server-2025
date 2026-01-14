@@ -1,12 +1,20 @@
 import { EOrderStatus, EPaymentStatus, TPaymentSocketResponse } from '@generated/graphql';
 import { retryProcessing } from '@helper';
 import { OrderModel, PaymentModel } from '@model';
+import { io, PaypalWebhook, QueueService } from '@service';
 import express, { type Request, type Response } from 'express';
-import { PaypalWebhook } from './paypal';
-import { io } from './socket';
 
 const router = express.Router();
 const paypalWebhook = PaypalWebhook.create();
+
+// Singleton for PayPal webhooks
+export const paypalMemoryQueue = new QueueService({
+  maxConcurrent: 10,
+  maxRetries: 3,
+  retryDelay: 1000,
+  maxRetryDelay: 30000,
+  stalledTimeout: 60000, // 1 minute
+});
 
 router.post('/', async (req: Request, res: Response) => {
   try {
