@@ -196,11 +196,7 @@ export const resolverOrder: Resolvers = {
         let paypalApproveUrl: string | undefined;
         // Paypal
         if (input.paymentMethod === EPaymentMethod.Paypal) {
-          const {
-            result,
-            approvalUrl,
-            paypalOrderId: paypalId,
-          } = await paypalService.createPaypalOrder({
+          const { approvalUrl } = await paypalService.createPaypalOrder({
             userInfo: userInfoSnapshot,
             totalPrice: totalPrice,
             orders: input.items,

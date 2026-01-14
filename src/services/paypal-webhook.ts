@@ -19,14 +19,15 @@ router.post('/', async (req: Request, res: Response) => {
     const resource = event.resource;
     const orderId = resource?.custom_id || resource?.purchase_units?.[0]?.custom_id || resource?.reference_id;
 
+    // send status to prevent unnecessary retry
+    res.sendStatus(200);
+
     await retryProcessing(async () => {
-      console.log('start webhook');
       // Idempotency
       const existedPayment = await PaymentModel.findOne({
         'paypalTransaction.paypalCaptureId': resource.id,
       });
       if (existedPayment) {
-        console.log('send to socket existedPayment', existedPayment);
         io.to(existedPayment.userId).emit('paymentStatus', {
           orderId,
           paymentId: existedPayment.paymentId,
@@ -74,9 +75,6 @@ router.post('/', async (req: Request, res: Response) => {
 
       await Promise.all([payment.save(), order.save()]);
 
-      console.log('payment.paypalTransaction', payment.paypalTransaction);
-
-      console.log('send to socket');
       io.to(payment.userId).emit('paymentStatus', {
         orderId,
         paymentId: payment.paymentId,
