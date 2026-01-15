@@ -22,7 +22,7 @@ import {
   TPagination,
 } from '@helper';
 import { ItemModel, OrderModel, PaymentModel, TUserInfo, UserModel } from '@model';
-import { PaypalService } from '@service';
+import { paypalService } from '@service';
 import { randomBytes, randomUUID } from 'crypto';
 import Joi from 'joi';
 import mongoose from 'mongoose';
@@ -190,7 +190,6 @@ export const resolverOrder: Resolvers = {
 
       const session = await mongoose.startSession();
       session.startTransaction();
-      const paypalService = PaypalService.getInstance();
       try {
         let transactionId: string | undefined;
         let paypalApproveUrl: string | undefined;

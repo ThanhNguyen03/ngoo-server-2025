@@ -10,14 +10,14 @@ export type TQueueJob = {
   attempts: number;
 };
 
-interface MemoryQueueOptions {
+type TQueueOptions = {
   maxConcurrent?: number;
   maxRetries?: number;
   retryDelay?: number;
   maxRetryDelay?: number;
   stalledTimeout?: number;
   priorityLevels?: Record<TQueuePriority, number>;
-}
+};
 
 export class QueueService extends EventEmitter {
   private queue: Array<{
@@ -43,9 +43,9 @@ export class QueueService extends EventEmitter {
   private isShuttingDown = false;
   private pendingTimeouts = new Set<NodeJS.Timeout>();
 
-  private options: Required<MemoryQueueOptions>;
+  private options: Required<TQueueOptions>;
 
-  constructor(options: MemoryQueueOptions = {}) {
+  constructor(options: TQueueOptions = {}) {
     super();
     this.options = {
       maxConcurrent: options.maxConcurrent || 10,
@@ -321,3 +321,12 @@ export class QueueService extends EventEmitter {
     }
   }
 }
+
+// Singleton for PayPal webhooks queue
+export const paypalQueueService = new QueueService({
+  maxConcurrent: 10,
+  maxRetries: 3,
+  retryDelay: 1000,
+  maxRetryDelay: 30 * 1000, // 30s
+  stalledTimeout: 60 * 1000, // 1 minute
+});
