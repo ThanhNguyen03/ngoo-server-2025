@@ -1,12 +1,12 @@
 /* eslint-disable camelcase */
 import { EOrderStatus, EPaymentStatus, TPaymentSocketResponse } from '@generated/graphql';
 import { config, RedisHelper } from '@helper';
-import { OrderModel, PaymentModel, type TOrder, type TPayment } from '@model';
+import { OrderModel, PaymentModel } from '@model';
 import { io, paypalQueueService, paypalService } from '@service';
 import type { AxiosInstance } from 'axios';
 import axios from 'axios';
 import express, { type Request, type Response } from 'express';
-import mongoose, { type HydratedDocument } from 'mongoose';
+import mongoose from 'mongoose';
 
 type TPayPalToken = {
   token: string;
@@ -88,11 +88,12 @@ export class PaypalWebhook {
 
 // Singleton for PayPal webhooks
 const paypalWebhook = PaypalWebhook.create();
-export type TWebhookData = {
-  order: HydratedDocument<TOrder>;
-  payment: HydratedDocument<TPayment>;
+
+export type TWebhookData = TPaymentSocketResponse & {
+  userId: string;
   cachedAt: number;
 };
+
 const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId: string, captureId: string) => {
   const eventType = event.event_type as string;
   const resource = event.resource as any;
@@ -104,152 +105,183 @@ const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId
 
   const alreadyProcessed = await RedisHelper.paypal.webhookProcessKeyGet(idempotencyKey);
   if (alreadyProcessed) {
+    console.log(`[Webhook] Event already processed: ${idempotencyKey}`);
     return;
   }
 
-  try {
-    // Handle CHECKOUT.ORDER.APPROVED event
-    if (eventType === 'CHECKOUT.ORDER.APPROVED') {
-      if (!captureId) {
-        throw new Error('No PayPal Order ID found in webhook');
-      }
-
-      // Capture PayPal order
-      await paypalService.capturePaypalOrder(captureId);
-      // Mark as processed
-      await RedisHelper.paypal.webhookProcessKeySet(
-        idempotencyKey,
-        JSON.stringify({ processedAt: new Date().toISOString() }),
-      );
+  return await RedisHelper.lock.withLock(`order:${systemOrderId}`, 30000, async () => {
+    // Double check idempotency sau khi có lock
+    const doubleCheck = await RedisHelper.paypal.webhookProcessKeyGet(idempotencyKey);
+    if (doubleCheck) {
+      console.log(`[Webhook] Event processed while acquiring lock: ${idempotencyKey}`);
       return;
     }
 
-    // Handle PAYMENT.CAPTURE.* event
-    if (eventType.includes('PAYMENT.CAPTURE')) {
-      // check cache first
-      let order: HydratedDocument<TOrder>;
-      let payment: HydratedDocument<TPayment>;
-      const cachedOrder = await RedisHelper.paypal.paypalOrderGet(systemOrderId);
-      if (cachedOrder && Date.now() - cachedOrder.cachedAt < 5 * 60 * 1000) {
-        // Check if cache is still valid (less than 5 minutes old)
-        order = cachedOrder.order;
-        payment = cachedOrder.payment;
-      } else {
-        const findOrder = await OrderModel.findOne({ orderId: systemOrderId });
-        if (!findOrder) {
-          throw new Error(`Order ${systemOrderId} not found`);
+    try {
+      // Handle CHECKOUT.ORDER.APPROVED event
+      if (eventType === 'CHECKOUT.ORDER.APPROVED') {
+        if (!captureId) {
+          throw new Error('No PayPal Order ID found in webhook');
         }
-        order = findOrder;
 
-        const findPayment = await PaymentModel.findOne({ order: order._id });
-        if (!findPayment) {
-          throw new Error(`Payment for order ${systemOrderId} not found`);
-        }
-        payment = findPayment;
-
-        const result = {
-          orderId: order.orderId,
-          paymentId: payment.paymentId,
-          cachedAt: Date.now(),
-        };
-
-        // Cache for 5 minutes
-        await RedisHelper.paypal.paypalOrderSet(order.orderId, JSON.stringify(result));
-      }
-
-      if (payment.paypalTransaction?.paypalCaptureId === captureId && payment.status !== EPaymentStatus.Processing) {
-        // Still emit socket in case FE missed it
-        io.to(payment.userId).emit('paymentStatus', {
-          orderId: order.orderId,
-          paymentId: payment.paymentId,
-          status: payment.status,
-        } as TPaymentSocketResponse);
-
+        // Capture PayPal order
+        await paypalService.capturePaypalOrder(captureId);
+        // Mark as processed
+        await RedisHelper.paypal.webhookProcessKeySet(
+          idempotencyKey,
+          JSON.stringify({ processedAt: new Date().toISOString() }),
+        );
         return;
       }
 
-      // Start transaction
-      const session = await mongoose.startSession();
-      session.startTransaction();
-      try {
-        let shouldUpdate = false;
-        switch (event.event_type) {
-          case 'PAYMENT.CAPTURE.COMPLETED':
-            payment.status = EPaymentStatus.Success;
-            order.orderStatus = EOrderStatus.Paid;
-            shouldUpdate = true;
-            break;
+      // Handle PAYMENT.CAPTURE.* event
+      if (eventType.includes('PAYMENT.CAPTURE')) {
+        const cachedOrder = await RedisHelper.paypal.paypalStatusGet(systemOrderId);
 
-          case 'PAYMENT.CAPTURE.DENIED':
-            payment.status = EPaymentStatus.Failed;
-            order.orderStatus = EOrderStatus.Failed;
-            shouldUpdate = true;
-            break;
+        // Check if cache is still valid (less than 5 minutes old)
+        if (
+          cachedOrder &&
+          Date.now() - cachedOrder.cachedAt < 5 * 60 * 1000 &&
+          cachedOrder.status !== EPaymentStatus.Processing
+        ) {
+          // Still emit socket in case FE missed it
+          io.to(cachedOrder.userId).emit('paymentStatus', {
+            orderId: cachedOrder.orderId,
+            paymentId: cachedOrder.paymentId,
+            status: cachedOrder.status,
+          });
 
-          case 'PAYMENT.CAPTURE.CANCELLED':
-            payment.status = EPaymentStatus.Cancelled;
-            order.orderStatus = EOrderStatus.Cancelled;
-            shouldUpdate = true;
-            break;
-
-          case 'PAYMENT.CAPTURE.PENDING':
-            payment.status = EPaymentStatus.Processing;
-            order.orderStatus = EOrderStatus.Pending;
-            shouldUpdate = true;
-            break;
-
-          default:
-            await session.abortTransaction();
-            session.endSession();
-            return;
+          return;
         }
 
-        if (shouldUpdate) {
-          // Update payment transaction
-          payment.paypalTransaction = {
-            paypalCaptureId: captureId,
-            paypalPayerEmail: resource.payer?.email_address ?? '',
-            payerId: resource.payer?.payer_id ?? '',
-            rawResponse: event,
-          };
-          payment.updatedAt = new Date();
-          order.updatedAt = new Date();
+        // Query DB only 1 time
+        const order = await OrderModel.findOne({ orderId: systemOrderId });
+        if (!order) {
+          throw new Error(`Order ${systemOrderId} not found`);
+        }
 
-          // Save with transaction
-          await payment.save({ session });
-          await order.save({ session });
+        const payment = await PaymentModel.findOne({ order: order._id });
+        if (!payment) {
+          throw new Error(`Payment for order ${systemOrderId} not found`);
+        }
 
-          await session.commitTransaction();
-          session.endSession();
+        // Additional idempotency check in DB
+        if (payment.paypalTransaction?.paypalCaptureId === captureId && payment.status !== EPaymentStatus.Processing) {
+          // Cache status to idempotency DB
+          await RedisHelper.paypal.paypalStatusSet(
+            systemOrderId,
+            JSON.stringify({
+              status: payment.status,
+              userId: payment.userId,
+              paymentId: payment.paymentId,
+              cachedAt: Date.now(),
+              orderId: order.orderId,
+            }),
+          );
 
-          // Invalidate cache
-          await RedisHelper.paypal.paypalOrderDel(order.orderId);
-
-          // Emit socket cho FE
+          // Emit socket
           io.to(payment.userId).emit('paymentStatus', {
             orderId: order.orderId,
             paymentId: payment.paymentId,
             status: payment.status,
-          } as TPaymentSocketResponse);
+          });
+
+          return;
         }
-      } catch (error) {
-        await session.abortTransaction();
-        session.endSession();
-        throw error;
+
+        // Start transaction
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        try {
+          let shouldUpdate = false;
+          switch (event.event_type) {
+            case 'PAYMENT.CAPTURE.COMPLETED':
+              payment.status = EPaymentStatus.Success;
+              order.orderStatus = EOrderStatus.Paid;
+              shouldUpdate = true;
+              break;
+
+            case 'PAYMENT.CAPTURE.DENIED':
+              payment.status = EPaymentStatus.Failed;
+              order.orderStatus = EOrderStatus.Failed;
+              shouldUpdate = true;
+              break;
+
+            case 'PAYMENT.CAPTURE.CANCELLED':
+              payment.status = EPaymentStatus.Cancelled;
+              order.orderStatus = EOrderStatus.Cancelled;
+              shouldUpdate = true;
+              break;
+
+            case 'PAYMENT.CAPTURE.PENDING':
+              payment.status = EPaymentStatus.Processing;
+              order.orderStatus = EOrderStatus.Pending;
+              shouldUpdate = true;
+              break;
+
+            default:
+              await session.abortTransaction();
+              session.endSession();
+              return;
+          }
+
+          if (shouldUpdate) {
+            // Update payment transaction
+            payment.paypalTransaction = {
+              paypalCaptureId: captureId,
+              paypalPayerEmail: resource.payer?.email_address ?? '',
+              payerId: resource.payer?.payer_id ?? '',
+              rawResponse: event,
+            };
+            payment.updatedAt = new Date();
+            order.updatedAt = new Date();
+
+            // Save with transaction
+            await payment.save({ session });
+            await order.save({ session });
+
+            await session.commitTransaction();
+            session.endSession();
+
+            // Cache new status to idempotency DB
+            await RedisHelper.paypal.paypalStatusSet(
+              systemOrderId,
+              JSON.stringify({
+                status: payment.status,
+                userId: payment.userId,
+                paymentId: payment.paymentId,
+                cachedAt: Date.now(),
+                orderId: order.orderId,
+              }),
+            );
+
+            // Emit socket
+            io.to(payment.userId).emit('paymentStatus', {
+              orderId: order.orderId,
+              paymentId: payment.paymentId,
+              status: payment.status,
+            });
+          }
+        } catch (error) {
+          await session.abortTransaction();
+          session.endSession();
+          throw error;
+        }
+
+        // Mark webhook event as processed
+        await RedisHelper.paypal.webhookProcessKeySet(
+          idempotencyKey,
+          JSON.stringify({
+            processedAt: new Date().toISOString(),
+            status: payment.status,
+          }),
+        );
       }
-      // Mark as processed
-      await RedisHelper.paypal.webhookProcessKeySet(
-        idempotencyKey,
-        JSON.stringify({
-          processedAt: new Date().toISOString(),
-          status: payment.status,
-        }),
-      );
+    } catch (error) {
+      console.error(`[Webhook] Error processing ${eventType} for order ${systemOrderId}:`, error);
+      throw error;
     }
-  } catch (error) {
-    console.error(`[Webhook] Error processing ${eventType} for order ${systemOrderId}:`, error);
-    throw error;
-  }
+  });
 };
 
 // router

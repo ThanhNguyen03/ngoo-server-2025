@@ -283,7 +283,7 @@ export class RedisLock {
     return result === 'OK' ? value : null;
   }
 
-  // Thêm method acquire with retry
+  // acquire with retry
   async acquireWithRetry(
     key: string,
     ttlMs?: number,

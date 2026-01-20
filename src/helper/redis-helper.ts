@@ -216,11 +216,11 @@ export const RedisHelper = {
       );
     },
 
-    paypalOrderGet: async (orderId: string): Promise<TWebhookData | null> => {
+    paypalStatusGet: async (orderId: string): Promise<TWebhookData | null> => {
       return await RedisHelperPaypal.paypalOrder(orderId).hashGetAll();
     },
 
-    paypalOrderSet: async (orderId: string, value: string) => {
+    paypalStatusSet: async (orderId: string, value: string) => {
       const result = await RedisHelperPaypal.paypalOrder(orderId).hashSet(value);
       await RedisHelperPaypal.paypalOrder(orderId).expire(5 * 60); // 5 minutes
       return result;
