@@ -94,6 +94,12 @@ export type TWebhookData = TPaymentSocketResponse & {
   cachedAt: number;
 };
 
+export type TCachePayerInfo = {
+  paypalPayerEmail: string;
+  payerId: string;
+  saveAt: string;
+};
+
 const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId: string, captureId: string) => {
   const eventType = event.event_type as string;
   const resource = event.resource as any;
@@ -123,6 +129,16 @@ const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId
         if (!captureId) {
           throw new Error('No PayPal Order ID found in webhook');
         }
+
+        const paypalPayerEmail = (resource.payer?.email_address ||
+          resource.purchase_units[0].payer.email_address ||
+          '') as string;
+        const payerId = (resource.payer?.payer_id || resource.purchase_units[0].payer.payer_id || '') as string;
+
+        await RedisHelper.paypal.paypalCheckoutSet(
+          systemOrderId,
+          JSON.stringify({ paypalPayerEmail, payerId, saveAt: new Date().toISOString() } as TCachePayerInfo),
+        );
 
         // Capture PayPal order
         await paypalService.capturePaypalOrder(captureId);
@@ -226,11 +242,31 @@ const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId
           }
 
           if (shouldUpdate) {
+            let paypalPayerEmail = (resource.payer?.email_address ||
+              resource.purchase_units[0].payer.email_address) as string;
+            let payerId = (resource.payer?.payer_id || resource.purchase_units[0].payer.payer_id) as string;
+
+            // Try từ cache
+            const cached = await RedisHelper.paypal.paypalCheckoutGet(systemOrderId);
+            if (cached) {
+              paypalPayerEmail = cached.paypalPayerEmail;
+              payerId = cached.payerId;
+            } else {
+              paypalPayerEmail = (resource.payer?.email_address ||
+                resource.purchase_units[0].payer.email_address) as string;
+              payerId = (resource.payer?.payer_id || resource.purchase_units[0].payer.payer_id) as string;
+
+              await RedisHelper.paypal.paypalCheckoutSet(
+                systemOrderId,
+                JSON.stringify({ paypalPayerEmail, payerId, saveAt: new Date().toISOString() } as TCachePayerInfo),
+              );
+            }
+
             // Update payment transaction
             payment.paypalTransaction = {
               paypalCaptureId: captureId,
-              paypalPayerEmail: resource.payer?.email_address ?? '',
-              payerId: resource.payer?.payer_id ?? '',
+              paypalPayerEmail,
+              payerId,
               rawResponse: event,
             };
             payment.updatedAt = new Date();

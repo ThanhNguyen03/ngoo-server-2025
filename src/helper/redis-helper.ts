@@ -3,7 +3,7 @@ import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload } fr
 import { RedisHelperDerive, RedisInstance, RedisLock } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
-import type { TWebhookData } from 'src/services/paypal-webhook';
+import type { TCachePayerInfo, TWebhookData } from 'src/services/paypal-webhook';
 
 // domain helpers
 export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userInfo' | 'walletMessage'>(RedisInstance);
@@ -217,17 +217,23 @@ export const RedisHelper = {
     },
 
     paypalStatusGet: async (orderId: string): Promise<TWebhookData | null> => {
-      return await RedisHelperPaypal.paypalOrder(orderId).hashGetAll();
+      return await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashGetAll();
     },
 
     paypalStatusSet: async (orderId: string, value: string) => {
-      const result = await RedisHelperPaypal.paypalOrder(orderId).hashSet(value);
-      await RedisHelperPaypal.paypalOrder(orderId).expire(5 * 60); // 5 minutes
+      const result = await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashSet(value);
+      await RedisHelperPaypal.paypalOrder(`status:${orderId}`).expire(5 * 60); // 5 minutes
       return result;
     },
 
-    paypalOrderDel: async (orderId: string): Promise<void> => {
-      await RedisHelperPaypal.paypalOrder(orderId).delete();
+    paypalCheckoutGet: async (orderId: string): Promise<TCachePayerInfo | null> => {
+      return await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).hashGetAll();
+    },
+
+    paypalCheckoutSet: async (orderId: string, value: string) => {
+      const result = await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).hashSet(value);
+      await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).expire(10 * 60); // 10 minutes
+      return result;
     },
   },
 };
