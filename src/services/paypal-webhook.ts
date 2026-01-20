@@ -242,24 +242,19 @@ const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId
           }
 
           if (shouldUpdate) {
-            let paypalPayerEmail = (resource.payer?.email_address ||
-              resource.purchase_units[0].payer.email_address) as string;
-            let payerId = (resource.payer?.payer_id || resource.purchase_units[0].payer.payer_id) as string;
+            // Extract payer info với safe optional chaining
+            let paypalPayerEmail =
+              resource.payer?.email_address || resource.purchase_units?.[0]?.payer?.email_address || null;
 
-            // Try từ cache
-            const cached = await RedisHelper.paypal.paypalCheckoutGet(systemOrderId);
-            if (cached) {
-              paypalPayerEmail = cached.paypalPayerEmail;
-              payerId = cached.payerId;
-            } else {
-              paypalPayerEmail = (resource.payer?.email_address ||
-                resource.purchase_units[0].payer.email_address) as string;
-              payerId = (resource.payer?.payer_id || resource.purchase_units[0].payer.payer_id) as string;
+            let payerId = resource.payer?.payer_id || resource.purchase_units?.[0]?.payer?.payer_id || null;
 
-              await RedisHelper.paypal.paypalCheckoutSet(
-                systemOrderId,
-                JSON.stringify({ paypalPayerEmail, payerId, saveAt: new Date().toISOString() } as TCachePayerInfo),
-              );
+            // Try từ cache nếu không có từ resource
+            if (!paypalPayerEmail || !payerId) {
+              const cachedData = await RedisHelper.paypal.paypalCheckoutGet(systemOrderId);
+              if (cachedData) {
+                paypalPayerEmail = cachedData.paypalPayerEmail || paypalPayerEmail;
+                payerId = cachedData.payerId || payerId;
+              }
             }
 
             // Update payment transaction

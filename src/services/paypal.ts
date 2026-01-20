@@ -70,10 +70,15 @@ export class PaypalService {
 
     const paypalItems: Item[] = listItemInfo.map((item) => {
       const basePrice = item.discountPercent ? item.price - (item.price * item.discountPercent) / 100 : item.price;
+
       const orderItem = orders.find((o) => o.itemId === item.itemId);
       if (!orderItem) {
         throw new Error(`Item ${item.itemId} not found in order items`);
       }
+      const extra = orderItem.selectedOptions
+        ? orderItem.selectedOptions.reduce((sum, o) => sum + (o?.extraPrice || 0), 0)
+        : 0;
+      const finalPrice = basePrice + extra;
 
       return {
         name: item.name.substring(0, 127), // PayPal has 127 char limit
@@ -81,7 +86,7 @@ export class PaypalService {
         quantity: orderItem.amount.toString(),
         unitAmount: {
           currencyCode: 'USD',
-          value: basePrice.toFixed(2), // Format to 2 decimal places
+          value: finalPrice.toFixed(2), // Format to 2 decimal places
         },
         description: (item.description || '').substring(0, 127),
       };
