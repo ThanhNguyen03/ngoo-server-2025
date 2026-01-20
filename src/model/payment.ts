@@ -12,7 +12,7 @@ type TPaypalPayment = {
 const PaypalPaymentShema = new Schema<TPaypalPayment>(
   {
     paypalPayerEmail: { type: String, required: true },
-    paypalCaptureId: { type: String, required: true, unique: true },
+    paypalCaptureId: { type: String, sparse: true, unique: true },
     payerId: { type: String, required: true },
     rawResponse: { type: Schema.Types.Mixed },
   },

@@ -1,12 +1,22 @@
 import { ERole, TCategory, TItemResponse, TUserInfoResponse } from '@generated/graphql';
 import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload } from '@helper';
-import { RedisHelperCategory, RedisHelperItem, RedisHelperUser, RedisLockHelper } from '@service';
+import { RedisHelperDerive, RedisInstance, RedisLock } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
+import type { TWebhookData } from 'src/services/paypal-webhook';
+
+// domain helpers
+export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userInfo' | 'walletMessage'>(RedisInstance);
+export const RedisHelperCategory = RedisHelperDerive<'category'>(RedisInstance);
+export const RedisHelperItem = RedisHelperDerive<
+  'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById'
+>(RedisInstance);
+
+export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
+export const RedisLockHelper = new RedisLock(RedisInstance);
 
 const ONE_HOUR_EXPIRATION_TIME_SEC = 60 * 60; // 1h
 export const BEARER_LENGTH = 7; // 7 is length of `Bearer + space`
-
 export const RedisHelper = {
   account: {
     isUserAccessTokenRevoked: async (userId: string, sid: string): Promise<boolean> => {
@@ -191,6 +201,33 @@ export const RedisHelper = {
       } finally {
         await RedisLockHelper.release(key, lockValue);
       }
+    },
+  },
+
+  paypal: {
+    webhookProcessKeyGet: async (key: string) => {
+      return await RedisHelperPaypal.paypalWebhook(key).get();
+    },
+
+    webhookProcessKeySet: async (key: string, value: string) => {
+      return await RedisHelperPaypal.paypalWebhook(key).set(
+        value,
+        7 * 24 * 3600, // 7 days
+      );
+    },
+
+    paypalStatusGet: async (orderId: string): Promise<TWebhookData | null> => {
+      return await RedisHelperPaypal.paypalOrder(orderId).hashGetAll();
+    },
+
+    paypalStatusSet: async (orderId: string, value: string) => {
+      const result = await RedisHelperPaypal.paypalOrder(orderId).hashSet(value);
+      await RedisHelperPaypal.paypalOrder(orderId).expire(5 * 60); // 5 minutes
+      return result;
+    },
+
+    paypalOrderDel: async (orderId: string): Promise<void> => {
+      await RedisHelperPaypal.paypalOrder(orderId).delete();
     },
   },
 };

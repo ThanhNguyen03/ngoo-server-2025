@@ -5,7 +5,6 @@ import { SortOrder } from 'mongoose';
 
 export const USER_ERROR_PREFIX = 'IGNORABLE_ERROR';
 export const JOI_ID_SCHEMA = Joi.string()
-  .alphanum()
   .trim()
   .guid({
     version: ['uuidv4'],
@@ -73,10 +72,19 @@ export const calculateOrderItemPrice = async (listOrder: OrderItemInput[], listI
   return totalPrice;
 };
 
+export const retryProcessing = async <T>(callback: () => Promise<T>, retries = 3, delay = 1500): Promise<T> => {
+  try {
+    return await callback();
+  } catch (err) {
+    if (retries <= 0) throw err;
+    await new Promise((r) => setTimeout(r, delay));
+    return retryProcessing(callback, retries - 1, delay * 2);
+  }
+};
+
 export * from './common';
 export * from './config';
 export * from './file';
 export * from './jwt';
-export * from './paypal-helper';
 export * from './redis-helper';
 export * from './sign-ecdsa-proof';

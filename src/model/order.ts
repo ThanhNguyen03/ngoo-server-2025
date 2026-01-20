@@ -42,6 +42,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
       ref: 'Item',
       required: true,
     },
+    image: { type: String, required: true },
     name: { type: String, required: true },
     amount: {
       type: Number,
