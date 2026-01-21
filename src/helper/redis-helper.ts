@@ -220,7 +220,7 @@ export const RedisHelper = {
       return await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashGetAll();
     },
 
-    paypalStatusSet: async (orderId: string, value: string) => {
+    paypalStatusSet: async (orderId: string, value: TWebhookData) => {
       const result = await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashSet(value);
       await RedisHelperPaypal.paypalOrder(`status:${orderId}`).expire(5 * 60); // 5 minutes
       return result;
@@ -230,7 +230,7 @@ export const RedisHelper = {
       return await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).hashGetAll();
     },
 
-    paypalCheckoutSet: async (orderId: string, value: string) => {
+    paypalCheckoutSet: async (orderId: string, value: TCachePayerInfo) => {
       const result = await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).hashSet(value);
       await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).expire(10 * 60); // 10 minutes
       return result;

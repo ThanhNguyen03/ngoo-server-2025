@@ -135,10 +135,11 @@ const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId
           '') as string;
         const payerId = (resource.payer?.payer_id || resource.purchase_units[0].payer.payer_id || '') as string;
 
-        await RedisHelper.paypal.paypalCheckoutSet(
-          systemOrderId,
-          JSON.stringify({ paypalPayerEmail, payerId, saveAt: new Date().toISOString() } as TCachePayerInfo),
-        );
+        await RedisHelper.paypal.paypalCheckoutSet(systemOrderId, {
+          paypalPayerEmail,
+          payerId,
+          saveAt: new Date().toISOString(),
+        } as TCachePayerInfo);
 
         // Capture PayPal order
         await paypalService.capturePaypalOrder(captureId);
@@ -184,16 +185,13 @@ const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId
         // Additional idempotency check in DB
         if (payment.paypalTransaction?.paypalCaptureId === captureId && payment.status !== EPaymentStatus.Processing) {
           // Cache status to idempotency DB
-          await RedisHelper.paypal.paypalStatusSet(
-            systemOrderId,
-            JSON.stringify({
-              status: payment.status,
-              userId: payment.userId,
-              paymentId: payment.paymentId,
-              cachedAt: Date.now(),
-              orderId: order.orderId,
-            }),
-          );
+          await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+            status: payment.status,
+            userId: payment.userId,
+            paymentId: payment.paymentId,
+            cachedAt: Date.now(),
+            orderId: order.orderId,
+          });
 
           // Emit socket
           io.to(payment.userId).emit('paymentStatus', {
@@ -275,16 +273,13 @@ const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId
             session.endSession();
 
             // Cache new status to idempotency DB
-            await RedisHelper.paypal.paypalStatusSet(
-              systemOrderId,
-              JSON.stringify({
-                status: payment.status,
-                userId: payment.userId,
-                paymentId: payment.paymentId,
-                cachedAt: Date.now(),
-                orderId: order.orderId,
-              }),
-            );
+            await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+              status: payment.status,
+              userId: payment.userId,
+              paymentId: payment.paymentId,
+              cachedAt: Date.now(),
+              orderId: order.orderId,
+            });
 
             // Emit socket
             io.to(payment.userId).emit('paymentStatus', {
