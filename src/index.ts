@@ -1,7 +1,8 @@
 import { config } from '@helper';
-import { RedisInstance } from '@service';
+import { paypalQueueService, RedisInstance } from '@service';
 import mongoose from 'mongoose';
 import { NGOO_API } from './app';
+import { initPaypalWebhookWorker } from './services/paypal-webhook';
 
 const connect = async () => {
   try {
@@ -16,6 +17,7 @@ const connect = async () => {
     console.log('✅ MongoDB connected');
     // start application
     await NGOO_API.payload();
+    initPaypalWebhookWorker();
   } catch (err) {
     console.error('❌ Connection failed:', err);
     if (RedisInstance.redis.isOpen) {
@@ -27,8 +29,14 @@ const connect = async () => {
 
 process.on('SIGINT', async () => {
   console.log('⚠️ Shutting down...');
+  // queue service
+  await paypalQueueService.shutdown(10000);
+
+  // redis
   await RedisInstance.redis.flushAll();
   await RedisInstance.quit();
+
+  // db
   await mongoose.disconnect();
   console.log('✅ Disconnect MongoDB...');
   console.log('✅ Done');
