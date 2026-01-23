@@ -35,3 +35,14 @@ export const LIST_REQUIRED_OPTION: TItemOption[] = [
     name: 'More Ices',
   },
 ];
+
+export const LIST_RETRYABLE_ERROR = [
+  'MongoNetworkError',
+  'MongoTimeoutError',
+  'ECONNABORTED',
+  'ETIMEDOUT',
+  'RedisConnectionError',
+  'ConnectionError',
+  'NetworkError',
+  'TimeoutError',
+];

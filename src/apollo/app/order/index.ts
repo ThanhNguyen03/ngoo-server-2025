@@ -255,6 +255,7 @@ export const resolverOrder: Resolvers = {
           [
             {
               order: newOrder._id,
+              orderId,
               userId,
               status: EPaymentStatus.Processing,
             },

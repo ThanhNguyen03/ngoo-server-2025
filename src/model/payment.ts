@@ -23,6 +23,7 @@ interface IPayment {
   paymentId: string;
   order: Types.ObjectId; // ref Order
   userId: string;
+  orderId: string;
   status: EPaymentStatus;
   txHash?: string; // blockchain Payment hash (for crypto)
   paypalTransaction?: TPaypalPayment; // for Paypal
@@ -38,6 +39,7 @@ const PaymentSchema = new Schema<TPayment>(
     paymentId: { type: String, required: true, unique: true, default: () => randomUUID() },
     order: { type: Schema.Types.ObjectId, ref: 'Order', required: true },
     userId: { type: String, required: true, index: true },
+    orderId: { type: String, required: true, index: true },
     status: {
       type: String,
       enum: ['PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED'],
@@ -56,6 +58,7 @@ const PaymentSchema = new Schema<TPayment>(
 PaymentSchema.index({ order: 1 });
 PaymentSchema.index({ createdAt: -1 });
 PaymentSchema.index({ status: 1, createdAt: -1 });
+PaymentSchema.index({ orderId: 1, createdAt: -1 });
 PaymentSchema.index({ userId: 1, createdAt: -1 });
 PaymentSchema.index({ userId: 1, status: 1, createdAt: -1 });
 

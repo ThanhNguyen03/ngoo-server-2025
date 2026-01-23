@@ -1,12 +1,10 @@
 /* eslint-disable camelcase */
-import { EOrderStatus, EPaymentStatus, TPaymentSocketResponse } from '@generated/graphql';
-import { config, RedisHelper } from '@helper';
-import { OrderModel, PaymentModel } from '@model';
-import { io, paypalQueueService, paypalService } from '@service';
+import { config, processWebhookEvent, type TPayPalWebhookEvent } from '@helper';
+import { paypalQueueService } from '@service';
 import type { AxiosInstance } from 'axios';
 import axios from 'axios';
 import express, { type Request, type Response } from 'express';
-import mongoose from 'mongoose';
+import { LIST_RETRYABLE_ERROR } from 'src/constant';
 
 type TPayPalToken = {
   token: string;
@@ -21,6 +19,7 @@ export class PaypalWebhook {
     this.axiosInstance = axios.create({
       baseURL: config.PAYPAL_BASE_URL,
       timeout: 10000,
+      maxRedirects: 0,
     });
   }
 
@@ -32,24 +31,28 @@ export class PaypalWebhook {
     if (this.accessToken && this.accessToken.exp > Date.now()) {
       return this.accessToken.token;
     }
+    try {
+      const res = await this.axiosInstance.post(`/v1/oauth2/token`, 'grant_type=client_credentials', {
+        auth: {
+          username: config.PAYPAL_CLIENT_ID,
+          password: config.PAYPAL_CLIENT_SECRET,
+        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
 
-    const res = await this.axiosInstance.post(`/v1/oauth2/token`, 'grant_type=client_credentials', {
-      auth: {
-        username: config.PAYPAL_CLIENT_ID,
-        password: config.PAYPAL_CLIENT_SECRET,
-      },
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
+      this.accessToken = {
+        token: res.data.access_token,
+        exp: Date.now() + res.data.expires_in * 1000 - 60_000,
+      };
 
-    this.accessToken = {
-      token: res.data.access_token,
-      exp: Date.now() + res.data.expires_in * 1000 - 60_000,
-    };
-
-    return this.accessToken.token;
+      return this.accessToken.token;
+    } catch (error) {
+      console.error('[PayPalWebhook] Failed to get access token:', error);
+      throw new Error('Failed to authenticate with PayPal');
+    }
   }
 
-  async verifyWebhookSignature(req: Request) {
+  async verifyWebhookSignature(req: Request, event: any) {
     if (config.NODE_ENV !== 'production') {
       return true;
     }
@@ -64,7 +67,7 @@ export class PaypalWebhook {
         transmission_sig: req.headers['paypal-transmission-sig'],
         transmission_time: req.headers['paypal-transmission-time'],
         webhook_id: config.PAYPAL_WEBHOOK_ID,
-        webhook_event: typeof req.body === 'string' ? JSON.parse(req.body) : req.body,
+        webhook_event: event,
       };
 
       const response = await this.axiosInstance.post(
@@ -80,7 +83,7 @@ export class PaypalWebhook {
 
       return response.data.verification_status === 'SUCCESS';
     } catch (error) {
-      console.error('[PayPalService] Webhook verification failed:', error);
+      console.error('[PaypalWebhook] Webhook verification failed:', error);
       return false;
     }
   }
@@ -89,272 +92,78 @@ export class PaypalWebhook {
 // Singleton for PayPal webhooks
 const paypalWebhook = PaypalWebhook.create();
 
-export type TWebhookData = TPaymentSocketResponse & {
-  userId: string;
-  cachedAt: number;
-};
+const verifyPaypalWebhook = async (req: Request, res: Response, next: Function) => {
+  try {
+    const rawBody = req.body as Buffer;
+    const event = JSON.parse(rawBody.toString('utf8')) as TPayPalWebhookEvent;
 
-export type TCachePayerInfo = {
-  paypalPayerEmail: string;
-  payerId: string;
-  saveAt: string;
-};
+    // Validate required fields
+    if (!event.id || !event.event_type || !event.resource) {
+      return res.status(400).send('Invalid webhook payload');
+    }
 
-const processWebhookEvent = async (event: Record<string, unknown>, systemOrderId: string, captureId: string) => {
-  const eventType = event.event_type as string;
-  const resource = event.resource as any;
+    const isValid = await paypalWebhook.verifyWebhookSignature(req, event);
+    if (!isValid) {
+      return res.status(400).send('Invalid webhook signature');
+    }
+    // Store in request object
+    req.webhookEvent = event;
 
-  // Idempotency check using Redis
-  const webhookId = event.id as string;
-  const resourceId = resource?.id;
-  const idempotencyKey = `idempotency:${webhookId}:${resourceId}`;
-
-  const alreadyProcessed = await RedisHelper.paypal.webhookProcessKeyGet(idempotencyKey);
-  if (alreadyProcessed) {
-    console.log(`[Webhook] Event already processed: ${idempotencyKey}`);
-    return;
+    next();
+  } catch (error) {
+    console.error('[Webhook] Verification error:', error);
+    return res.status(400).send('Invalid webhook payload');
   }
-
-  return await RedisHelper.lock.withLock(`order:${systemOrderId}`, 30000, async () => {
-    // Double check idempotency sau khi có lock
-    const doubleCheck = await RedisHelper.paypal.webhookProcessKeyGet(idempotencyKey);
-    if (doubleCheck) {
-      console.log(`[Webhook] Event processed while acquiring lock: ${idempotencyKey}`);
-      return;
-    }
-
-    try {
-      // Handle CHECKOUT.ORDER.APPROVED event
-      if (eventType === 'CHECKOUT.ORDER.APPROVED') {
-        if (!captureId) {
-          throw new Error('No PayPal Order ID found in webhook');
-        }
-
-        const paypalPayerEmail = (resource.payer?.email_address ||
-          resource.purchase_units[0].payer.email_address ||
-          '') as string;
-        const payerId = (resource.payer?.payer_id || resource.purchase_units[0].payer.payer_id || '') as string;
-
-        await RedisHelper.paypal.paypalCheckoutSet(systemOrderId, {
-          paypalPayerEmail,
-          payerId,
-          saveAt: new Date().toISOString(),
-        } as TCachePayerInfo);
-
-        // Capture PayPal order
-        await paypalService.capturePaypalOrder(captureId);
-        // Mark as processed
-        await RedisHelper.paypal.webhookProcessKeySet(
-          idempotencyKey,
-          JSON.stringify({ processedAt: new Date().toISOString() }),
-        );
-        return;
-      }
-
-      // Handle PAYMENT.CAPTURE.* event
-      if (eventType.includes('PAYMENT.CAPTURE')) {
-        const cachedOrder = await RedisHelper.paypal.paypalStatusGet(systemOrderId);
-
-        // Check if cache is still valid (less than 5 minutes old)
-        if (
-          cachedOrder &&
-          Date.now() - cachedOrder.cachedAt < 5 * 60 * 1000 &&
-          cachedOrder.status !== EPaymentStatus.Processing
-        ) {
-          // Still emit socket in case FE missed it
-          io.to(cachedOrder.userId).emit('paymentStatus', {
-            orderId: cachedOrder.orderId,
-            paymentId: cachedOrder.paymentId,
-            status: cachedOrder.status,
-          });
-
-          return;
-        }
-
-        // Query DB only 1 time
-        const order = await OrderModel.findOne({ orderId: systemOrderId });
-        if (!order) {
-          throw new Error(`Order ${systemOrderId} not found`);
-        }
-
-        const payment = await PaymentModel.findOne({ order: order._id });
-        if (!payment) {
-          throw new Error(`Payment for order ${systemOrderId} not found`);
-        }
-
-        // Additional idempotency check in DB
-        if (payment.paypalTransaction?.paypalCaptureId === captureId && payment.status !== EPaymentStatus.Processing) {
-          // Cache status to idempotency DB
-          await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-            status: payment.status,
-            userId: payment.userId,
-            paymentId: payment.paymentId,
-            cachedAt: Date.now(),
-            orderId: order.orderId,
-          });
-
-          // Emit socket
-          io.to(payment.userId).emit('paymentStatus', {
-            orderId: order.orderId,
-            paymentId: payment.paymentId,
-            status: payment.status,
-          });
-
-          return;
-        }
-
-        // Start transaction
-        const session = await mongoose.startSession();
-        session.startTransaction();
-        try {
-          let shouldUpdate = false;
-          switch (event.event_type) {
-            case 'PAYMENT.CAPTURE.COMPLETED':
-              payment.status = EPaymentStatus.Success;
-              order.orderStatus = EOrderStatus.Paid;
-              shouldUpdate = true;
-              break;
-
-            case 'PAYMENT.CAPTURE.DENIED':
-              payment.status = EPaymentStatus.Failed;
-              order.orderStatus = EOrderStatus.Failed;
-              shouldUpdate = true;
-              break;
-
-            case 'PAYMENT.CAPTURE.CANCELLED':
-              payment.status = EPaymentStatus.Cancelled;
-              order.orderStatus = EOrderStatus.Cancelled;
-              shouldUpdate = true;
-              break;
-
-            case 'PAYMENT.CAPTURE.PENDING':
-              payment.status = EPaymentStatus.Processing;
-              order.orderStatus = EOrderStatus.Pending;
-              shouldUpdate = true;
-              break;
-
-            default:
-              await session.abortTransaction();
-              session.endSession();
-              return;
-          }
-
-          if (shouldUpdate) {
-            // Extract payer info với safe optional chaining
-            let paypalPayerEmail =
-              resource.payer?.email_address || resource.purchase_units?.[0]?.payer?.email_address || null;
-
-            let payerId = resource.payer?.payer_id || resource.purchase_units?.[0]?.payer?.payer_id || null;
-
-            // Try từ cache nếu không có từ resource
-            if (!paypalPayerEmail || !payerId) {
-              const cachedData = await RedisHelper.paypal.paypalCheckoutGet(systemOrderId);
-              if (cachedData) {
-                paypalPayerEmail = cachedData.paypalPayerEmail || paypalPayerEmail;
-                payerId = cachedData.payerId || payerId;
-              }
-            }
-
-            // Update payment transaction
-            payment.paypalTransaction = {
-              paypalCaptureId: captureId,
-              paypalPayerEmail,
-              payerId,
-              rawResponse: event,
-            };
-            payment.updatedAt = new Date();
-            order.updatedAt = new Date();
-
-            // Save with transaction
-            await payment.save({ session });
-            await order.save({ session });
-
-            await session.commitTransaction();
-            session.endSession();
-
-            // Cache new status to idempotency DB
-            await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-              status: payment.status,
-              userId: payment.userId,
-              paymentId: payment.paymentId,
-              cachedAt: Date.now(),
-              orderId: order.orderId,
-            });
-
-            // Emit socket
-            io.to(payment.userId).emit('paymentStatus', {
-              orderId: order.orderId,
-              paymentId: payment.paymentId,
-              status: payment.status,
-            });
-          }
-        } catch (error) {
-          await session.abortTransaction();
-          session.endSession();
-          throw error;
-        }
-
-        // Mark webhook event as processed
-        await RedisHelper.paypal.webhookProcessKeySet(
-          idempotencyKey,
-          JSON.stringify({
-            processedAt: new Date().toISOString(),
-            status: payment.status,
-          }),
-        );
-      }
-    } catch (error) {
-      console.error(`[Webhook] Error processing ${eventType} for order ${systemOrderId}:`, error);
-      throw error;
-    }
-  });
 };
 
 // router
 const router = express.Router();
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const isValid = await paypalWebhook.verifyWebhookSignature(req);
-    if (!isValid) {
-      return res.status(400).send('Invalid webhook signature');
-    }
-    const rawBody = req.body as Buffer;
-    const event = JSON.parse(rawBody.toString('utf8'));
-    const resource = event.resource;
+router.post('/', verifyPaypalWebhook, async (req: Request, res: Response) => {
+  const event = req.webhookEvent!;
 
-    // Extract IDs from webhook
-    const systemOrderId = resource?.custom_id || resource?.purchase_units?.[0]?.custom_id;
-    const paypalOrderId = resource?.id; // PayPal Order ID
-    const captureId = resource?.id || resource?.supplementary_data?.related_ids?.capture;
+  try {
+    const resource = event.resource;
+    // Extract order information
+    const systemOrderId = resource.custom_id || resource.purchase_units?.[0]?.custom_id;
 
     if (!systemOrderId) {
-      console.error('[Webhook] No system orderId found in webhook');
-      return res.sendStatus(200); // Still return 200 to prevent retries
+      console.warn('[Webhook] No system orderId found in event:', event.event_type);
+      // Still return 200 to prevent PayPal retries
+      return res.status(200).send('OK');
     }
 
-    // send status to prevent unnecessary retry
-    res.sendStatus(200);
+    // Send immediate response (PayPal expects 200 OK plain text)
+    res.status(200).send('OK');
 
-    const idToUse = event.event_type === 'CHECKOUT.ORDER.APPROVED' ? paypalOrderId : captureId;
+    // Queue for background processing
+    paypalQueueService.add(
+      event,
+      systemOrderId,
+      event.event_type,
+      'high', // Priority
+    );
 
-    if (idToUse) {
-      paypalQueueService.add(
-        event,
-        systemOrderId,
-        idToUse || 'unknown',
-        'high', // High priority for payment webhooks
-      );
-    } else {
-      console.warn(`[Webhook] No ID found for event ${event.event_type}`);
-    }
-  } catch (err) {
-    console.error('[PayPal Webhook Error]', err);
-    res.sendStatus(200);
+    console.log(`[Webhook] Queued ${event.event_type} for order ${systemOrderId}`);
+  } catch (error) {
+    console.error('[Webhook] Route handler error:', error);
+    // Always return 200 to PayPal to prevent retries
+    res.status(200).send('OK');
   }
 });
 
-// Initialize workers once
 let workersInitialized = false;
+const shouldRetry = (error: any): boolean => {
+  const errorName = error.name || '';
+  const errorCode = error.code || '';
+
+  return (
+    LIST_RETRYABLE_ERROR.includes(errorName) ||
+    LIST_RETRYABLE_ERROR.includes(errorCode) ||
+    errorName.includes('Network') ||
+    errorName.includes('Timeout') ||
+    errorCode.includes('ECONN')
+  );
+};
 
 export const initPaypalWebhookWorker = () => {
   if (workersInitialized) {
@@ -362,13 +171,39 @@ export const initPaypalWebhookWorker = () => {
     return;
   }
 
-  paypalQueueService.startWorker(async (job) => {
-    const { event, orderId, captureId } = job;
-    await processWebhookEvent(event, orderId, captureId);
-  }, 10); // 10 concurrent workers
+  paypalQueueService.startWorker(
+    async (job) => {
+      const { event, orderId } = job;
+
+      try {
+        await processWebhookEvent(event, orderId);
+      } catch (error) {
+        console.error(`[Webhook Worker] Failed to process job for order ${orderId}:`, error);
+
+        // Implement retry logic based on error type
+        if (shouldRetry(error)) {
+          console.log(`[Webhook Worker] Will retry job for order ${orderId}`);
+          throw error; // Let queue handle retry
+        }
+
+        // For non-retryable errors, log and continue
+        console.error(`[Webhook Worker] Non-retryable error for order ${orderId}:`, error);
+      }
+    },
+    10, // Number of concurrent workers
+  );
 
   workersInitialized = true;
-  console.log('[Webhook] PayPal queue workers started');
+  console.log('[Webhook] PayPal queue workers started (10 concurrent workers)');
 };
+
+// ==================== HEALTH CHECK ====================
+router.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    workersInitialized,
+    timestamp: new Date().toISOString(),
+  });
+});
 
 export default router;
