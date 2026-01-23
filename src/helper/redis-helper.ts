@@ -1,9 +1,14 @@
 import { ERole, TCategory, TItemResponse, TUserInfoResponse } from '@generated/graphql';
-import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload } from '@helper';
+import {
+  JWT_EXPIRATION_TIME_SEC,
+  JwtAuthAccessTokenInstance,
+  TTokenPayload,
+  type TCachePayerInfo,
+  type TWebhookData,
+} from '@helper';
 import { RedisHelperDerive, RedisInstance, RedisLock } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
-import type { TCachePayerInfo, TWebhookData } from 'src/services/paypal-webhook';
 
 // domain helpers
 export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userInfo' | 'walletMessage'>(RedisInstance);
@@ -237,5 +242,3 @@ export const RedisHelper = {
     },
   },
 };
-
-export default RedisHelper;

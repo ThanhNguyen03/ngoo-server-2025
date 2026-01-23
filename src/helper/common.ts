@@ -1,8 +1,8 @@
 import { ERole } from '@generated/graphql';
+import { RedisHelper } from '@helper';
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
 import { JwtAuthAccessTokenInstance, TAccessTokenPayload } from './jwt.js';
-import RedisHelper from './redis-helper.js';
 
 export enum EUserAuthenticationStatus {
   Guest,

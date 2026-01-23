@@ -1,10 +1,11 @@
 // memory-queue.ts
+import type { TPayPalWebhookEvent } from '@helper';
 import EventEmitter from 'events';
 
 export type TQueuePriority = 'high' | 'normal' | 'low';
 export type TQueueJob = {
   id: string;
-  event: Record<string, unknown>;
+  event: TPayPalWebhookEvent;
   orderId: string;
   captureId: string;
   attempts: number;

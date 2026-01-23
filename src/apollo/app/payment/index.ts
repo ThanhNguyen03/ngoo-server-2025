@@ -75,7 +75,7 @@ export const resolverPayment: Resolvers = {
 
       return {
         paymentId,
-        orderId: paymentHistory.order.orderId,
+        orderId: paymentHistory.orderId,
         paymentMethod: paymentHistory.order.paymentMethod,
         totalPrice: paymentHistory.order.totalPrice,
         status: paymentHistory.status,
@@ -119,7 +119,7 @@ export const resolverPayment: Resolvers = {
       const records: TUserPaymentResponse[] = listPaymentHistory.map((history) => {
         return {
           paymentId: history.paymentId,
-          orderId: history.order.orderId,
+          orderId: history.orderId,
           paymentMethod: history.order.paymentMethod,
           totalPrice: history.order.totalPrice,
           status: history.status,
@@ -152,7 +152,7 @@ export const resolverPayment: Resolvers = {
       const records: TPaymentResponse[] = listPaymentHistory.map((history) => {
         return {
           paymentId: history.paymentId,
-          orderId: history.order.orderId,
+          orderId: history.orderId,
           paymentMethod: history.order.paymentMethod,
           totalPrice: history.order.totalPrice,
           status: history.status,
