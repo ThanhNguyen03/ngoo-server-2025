@@ -30,6 +30,7 @@ interface IPayment {
   codTransactionId?: string; // for COD
   createdAt: Date;
   updatedAt: Date;
+  expiredAt: Date;
 }
 
 export type TPayment = IPayment;
@@ -48,6 +49,11 @@ const PaymentSchema = new Schema<TPayment>(
     txHash: { type: String, trim: true },
     paypalTransaction: { type: PaypalPaymentShema },
     codTransactionId: { type: String, trim: true },
+    expiredAt: {
+      type: Date,
+      required: true,
+      default: () => new Date(Date.now() + 10 * 60 * 1000),
+    },
   },
   {
     timestamps: true,
