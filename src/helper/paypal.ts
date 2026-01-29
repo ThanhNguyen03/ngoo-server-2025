@@ -239,8 +239,6 @@ export const processCheckoutOrderApproved = async (
     throw new Error('No Order has been created');
   }
 
-  console.log('orderData', systemOrderId, orderData);
-
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {

@@ -235,7 +235,6 @@ export const resolverOrder: Resolvers = {
           await RedisHelper.order.limitProcessingDel(userId);
           throw new Error('Failed to get PayPal approval URL!');
         }
-        console.log('resolver', { orderId, userId, userInfoSnapshot, items: orderItems, totalPrice });
 
         await RedisHelper.order.orderSet(orderId, {
           userId,
