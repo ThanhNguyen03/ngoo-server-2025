@@ -1,17 +1,15 @@
-// memory-queue.ts
-import type { TPayPalWebhookEvent } from '@helper';
 import EventEmitter from 'events';
 
 export type TQueuePriority = 'high' | 'normal' | 'low';
-export type TQueueJob = {
+export type TQueueJob<TEvent = Record<string, unknown>> = {
   id: string;
-  event: TPayPalWebhookEvent;
+  event: TEvent;
   orderId: string;
   captureId: string;
   attempts: number;
 };
 
-type TQueueOptions = {
+export type TQueueOptions = {
   maxConcurrent?: number;
   maxRetries?: number;
   retryDelay?: number;
@@ -20,31 +18,30 @@ type TQueueOptions = {
   priorityLevels?: Record<TQueuePriority, number>;
 };
 
-export class QueueService extends EventEmitter {
-  private queue: Array<{
-    id: string;
-    event: any;
-    orderId: string;
-    captureId: string;
-    attempts: number;
-    priority: number;
-    addedAt: number;
-    scheduledAt?: number;
-  }> = [];
+export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter {
+  protected queue: Array<
+    TQueueJob<TEvent> & {
+      priority: number;
+      addedAt: number;
+      scheduledAt?: number;
+      cancelled?: boolean;
+    }
+  > = [];
 
-  private processing = new Map<
+  protected processing = new Map<
     string,
     {
       startedAt: number;
       workerId: number;
+      job: TQueueJob<TEvent>;
     }
   >();
 
-  private activeWorkers = 0;
-  private isShuttingDown = false;
-  private pendingTimeouts = new Set<NodeJS.Timeout>();
+  protected activeWorkers = 0;
+  protected isShuttingDown = false;
+  protected pendingTimeouts = new Set<NodeJS.Timeout>();
 
-  private options: Required<TQueueOptions>;
+  protected options: Required<TQueueOptions>;
 
   constructor(options: TQueueOptions = {}) {
     super();
@@ -64,13 +61,13 @@ export class QueueService extends EventEmitter {
 
   // ========== PUBLIC API ==========
 
-  add(event: Record<string, unknown>, orderId: string, captureId: string, priority: TQueuePriority = 'normal'): string {
+  add(event: TEvent, orderId: string, captureId: string, priority: TQueuePriority = 'normal'): string {
     if (this.isShuttingDown) {
       throw new Error('Queue is shutting down');
     }
 
     // Prevent duplicate jobId
-    const baseId = `paypal-${captureId || orderId}`;
+    const baseId = `webhook-${captureId || orderId}`;
     let jobId = `${baseId}-${Date.now()}`;
     let counter = 1;
 
@@ -88,26 +85,27 @@ export class QueueService extends EventEmitter {
       attempts: 0,
       priority: priorityValue,
       addedAt: Date.now(),
+      cancelled: false,
     });
 
     this.sortQueue();
-    console.log(`[MemoryQueue] Added job ${jobId}, queue size: ${this.queue.length}`);
+    console.log(`[QueueService] Added job ${jobId}, queue size: ${this.queue.length}`);
 
     this.emit('jobAdded');
 
     return jobId;
   }
 
-  startWorker(processor: (job: TQueueJob) => Promise<void>, concurrency?: number): void {
+  startWorker(processor: (job: TQueueJob<TEvent>) => Promise<void>, concurrency?: number): void {
     const workerCount = concurrency || this.options.maxConcurrent;
-    console.log(`[MemoryQueue] Starting ${workerCount} workers`);
+    console.log(`[QueueService] Starting ${workerCount} workers`);
 
     for (let i = 0; i < workerCount; i++) {
       this.spawnWorker(processor, i);
     }
   }
 
-  peek(count: number = 10): TQueueJob[] {
+  peek(count: number = 10): TQueueJob<TEvent>[] {
     return this.queue.slice(0, count).map((job) => ({
       id: job.id,
       event: job.event,
@@ -121,6 +119,7 @@ export class QueueService extends EventEmitter {
     const index = this.queue.findIndex((job) => job.id === jobId);
     if (index !== -1) {
       this.queue.splice(index, 1);
+      console.log(`[QueueService] Removed job ${jobId} from queue`);
       return true;
     }
     return false;
@@ -137,12 +136,14 @@ export class QueueService extends EventEmitter {
     ).length;
 
     const scheduledJobs = this.queue.filter((job) => job.scheduledAt && job.scheduledAt > now).length;
+    const cancelledJobs = this.queue.filter((job) => job.cancelled).length;
 
     return {
       queued: this.queue.length,
       scheduled: scheduledJobs,
       processing: this.processing.size,
       stalled: stalledJobs,
+      cancelled: cancelledJobs,
       activeWorkers: this.activeWorkers,
       pendingTimeouts: this.pendingTimeouts.size,
       isShuttingDown: this.isShuttingDown,
@@ -152,7 +153,7 @@ export class QueueService extends EventEmitter {
   }
 
   async shutdown(timeoutMs: number = 30000): Promise<void> {
-    console.log(`[MemoryQueue] Shutting down, ${this.queue.length} jobs pending`);
+    console.log(`[QueueService] Shutting down, ${this.queue.length} jobs pending`);
     this.isShuttingDown = true;
     this.removeAllListeners();
 
@@ -165,24 +166,24 @@ export class QueueService extends EventEmitter {
     while (this.processing.size > 0) {
       const elapsed = Date.now() - startTime;
       if (elapsed > timeoutMs) {
-        console.warn(`[MemoryQueue] Shutdown timeout, ${this.processing.size} jobs still processing`);
+        console.warn(`[QueueService] Shutdown timeout, ${this.processing.size} jobs still processing`);
         break;
       }
-      console.log(`[MemoryQueue] Waiting for ${this.processing.size} jobs...`);
+      console.log(`[QueueService] Waiting for ${this.processing.size} jobs...`);
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     if (this.queue.length > 0) {
-      console.warn(`[MemoryQueue] ${this.queue.length} jobs abandoned`);
+      console.warn(`[QueueService] ${this.queue.length} jobs abandoned`);
     }
 
-    console.log('[MemoryQueue] Shutdown complete');
+    console.log('[QueueService] Shutdown complete');
   }
 
-  // ========== PRIVATE METHODS ==========
-  private spawnWorker(processor: (job: TQueueJob) => Promise<void>, workerId: number): void {
+  // ========== PROTECTED METHODS (for extension) ==========
+  protected spawnWorker(processor: (job: TQueueJob<TEvent>) => Promise<void>, workerId: number): void {
     const worker = async () => {
-      console.log(`[MemoryQueue-W${workerId}] Started`);
+      console.log(`[QueueService-W${workerId}] Started`);
 
       while (!this.isShuttingDown) {
         try {
@@ -196,14 +197,27 @@ export class QueueService extends EventEmitter {
             continue;
           }
 
+          // Skip if job is cancelled
+          if (job.cancelled) {
+            console.log(`[QueueService-W${workerId}] Skipping cancelled job ${job.id}`);
+            continue;
+          }
+
           this.activeWorkers++;
           this.processing.set(job.id, {
             startedAt: Date.now(),
             workerId,
+            job: {
+              id: job.id,
+              event: job.event,
+              orderId: job.orderId,
+              captureId: job.captureId,
+              attempts: job.attempts,
+            },
           });
 
           try {
-            console.log(`[MemoryQueue-W${workerId}] Processing ${job.id}, attempt ${job.attempts + 1}`);
+            console.log(`[QueueService-W${workerId}] Processing ${job.id}, attempt ${job.attempts + 1}`);
 
             // Add timeout to prevent stuck jobs
             await Promise.race([
@@ -217,9 +231,9 @@ export class QueueService extends EventEmitter {
               new Promise((_, reject) => setTimeout(() => reject(new Error(`Job ${job.id} timeout after 30s`)), 30000)),
             ]);
 
-            console.log(`[MemoryQueue-W${workerId}] Completed ${job.id}`);
+            console.log(`[QueueService-W${workerId}] Completed ${job.id}`);
           } catch (error) {
-            console.error(`[MemoryQueue-W${workerId}] Failed ${job.id}:`, error);
+            console.error(`[QueueService-W${workerId}] Failed ${job.id}:`, error);
 
             // Handle timeout differently
             const isTimeout = error instanceof Error && error.message.includes('timeout');
@@ -233,9 +247,9 @@ export class QueueService extends EventEmitter {
               const delay = Math.min(this.options.retryDelay * Math.pow(2, job.attempts), this.options.maxRetryDelay);
               this.scheduleRetry(job, delay);
 
-              console.log(`[MemoryQueue] Scheduled retry for ${job.id} in ${delay}ms`);
+              console.log(`[QueueService] Scheduled retry for ${job.id} in ${delay}ms`);
             } else {
-              console.error(`[MemoryQueue] Max retries for ${job.id}`);
+              console.error(`[QueueService] Max retries for ${job.id}`);
               this.emit('jobFailed', { job, error });
             }
           } finally {
@@ -244,22 +258,22 @@ export class QueueService extends EventEmitter {
             this.checkAndNotify();
           }
         } catch (error) {
-          console.error(`[MemoryQueue-W${workerId}] Worker error:`, error);
+          console.error(`[QueueService-W${workerId}] Worker error:`, error);
           if (!this.isShuttingDown) {
             await new Promise((resolve) => setTimeout(resolve, 1000));
           }
         }
       }
 
-      console.log(`[MemoryQueue-W${workerId}] Stopped`);
+      console.log(`[QueueService-W${workerId}] Stopped`);
     };
 
     worker().catch((error) => {
-      console.error(`[MemoryQueue-W${workerId}] Fatal error:`, error);
+      console.error(`[QueueService-W${workerId}] Fatal error:`, error);
     });
   }
 
-  private async waitForJob(): Promise<void> {
+  protected async waitForJob(): Promise<void> {
     return new Promise((resolve) => {
       const check = () => {
         if (this.isShuttingDown || (this.queue.length > 0 && this.activeWorkers < this.options.maxConcurrent)) {
@@ -272,13 +286,13 @@ export class QueueService extends EventEmitter {
     });
   }
 
-  private dequeue(): any | null {
+  protected dequeue(): any | null {
     if (this.queue.length === 0) return null;
 
     const now = Date.now();
     for (let i = 0; i < this.queue.length; i++) {
       const job = this.queue[i];
-      if (!job.scheduledAt || job.scheduledAt <= now) {
+      if ((!job.scheduledAt || job.scheduledAt <= now) && !job.cancelled) {
         return this.queue.splice(i, 1)[0];
       }
     }
@@ -286,7 +300,13 @@ export class QueueService extends EventEmitter {
     return null;
   }
 
-  private scheduleRetry(job: any, delay: number): void {
+  protected scheduleRetry(job: any, delay: number): void {
+    // Don't schedule retry if job is cancelled
+    if (job.cancelled) {
+      console.log(`[QueueService] Skipping retry for cancelled job ${job.id}`);
+      return;
+    }
+
     const scheduledAt = Date.now() + delay;
     const retryJob = { ...job, scheduledAt };
 
@@ -301,8 +321,12 @@ export class QueueService extends EventEmitter {
     this.pendingTimeouts.add(timeout);
   }
 
-  private sortQueue(): void {
+  protected sortQueue(): void {
     this.queue.sort((a, b) => {
+      // Skip cancelled jobs
+      if (a.cancelled && !b.cancelled) return 1;
+      if (!a.cancelled && b.cancelled) return -1;
+
       const aReady = !a.scheduledAt || a.scheduledAt <= Date.now();
       const bReady = !b.scheduledAt || b.scheduledAt <= Date.now();
 
@@ -316,18 +340,9 @@ export class QueueService extends EventEmitter {
     });
   }
 
-  private checkAndNotify(): void {
+  protected checkAndNotify(): void {
     if (this.queue.length > 0 && this.activeWorkers < this.options.maxConcurrent) {
       this.emit('jobAdded');
     }
   }
 }
-
-// Singleton for PayPal webhooks queue
-export const paypalQueueService = new QueueService({
-  maxConcurrent: 10,
-  maxRetries: 3,
-  retryDelay: 1000,
-  maxRetryDelay: 30 * 1000, // 30s
-  stalledTimeout: 60 * 1000, // 1 minute
-});

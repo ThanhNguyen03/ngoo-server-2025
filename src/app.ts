@@ -17,7 +17,7 @@ import { initSocket, RedisInstance } from '@service';
 import { RedisStore } from 'connect-redis';
 import { randomUUID } from 'crypto';
 import session from 'express-session';
-import router from './services/paypal-webhook';
+import router from './services/webhook';
 
 const HSTS_HELMET_MAX_AGE_IN_SECONDS = 30 * 24 * 3600; // 30 days
 const COOKIE_SESSION_MAX_AGE_IN_SECONDS = 24 * 3600; // 1 day

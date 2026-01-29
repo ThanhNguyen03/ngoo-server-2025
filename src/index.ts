@@ -2,7 +2,7 @@ import { config } from '@helper';
 import { paypalQueueService, RedisInstance } from '@service';
 import mongoose from 'mongoose';
 import { NGOO_API } from './app';
-import { initPaypalWebhookWorker } from './services/paypal-webhook';
+import { initPaypalWebhookWorker } from './services/webhook';
 
 const connect = async () => {
   try {

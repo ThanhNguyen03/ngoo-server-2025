@@ -75,6 +75,32 @@ class RedisKey {
   async delete() {
     return await this.client.del(this.fullKey());
   }
+
+  //  COUNTER OPERATIONS
+  async incre(): Promise<number> {
+    return await this.client.incr(this.fullKey());
+  }
+
+  async increBy(increment: number): Promise<number> {
+    return await this.client.incrBy(this.fullKey(), increment);
+  }
+
+  async decre(): Promise<number> {
+    return await this.client.decr(this.fullKey());
+  }
+
+  async decreBy(decrement: number): Promise<number> {
+    return await this.client.decrBy(this.fullKey(), decrement);
+  }
+
+  async getNumber(): Promise<number | null> {
+    const value = await this.get();
+    if (value === null) return null;
+
+    const num = Number(value);
+    return isNaN(num) ? null : num;
+  }
+
   // set
   async setAdd(member: string) {
     return await this.client.sAdd(this.fullKey(), member);

@@ -1,8 +1,8 @@
 /* eslint-disable camelcase */
-import { EOrderStatus, EPaymentStatus, type TPaymentSocketResponse } from '@generated/graphql';
-import { PaymentModel, type TOrder, type TPayment } from '@model';
+import { EOrderStatus, EPaymentMethod, EPaymentStatus, type TPaymentSocketResponse } from '@generated/graphql';
+import { OrderModel, PaymentModel, type TOrder } from '@model';
 import { io, paypalService } from '@service';
-import mongoose, { type ClientSession, type HydratedDocument } from 'mongoose';
+import mongoose, { type HydratedDocument } from 'mongoose';
 import { RedisHelper } from './redis-helper';
 
 export type TPayPalPayer = {
@@ -73,19 +73,6 @@ export const getPayerInfo = async (systemOrderId: string, resource: TPayPalResou
     payerId = resource.purchase_units[0].payer.payer_id;
   }
 
-  // Fallback to cache if not found
-  if (!email || !payerId) {
-    try {
-      const cached = await RedisHelper.paypal.paypalCheckoutGet(systemOrderId);
-      if (cached) {
-        email ||= cached.paypalPayerEmail;
-        payerId ||= cached.payerId;
-      }
-    } catch (error) {
-      console.warn(`[Webhook] Failed to get cached payer info for ${systemOrderId}:`, error);
-    }
-  }
-
   return {
     paypalPayerEmail: email,
     payerId,
@@ -124,81 +111,120 @@ export const getStatusFromEventType = (eventType: string) => {
 };
 
 export const processPaymentCaptureEvent = async (
-  payment: HydratedDocument<
-    Omit<TPayment, 'order'> & {
-      order: HydratedDocument<TOrder>;
-    }
-  >,
-  order: HydratedDocument<TOrder>,
-  session: ClientSession,
   eventType: string,
   systemOrderId: string,
   captureId: string,
-  resource: TPayPalResource,
 ): Promise<void> => {
-  // Skip if already processed with same capture ID and not in processing state
-  if (payment.paypalTransaction?.paypalCaptureId === captureId && payment.status !== EPaymentStatus.Processing) {
-    await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-      status: payment.status,
-      userId: payment.userId,
-      paymentId: payment.paymentId,
-      cachedAt: Date.now(),
-      orderId: order.orderId,
-    } as TWebhookData);
+  const session = await mongoose.startSession();
 
-    io.to(payment.userId).emit('paymentStatus', {
-      orderId: order.orderId,
-      paymentId: payment.paymentId,
-      status: payment.status,
-    });
-    return;
-  }
+  await session.withTransaction(async () => {
+    const payment = await PaymentModel.findOne({ orderId: systemOrderId })
+      .populate<{ order: HydratedDocument<TOrder> }>('order')
+      .session(session);
 
-  // Update status based on event type
-  const statusUpdate = getStatusFromEventType(eventType);
-  payment.status = statusUpdate.paymentStatus;
-  order.orderStatus = statusUpdate.orderStatus;
+    if (!payment) {
+      throw new Error(`Payment not found for ${systemOrderId}`);
+    }
 
-  // Get payer info
-  const { paypalPayerEmail, payerId } = await getPayerInfo(systemOrderId, resource);
+    if (!payment.order) {
+      throw new Error(`Order not found for payment ${payment.paymentId}`);
+    }
 
-  // Update payment transaction details
-  payment.paypalTransaction = {
-    paypalCaptureId: captureId,
-    paypalPayerEmail,
-    payerId,
-    rawResponse: resource,
-  };
+    const order = payment.order;
 
-  payment.updatedAt = new Date();
-  order.updatedAt = new Date();
+    // Skip if payment expired
+    if (payment.expiredAt < new Date() && payment.status === EPaymentStatus.Processing) {
+      // Payment expired, mark as failed
+      payment.status = EPaymentStatus.Failed;
+      order.orderStatus = EOrderStatus.Failed;
 
-  // Save both documents
-  await payment.save({ session });
-  await order.save({ session });
+      await payment.save({ session });
+      await order.save({ session });
 
-  // Cache and emit
-  await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-    status: payment.status,
-    userId: payment.userId,
-    paymentId: payment.paymentId,
-    cachedAt: Date.now(),
-    orderId: order.orderId,
-  } as TWebhookData);
+      // Cache và emit expired status
+      await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+        status: payment.status,
+        userId: payment.userId,
+        paymentId: payment.paymentId,
+        cachedAt: Date.now(),
+        orderId: order.orderId,
+      } as TWebhookData);
 
-  io.to(payment.userId).emit('paymentStatus', {
-    orderId: order.orderId,
-    paymentId: payment.paymentId,
-    status: payment.status,
+      io.to(payment.userId).emit('paymentStatus', {
+        orderId: order.orderId,
+        paymentId: payment.paymentId,
+        status: payment.status,
+      });
+
+      console.log(`[Webhook] Payment ${systemOrderId} expired, marked as failed`);
+      return;
+    }
+    // Skip if already processed with same capture ID and not in processing state
+    if (payment.paypalTransaction?.paypalCaptureId === captureId && payment.status !== EPaymentStatus.Processing) {
+      await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+        status: payment.status,
+        userId: payment.userId,
+        paymentId: payment.paymentId,
+        cachedAt: Date.now(),
+        orderId: order.orderId,
+      } as TWebhookData);
+
+      io.to(payment.userId).emit('paymentStatus', {
+        orderId: order.orderId,
+        paymentId: payment.paymentId,
+        status: payment.status,
+      });
+      return;
+    }
+
+    try {
+      // Update status based on event type
+      const statusUpdate = getStatusFromEventType(eventType);
+      payment.status = statusUpdate.paymentStatus;
+      order.orderStatus = statusUpdate.orderStatus;
+
+      payment.updatedAt = new Date();
+      order.updatedAt = new Date();
+
+      // Save both documents
+      await payment.save({ session });
+      await order.save({ session });
+
+      // Cache and emit
+      await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+        status: payment.status,
+        userId: payment.userId,
+        paymentId: payment.paymentId,
+        cachedAt: Date.now(),
+        orderId: order.orderId,
+      } as TWebhookData);
+
+      io.to(payment.userId).emit('paymentStatus', {
+        orderId: order.orderId,
+        paymentId: payment.paymentId,
+        status: payment.status,
+      });
+    } catch (error) {
+      // Cache và emit expired status
+      await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+        status: payment.status,
+        userId: payment.userId,
+        paymentId: payment.paymentId,
+        cachedAt: Date.now(),
+        orderId: order.orderId,
+      } as TWebhookData);
+
+      io.to(payment.userId).emit('paymentStatus', {
+        orderId: order.orderId,
+        paymentId: payment.paymentId,
+        status: payment.status,
+      });
+      throw error;
+    }
   });
 };
 
 export const processCheckoutOrderApproved = async (
-  payment: HydratedDocument<
-    Omit<TPayment, 'order'> & {
-      order: HydratedDocument<TOrder>;
-    }
-  >,
   systemOrderId: string,
   paypalOrderId: string,
   resource: TPayPalResource,
@@ -207,18 +233,57 @@ export const processCheckoutOrderApproved = async (
     throw new Error('No PayPal Order ID found in CHECKOUT.ORDER.APPROVED webhook');
   }
 
-  if (payment.expiredAt < new Date() && payment.status === EPaymentStatus.Processing) {
-    console.log(`[Webhook] Payment ${systemOrderId} expired, skipping capture`);
-    return;
+  const { paypalPayerEmail, payerId } = await getPayerInfo(systemOrderId, resource);
+  const orderData = await RedisHelper.order.orderGet(systemOrderId);
+  if (!orderData) {
+    throw new Error('No Order has been created');
   }
 
-  const { paypalPayerEmail, payerId } = await getPayerInfo(systemOrderId, resource);
+  console.log('orderData', systemOrderId, orderData);
 
-  await RedisHelper.paypal.paypalCheckoutSet(systemOrderId, {
-    paypalPayerEmail,
-    payerId,
-    saveAt: new Date().toISOString(),
-  } as TCachePayerInfo);
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const [newOrder] = await OrderModel.create(
+        [
+          {
+            orderId: systemOrderId,
+            userInfoSnapshot: orderData.userInfoSnapshot,
+            items: orderData.items,
+            totalPrice: orderData.totalPrice,
+            orderStatus: EOrderStatus.Created,
+            paymentMethod: EPaymentMethod.Paypal,
+          },
+        ],
+        { session },
+      );
+
+      await PaymentModel.create(
+        [
+          {
+            order: newOrder._id,
+            orderId: newOrder.orderId,
+            userId: orderData.userId,
+            status: EPaymentStatus.Processing,
+            paypalTransaction: {
+              paypalCaptureId: paypalOrderId,
+              paypalPayerEmail,
+              payerId,
+              rawResponse: resource,
+            },
+          },
+        ],
+        { session },
+      );
+    });
+  } catch (err) {
+    throw err;
+  } finally {
+    session.endSession();
+  }
+
+  await RedisHelper.order.limitProcessingDel(orderData.userId);
+  await RedisHelper.order.orderDel(systemOrderId);
 
   // Capture the PayPal order
   await paypalService.capturePaypalOrder(paypalOrderId);
@@ -265,7 +330,6 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
       return;
     }
 
-    const session = await mongoose.startSession();
     try {
       // Check cache for PAYMENT.CAPTURE events
       if (event_type.includes('PAYMENT.CAPTURE')) {
@@ -284,92 +348,46 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
         }
       }
 
-      await session.withTransaction(async () => {
-        const payment = await PaymentModel.findOne({ orderId: systemOrderId })
-          .populate<{ order: HydratedDocument<TOrder> }>('order')
-          .session(session);
+      if (event_type === 'CHECKOUT.ORDER.APPROVED') {
+        await processCheckoutOrderApproved(systemOrderId, paypalOrderId!, resource);
+      }
 
-        if (!payment) {
-          throw new Error(`Payment not found for ${systemOrderId}`);
-        }
+      // Process based on event type
+      switch (event_type) {
+        case 'PAYMENT.CAPTURE.COMPLETED':
+        case 'PAYMENT.CAPTURE.DENIED':
+        case 'PAYMENT.CAPTURE.CANCELLED':
+        case 'PAYMENT.CAPTURE.PENDING':
+        case 'PAYMENT.CAPTURE.REFUNDED':
+        case 'PAYMENT.CAPTURE.REVERSED':
+          if (!captureId) {
+            throw new Error(`No capture ID found for event ${event_type}`);
+          }
+          await processPaymentCaptureEvent(event_type, systemOrderId, captureId);
+          console.log(`[Webhook] Processed ${event_type} for order ${systemOrderId}`);
+          break;
 
-        if (!payment.order) {
-          throw new Error(`Order not found for payment ${payment.paymentId}`);
-        }
+        case 'CHECKOUT.ORDER.COMPLETED':
+          // Just log for now, payment capture events will handle the actual processing
+          console.log(`[Webhook] Order ${systemOrderId} completed`);
+          break;
 
-        const order = payment.order;
+        default:
+          console.warn(`[Webhook] Unhandled event type: ${event_type}`);
+      }
 
-        // Skip if payment expired
-        if (payment.expiredAt < new Date() && payment.status === EPaymentStatus.Processing) {
-          // Payment expired, mark as failed
-          payment.status = EPaymentStatus.Failed;
-          order.orderStatus = EOrderStatus.Failed;
-
-          await payment.save({ session });
-          await order.save({ session });
-
-          // Cache và emit expired status
-          await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-            status: payment.status,
-            userId: payment.userId,
-            paymentId: payment.paymentId,
-            cachedAt: Date.now(),
-            orderId: order.orderId,
-          } as TWebhookData);
-
-          io.to(payment.userId).emit('paymentStatus', {
-            orderId: order.orderId,
-            paymentId: payment.paymentId,
-            status: payment.status,
-          });
-
-          console.log(`[Webhook] Payment ${systemOrderId} expired, marked as failed`);
-          return;
-        }
-
-        // Process based on event type
-        switch (event_type) {
-          case 'CHECKOUT.ORDER.APPROVED':
-            await processCheckoutOrderApproved(payment, systemOrderId, paypalOrderId!, resource);
-            break;
-
-          case 'PAYMENT.CAPTURE.COMPLETED':
-          case 'PAYMENT.CAPTURE.DENIED':
-          case 'PAYMENT.CAPTURE.CANCELLED':
-          case 'PAYMENT.CAPTURE.PENDING':
-          case 'PAYMENT.CAPTURE.REFUNDED':
-          case 'PAYMENT.CAPTURE.REVERSED':
-            if (!captureId) {
-              throw new Error(`No capture ID found for event ${event_type}`);
-            }
-            await processPaymentCaptureEvent(payment, order, session, event_type, systemOrderId, captureId, resource);
-            console.log(`[Webhook] Processed ${event_type} for order ${systemOrderId}, status: ${payment.status}`);
-            break;
-
-          case 'CHECKOUT.ORDER.COMPLETED':
-            // Just log for now, payment capture events will handle the actual processing
-            console.log(`[Webhook] Order ${systemOrderId} completed`);
-            break;
-
-          default:
-            console.warn(`[Webhook] Unhandled event type: ${event_type}`);
-        }
-
-        // Mark as processed (keep for 24 hours)
-        await RedisHelper.paypal.webhookProcessKeySet(
-          idempotencyKey,
-          JSON.stringify({
-            processedAt: new Date().toISOString(),
-            eventType: event_type,
-            systemOrderId,
-          }),
-        );
-      });
+      // Mark as processed (keep for 24 hours)
+      await RedisHelper.paypal.webhookProcessKeySet(
+        idempotencyKey,
+        JSON.stringify({
+          processedAt: new Date().toISOString(),
+          eventType: event_type,
+          systemOrderId,
+        }),
+      );
     } catch (error) {
       console.error(`[Webhook] Error processing ${event_type} for order ${systemOrderId}:`, error);
       throw error;
-    } finally {
-      await session.endSession();
     }
   });
 };
