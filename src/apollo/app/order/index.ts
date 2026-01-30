@@ -23,7 +23,7 @@ import {
 } from '@helper';
 import { ItemModel, OrderModel, PaymentModel, TUserInfo, UserModel } from '@model';
 import { paypalService } from '@service';
-import { randomBytes, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import Joi from 'joi';
 import mongoose from 'mongoose';
 import { JOI_ITEM_OPTION } from '../item';
@@ -149,26 +149,31 @@ export const resolverOrder: Resolvers = {
     createOrder: authorizedWrapper(JOI_CREATE_ORDER, async (_root, { input }, context) => {
       const { userId } = context.user;
 
-      const userInfo = await RedisHelper.account.userInfoGet(userId);
-      if (!userInfo) {
-        const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
-        if (!user) {
-          throw new Error('Authorization Error!');
+      //  check processing order
+      const processingOrder = await RedisHelper.order.limitProcessingGet(userId);
+
+      if (processingOrder) {
+        if (processingOrder.cacheTime > new Date(Date.now() - 2 * 60 * 1000)) {
+          throw new Error('Previous payment not complete yet');
         }
-        const userInfoResponse = {
-          uuid: user.uuid,
-          email: user.email,
-          name: user.userInfo.name,
-          walletAddress: user.userInfo.walletAddress,
-          authMethods: user.authMethods,
-          address: user.userInfo.address,
-          phoneNumber: user.userInfo.phoneNumber,
-        };
-        await RedisHelper.account.userInfoSet(userInfoResponse);
+
+        if (processingOrder.paymentMethod === EPaymentMethod.Paypal) {
+          await RedisHelper.order.orderDel(processingOrder.orderId);
+          await RedisHelper.order.limitProcessingDel(userId);
+        }
       }
 
-      if (!input.userInfo.address || !input.userInfo.phoneNumber) {
-        throw new Error('Anonymous user info data Error!');
+      if (input.paymentMethod === EPaymentMethod.Cod) {
+        const orderAttempts = await RedisHelper.order.limitAttemptGet(userId);
+        if (orderAttempts >= 5) {
+          throw new Error('Max limit of orders');
+        }
+        await RedisHelper.order.limitAttemptIncrement(userId);
+      }
+
+      if (input.paymentMethod === EPaymentMethod.Crypto) {
+        // TODO
+        throw new Error('Crypto payment not implemented yet');
       }
 
       const userInfoSnapshot: TUserInfoSnapshot = {
@@ -188,96 +193,111 @@ export const resolverOrder: Resolvers = {
       const totalPrice = await calculateOrderItemPrice(input.items, dbItems);
       const orderId = randomUUID();
 
-      const session = await mongoose.startSession();
-      session.startTransaction();
-      try {
-        let transactionId: string | undefined;
-        let paypalApproveUrl: string | undefined;
-        // Paypal
-        if (input.paymentMethod === EPaymentMethod.Paypal) {
-          const { approvalUrl } = await paypalService.createPaypalOrder({
-            userInfo: userInfoSnapshot,
-            totalPrice: totalPrice,
-            orders: input.items,
-            orderId,
-            listItemInfo: dbItems,
-            returnUrl: input.returnUrl,
-            cancelUrl: input.cancelUrl,
-          });
-          if (!approvalUrl) {
-            throw new Error('Failed to get PayPal approval URL!');
-          }
-          paypalApproveUrl = approvalUrl;
-        }
-
-        if (input.paymentMethod === EPaymentMethod.Cod) {
-          transactionId = randomBytes(32).toString('hex');
-        }
-        if (input.paymentMethod === EPaymentMethod.Crypto) {
-          // TODO
-          throw new Error('Crypto payment not implemented yet');
-        }
-
-        const orderItems: TOrderItem[] = input.items.map((i) => {
-          const itemInfo = dbItems.find((d) => d.itemId === i.itemId)!;
-          const basePrice = itemInfo.discountPercent
-            ? itemInfo.price - (itemInfo.price * itemInfo.discountPercent) / 100
-            : itemInfo.price;
-
-          return {
-            item: itemInfo._id,
-            image: itemInfo.image,
-            name: itemInfo.name,
-            note: i.note,
-            amount: i.amount,
-            price: basePrice,
-            discountPercent: itemInfo.discountPercent,
-            selectedOptions: i.selectedOptions || [],
-          };
-        });
-
-        const [newOrder] = await OrderModel.create(
-          [
-            {
-              orderId,
-              transactionId: input.paymentMethod === EPaymentMethod.Cod ? transactionId! : undefined,
-              userInfoSnapshot,
-              items: orderItems,
-              totalPrice,
-              orderStatus: EOrderStatus.Created,
-              paymentMethod: input.paymentMethod,
-            },
-          ],
-          { session },
-        );
-
-        await PaymentModel.create(
-          [
-            {
-              order: newOrder._id,
-              orderId,
-              userId,
-              status: EPaymentStatus.Processing,
-            },
-          ],
-          { session },
-        );
-
-        await session.commitTransaction();
-        session.endSession();
+      const orderItems: TOrderItem[] = input.items.map((i) => {
+        const itemInfo = dbItems.find((d) => d.itemId === i.itemId)!;
+        const basePrice = itemInfo.discountPercent
+          ? itemInfo.price - (itemInfo.price * itemInfo.discountPercent) / 100
+          : itemInfo.price;
 
         return {
-          orderId: newOrder.orderId,
-          transactionId: input.paymentMethod === EPaymentMethod.Cod ? transactionId! : undefined,
-          paypalApproveUrl,
-          createdAt: newOrder.createdAt.getTime(),
-          updatedAt: newOrder.updatedAt.getTime(),
+          item: itemInfo._id,
+          image: itemInfo.image,
+          name: itemInfo.name,
+          note: i.note,
+          amount: i.amount,
+          price: basePrice,
+          discountPercent: itemInfo.discountPercent,
+          selectedOptions: i.selectedOptions || [],
         };
-      } catch (err) {
-        await session.abortTransaction();
-        session.endSession();
-        throw err;
+      });
+
+      let paypalApproveUrl: string | undefined;
+      let transactionId: string | undefined;
+
+      // Paypal
+      if (input.paymentMethod === EPaymentMethod.Paypal) {
+        await RedisHelper.order.limitProcessingSet(userId, {
+          orderId,
+          paymentMethod: EPaymentMethod.Paypal,
+          cacheTime: new Date(),
+        });
+
+        const { approvalUrl } = await paypalService.createPaypalOrder({
+          userInfo: userInfoSnapshot,
+          totalPrice: totalPrice,
+          orders: input.items,
+          orderId,
+          listItemInfo: dbItems,
+          returnUrl: input.returnUrl,
+          cancelUrl: input.cancelUrl,
+        });
+        if (!approvalUrl) {
+          await RedisHelper.order.limitProcessingDel(userId);
+          throw new Error('Failed to get PayPal approval URL!');
+        }
+
+        await RedisHelper.order.orderSet(orderId, {
+          userId,
+          userInfoSnapshot,
+          items: orderItems,
+          totalPrice,
+        });
+        paypalApproveUrl = approvalUrl;
       }
+
+      if (input.paymentMethod === EPaymentMethod.Cod) {
+        await RedisHelper.order.limitProcessingSet(userId, {
+          orderId,
+          paymentMethod: EPaymentMethod.Cod,
+          cacheTime: new Date(),
+        });
+        const session = await mongoose.startSession();
+        try {
+          await session.withTransaction(async () => {
+            const [newOrder] = await OrderModel.create(
+              [
+                {
+                  orderId,
+                  transactionId,
+                  userInfoSnapshot,
+                  items: orderItems,
+                  totalPrice,
+                  orderStatus: EOrderStatus.Created,
+                  paymentMethod: input.paymentMethod,
+                },
+              ],
+              { session },
+            );
+
+            const [payment] = await PaymentModel.create(
+              [
+                {
+                  order: newOrder._id,
+                  orderId,
+                  userId,
+                  status: EPaymentStatus.Processing,
+                },
+              ],
+              { session },
+            );
+            transactionId = payment.paymentId;
+          });
+        } catch (err) {
+          await RedisHelper.order.limitProcessingDel(userId);
+          await session.abortTransaction();
+          throw err;
+        } finally {
+          session.endSession();
+        }
+      }
+
+      return {
+        orderId,
+        paypalApproveUrl: input.paymentMethod === EPaymentMethod.Paypal ? paypalApproveUrl : undefined,
+        transactionId: input.paymentMethod === EPaymentMethod.Cod ? transactionId : undefined,
+        createdAt: new Date().getTime(),
+        updatedAt: new Date().getTime(),
+      };
     }),
   },
 };

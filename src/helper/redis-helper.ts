@@ -1,11 +1,12 @@
-import { ERole, TCategory, TItemResponse, TUserInfoResponse } from '@generated/graphql';
 import {
-  JWT_EXPIRATION_TIME_SEC,
-  JwtAuthAccessTokenInstance,
-  TTokenPayload,
-  type TCachePayerInfo,
-  type TWebhookData,
-} from '@helper';
+  ERole,
+  TCategory,
+  TItemResponse,
+  TUserInfoResponse,
+  type TOrderItem,
+  type TUserInfoSnapshot,
+} from '@generated/graphql';
+import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload, type TWebhookData } from '@helper';
 import { RedisHelperDerive, RedisInstance, RedisLock } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
@@ -16,6 +17,7 @@ export const RedisHelperCategory = RedisHelperDerive<'category'>(RedisInstance);
 export const RedisHelperItem = RedisHelperDerive<
   'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById'
 >(RedisInstance);
+export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'rateLimit'>(RedisInstance);
 
 export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
 export const RedisLockHelper = new RedisLock(RedisInstance);
@@ -194,6 +196,66 @@ export const RedisHelper = {
     },
   },
 
+  order: {
+    orderGet: async (
+      orderId: string,
+    ): Promise<{
+      userId: string;
+      userInfoSnapshot: TUserInfoSnapshot;
+      items: TOrderItem[];
+      totalPrice: number;
+    } | null> => {
+      return await RedisHelperOrder.createOrder(`checkout-${orderId}`).hashGetAll();
+    },
+
+    orderSet: async (
+      orderId: string,
+      value: {
+        userId: string;
+        userInfoSnapshot: TUserInfoSnapshot;
+        items: TOrderItem[];
+        totalPrice: number;
+      },
+    ) => {
+      const result = await RedisHelperOrder.createOrder(`checkout-${orderId}`).hashSet(value);
+      await RedisHelperOrder.createOrder(`checkout-${orderId}`).expire(3 * 60); // 3 minutes
+      return result;
+    },
+
+    orderDel: async (orderId: string) => {
+      return await RedisHelperOrder.createOrder(`checkout-${orderId}`).delete();
+    },
+
+    limitProcessingSet: async (userId: string, value: { orderId: string; paymentMethod: string; cacheTime: Date }) => {
+      await RedisHelperOrder.rateLimit(userId).set(JSON.stringify(value));
+      await RedisHelperOrder.rateLimit(userId).expire(2 * 60); // 2 mins
+    },
+
+    limitProcessingGet: async (
+      userId: string,
+    ): Promise<{ orderId: string; paymentMethod: string; cacheTime: Date } | null> => {
+      const data = await RedisHelperOrder.rateLimit(userId).get();
+      return data ? (JSON.parse(data) as { orderId: string; paymentMethod: string; cacheTime: Date }) : null;
+    },
+
+    limitProcessingDel: async (userId: string) => {
+      await RedisHelperOrder.rateLimit(userId).delete();
+    },
+
+    limitAttemptIncrement: async (userId: string) => {
+      const attempts = await RedisHelperOrder.rateLimit(userId).incre();
+      if (attempts === 1) {
+        await RedisHelperOrder.rateLimit(userId).expire(10 * 60); // Reset after 10 mins
+      }
+      return attempts;
+    },
+
+    limitAttemptGet: async (userId: string) => {
+      const attempts = await RedisHelperOrder.rateLimit(userId).get();
+      return parseInt(attempts || '0');
+    },
+  },
+
   lock: {
     withLock: async <T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> => {
       const lockValue = await RedisLockHelper.acquire(key, ttl);
@@ -206,6 +268,33 @@ export const RedisHelper = {
       } finally {
         await RedisLockHelper.release(key, lockValue);
       }
+    },
+
+    withRetryLock: async <T>(
+      key: string,
+      ttl: number,
+      fn: () => Promise<T>,
+      options?: { maxRetries?: number; retryDelay?: number },
+    ): Promise<T> => {
+      const maxRetries = options?.maxRetries || 3;
+      const retryDelay = options?.retryDelay || 100;
+
+      for (let i = 0; i < maxRetries; i++) {
+        const lockValue = await RedisLockHelper.acquire(key, ttl);
+        if (lockValue) {
+          try {
+            return await fn();
+          } finally {
+            await RedisLockHelper.release(key, lockValue);
+          }
+        }
+
+        if (i < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        }
+      }
+
+      throw new Error(`Failed to acquire lock after ${maxRetries} attempts`);
     },
   },
 
@@ -228,16 +317,6 @@ export const RedisHelper = {
     paypalStatusSet: async (orderId: string, value: TWebhookData) => {
       const result = await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashSet(value);
       await RedisHelperPaypal.paypalOrder(`status:${orderId}`).expire(5 * 60); // 5 minutes
-      return result;
-    },
-
-    paypalCheckoutGet: async (orderId: string): Promise<TCachePayerInfo | null> => {
-      return await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).hashGetAll();
-    },
-
-    paypalCheckoutSet: async (orderId: string, value: TCachePayerInfo) => {
-      const result = await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).hashSet(value);
-      await RedisHelperPaypal.paypalOrder(`payer:${orderId}`).expire(10 * 60); // 10 minutes
       return result;
     },
   },
