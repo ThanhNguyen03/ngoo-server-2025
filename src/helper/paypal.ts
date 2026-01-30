@@ -316,11 +316,11 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
   // Create lock key
   const lockKey =
     event_type === 'CHECKOUT.ORDER.APPROVED'
-      ? `order:${systemOrderId}:${event_type}:${paypalOrderId}`
-      : `order:${systemOrderId}:${event_type}:${captureId}`;
+      ? `order:${systemOrderId}:${event_type}:${paypalOrderId}:${webhookId}`
+      : `order:${systemOrderId}:${event_type}:${captureId}:${webhookId}`;
 
   // Acquire lock to prevent concurrent processing
-  return await RedisHelper.lock.withLock(lockKey, 30_000, async () => {
+  return await RedisHelper.lock.withLock(lockKey, 60_000, async () => {
     // Double-check after acquiring lock
     const doubleCheck = await RedisHelper.paypal.webhookProcessKeyGet(idempotencyKey);
     if (doubleCheck) {

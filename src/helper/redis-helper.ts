@@ -269,6 +269,33 @@ export const RedisHelper = {
         await RedisLockHelper.release(key, lockValue);
       }
     },
+
+    withRetryLock: async <T>(
+      key: string,
+      ttl: number,
+      fn: () => Promise<T>,
+      options?: { maxRetries?: number; retryDelay?: number },
+    ): Promise<T> => {
+      const maxRetries = options?.maxRetries || 3;
+      const retryDelay = options?.retryDelay || 100;
+
+      for (let i = 0; i < maxRetries; i++) {
+        const lockValue = await RedisLockHelper.acquire(key, ttl);
+        if (lockValue) {
+          try {
+            return await fn();
+          } finally {
+            await RedisLockHelper.release(key, lockValue);
+          }
+        }
+
+        if (i < maxRetries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
+        }
+      }
+
+      throw new Error(`Failed to acquire lock after ${maxRetries} attempts`);
+    },
   },
 
   paypal: {
