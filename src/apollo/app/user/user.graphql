@@ -30,6 +30,12 @@ type TConnectCryptoWalletResponse {
   walletAddress: String!
 }
 
+input TUserInfoInput {
+  name: String
+  phoneNumber: String
+  address: String
+}
+
 type Query {
   userInfo: TUserInfoResponse!
   cryptoWalletWithNone: String!
@@ -41,4 +47,6 @@ type Mutation {
   userLogin(token: String, email: String, password: String): TUserAuth!
   userConnectCryptoWallet(signature: String!, address: String!): TConnectCryptoWalletResponse!
   userLogout(logoutEverywhere: Boolean): Boolean!
+
+  userUpdateInfo(userInfo: TUserInfoInput!): TUserInfoResponse!
 }

@@ -142,6 +142,7 @@ export type Mutation = {
   userLogin: TUserAuth;
   userLogout: Scalars['Boolean']['output'];
   userRegister: TUserAuth;
+  userUpdateInfo: TUserInfoResponse;
 };
 
 
@@ -216,6 +217,11 @@ export type MutationUserLogoutArgs = {
 export type MutationUserRegisterArgs = {
   email: Scalars['String']['input'];
   password: Scalars['String']['input'];
+};
+
+
+export type MutationUserUpdateInfoArgs = {
+  userInfo: TUserInfoInput;
 };
 
 export type OrderItemInput = {
@@ -498,6 +504,12 @@ export type TUserAuth = {
   userUuid: Scalars['String']['output'];
 };
 
+export type TUserInfoInput = {
+  address?: InputMaybe<Scalars['String']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  phoneNumber?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type TUserInfoResponse = {
   __typename?: 'TUserInfoResponse';
   address?: Maybe<Scalars['String']['output']>;
@@ -669,6 +681,7 @@ export type ResolversTypes = {
   TPaypalPayment: ResolverTypeWrapper<TPaypalPayment>;
   TQueryBy: ResolverTypeWrapper<TQueryBy>;
   TUserAuth: ResolverTypeWrapper<TUserAuth>;
+  TUserInfoInput: TUserInfoInput;
   TUserInfoResponse: ResolverTypeWrapper<TUserInfoResponse>;
   TUserInfoSnapshot: ResolverTypeWrapper<TUserInfoSnapshot>;
   TUserPaymentResponse: ResolverTypeWrapper<TUserPaymentResponse>;
@@ -714,6 +727,7 @@ export type ResolversParentTypes = {
   TPaypalPayment: TPaypalPayment;
   TQueryBy: TQueryBy;
   TUserAuth: TUserAuth;
+  TUserInfoInput: TUserInfoInput;
   TUserInfoResponse: TUserInfoResponse;
   TUserInfoSnapshot: TUserInfoSnapshot;
   TUserPaymentResponse: TUserPaymentResponse;
@@ -737,6 +751,7 @@ export type MutationResolvers<ContextType = TAppContext, ParentType extends Reso
   userLogin?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, Partial<MutationUserLoginArgs>>;
   userLogout?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, Partial<MutationUserLogoutArgs>>;
   userRegister?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationUserRegisterArgs, 'email' | 'password'>>;
+  userUpdateInfo?: Resolver<ResolversTypes['TUserInfoResponse'], ParentType, ContextType, RequireFields<MutationUserUpdateInfoArgs, 'userInfo'>>;
 };
 
 export interface ObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTypes['Object'], any> {

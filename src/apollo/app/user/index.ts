@@ -8,6 +8,7 @@ import {
   MutationUserRegisterArgs,
   Resolvers,
   TUserInfoResponse,
+  type MutationUserUpdateInfoArgs,
 } from '@generated/graphql';
 import {
   authorizedWrapper,
@@ -25,6 +26,7 @@ import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
 import { isHexString } from 'ethers';
 import Joi from 'joi';
+import type { HydratedDocument } from 'mongoose';
 
 // const AUTH_CODE_LENGTH = 32;
 // dsaChallenge is a hex string with 132 characters long = 65 * 2 + 2 (2 is for prefix `0x`)
@@ -74,6 +76,28 @@ const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalle
       throw new Error('Signature invalid');
     }),
   address: JOI_ERC55_ADDRESS.required(),
+});
+
+const JOI_USER_UPDATE_INFO = Joi.object<MutationUserUpdateInfoArgs>({
+  userInfo: Joi.object({
+    name: Joi.string().min(8).max(25).messages({
+      'string.min': 'Name must be at least 8 characters',
+      'string.max': 'Name must not exceed 25 characters',
+    }),
+    phoneNumber: Joi.string()
+      .trim()
+      .pattern(/^[0-9]/)
+      .min(8)
+      .max(15)
+      .messages({
+        'string.min': 'Phone number must be at least 8 characters',
+        'string.max': 'Phone number must not exceed 15 characters',
+        'string.pattern.base': 'Phone number must contain only number',
+      }),
+    address: Joi.string().trim().min(8).messages({
+      'string.min': 'Address must be at least 8 characters',
+    }),
+  }),
 });
 
 export const resolverUser: Resolvers = {
@@ -398,5 +422,39 @@ export const resolverUser: Resolvers = {
     //     walletAddress: recoveredAddress,
     //   };
     // }),
+
+    userUpdateInfo: authorizedWrapper(JOI_USER_UPDATE_INFO, async (_root, _args, context) => {
+      const { userId, role } = context.user;
+      const { name, phoneNumber, address } = _args.userInfo;
+
+      const user = await UserModel.findOne({ uuid: userId, role })
+        .populate<{ userInfo: HydratedDocument<TUserInfo> }>('userInfo')
+        .exec();
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const userInfo = user.userInfo;
+
+      userInfo.name = name || '';
+      userInfo.phoneNumber = phoneNumber || '';
+      userInfo.address = address || '';
+
+      await userInfo.save();
+
+      const info: TUserInfoResponse = {
+        uuid: user.uuid,
+        email: user.email,
+        name: name ?? userInfo.name,
+        authMethods: user.authMethods,
+        address: address ?? userInfo.address,
+        phoneNumber: phoneNumber ?? userInfo.phoneNumber,
+      };
+
+      // Cache user info
+      await RedisHelper.account.userInfoSet(info);
+
+      return info;
+    }),
   },
 };
