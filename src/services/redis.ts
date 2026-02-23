@@ -194,7 +194,7 @@ export class RedisClient {
             console.error('[Redis] Max reconnection attempts reached');
             return new Error('Max reconnection attempts reached');
           }
-          // Exponential backoff với max 30s
+          // Exponential backoff with maximum 30s
           return Math.min(retries * 1000, backoffTime);
         },
       },
@@ -271,72 +271,30 @@ export class RedisClient {
       await this._client.quit();
     }
   }
-}
 
-export class RedisLock {
-  private defaultTtl = 30 * 1000; // 30s
-  private retryDelay = 100; // 100ms
-  private maxRetries = 30; // 30 * 100ms = 3s total
-
-  constructor(
-    private redisClient: RedisClient,
-    private options?: { defaultTtl?: number; retryDelay?: number; maxRetries?: number },
-  ) {
-    if (options?.defaultTtl) {
-      this.defaultTtl = options.defaultTtl;
-    }
-    if (options?.retryDelay) {
-      this.retryDelay = options.retryDelay;
-    }
-    if (options?.maxRetries) {
-      this.maxRetries = options.maxRetries;
-    }
+  // Eval helper
+  async eval(script: string, keys: string[], args: string[]): Promise<any> {
+    return await this._client.sendCommand(['EVAL', script, keys.length.toString(), ...keys, ...args]);
   }
 
-  private fullKey(key: string) {
-    return `${this.redisClient.prefixValue}:lock:${key}`;
-  }
-
-  async acquire(key: string, ttlMs?: number): Promise<string | null> {
+  // lock helper
+  async lockAcquire(key: string, ttlMs: number = 30000): Promise<string | null> {
     const value = randomUUID();
-    const ttl = ttlMs || this.defaultTtl;
+    const lockKey = `${this.prefix}:lock:${key}`;
 
-    const result = await this.redisClient.redis.set(this.fullKey(key), value, {
-      PX: ttl,
+    const result = await this._client.set(lockKey, value, {
+      PX: ttlMs,
       NX: true,
     });
 
     return result === 'OK' ? value : null;
   }
 
-  // acquire with retry
-  async acquireWithRetry(
-    key: string,
-    ttlMs?: number,
-    retryOptions?: { delay?: number; maxRetries?: number },
-  ): Promise<string> {
-    const ttl = ttlMs || this.defaultTtl;
-    const delay = retryOptions?.delay || this.retryDelay;
-    const maxRetries = retryOptions?.maxRetries || this.maxRetries;
+  async lockRelease(key: string, value: string): Promise<void> {
+    const lockKey = `${this.prefix}:lock:${key}`;
 
-    for (let i = 0; i < maxRetries; i++) {
-      const lock = await this.acquire(key, ttl);
-      if (lock) {
-        return lock;
-      }
-
-      if (i < maxRetries - 1) {
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-
-    throw new Error(`Failed to acquire lock for key: ${key} after ${maxRetries} attempts`);
-  }
-
-  async release(key: string, value: string) {
-    const lua = `
-      if redis.call("GET", KEYS[1]) == ARGV[1]
-      then
+    const script = `
+      if redis.call("GET", KEYS[1]) == ARGV[1] then
         return redis.call("DEL", KEYS[1])
       else
         return 0
@@ -344,32 +302,47 @@ export class RedisLock {
     `;
 
     try {
-      await this.redisClient.redis.eval(lua, {
-        keys: [this.fullKey(key)],
-        arguments: [value],
-      });
+      await this.eval(script, [lockKey], [value]);
     } catch (error) {
-      console.error(`[RedisLock] Failed to release lock ${key}:`, error);
+      console.error(`[Redis] Failed to release lock ${key}:`, error);
     }
   }
 
-  // extend lock
-  async extend(key: string, value: string, ttlMs: number): Promise<boolean> {
-    const lua = `
-      if redis.call("GET", KEYS[1]) == ARGV[1]
-      then
+  async lockExtend(key: string, value: string, ttlMs: number): Promise<boolean> {
+    const lockKey = `${this.prefix}:lock:${key}`;
+
+    const script = `
+      if redis.call("GET", KEYS[1]) == ARGV[1] then
         return redis.call("PEXPIRE", KEYS[1], ARGV[2])
       else
         return 0
       end
     `;
 
-    const result = await this.redisClient.redis.eval(lua, {
-      keys: [this.fullKey(key)],
-      arguments: [value, ttlMs.toString()],
-    });
-
+    const result = await this.eval(script, [lockKey], [value, ttlMs.toString()]);
     return result === 1;
+  }
+
+  async lockWithRetry(
+    key: string,
+    ttlMs: number = 30000,
+    options?: { maxRetries?: number; retryDelay?: number },
+  ): Promise<string> {
+    const maxRetries = options?.maxRetries || 30;
+    const retryDelay = options?.retryDelay || 100;
+
+    for (let i = 0; i < maxRetries; i++) {
+      const lock = await this.lockAcquire(key, ttlMs);
+      if (lock) {
+        return lock;
+      }
+
+      if (i < maxRetries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      }
+    }
+
+    throw new Error(`Failed to acquire lock for key: ${key} after ${maxRetries} attempts`);
   }
 }
 
