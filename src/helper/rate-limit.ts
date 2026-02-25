@@ -77,7 +77,7 @@ export function rateLimitWrapper<TArgs, TResult>(
     const userId = context.user.userId;
 
     // Apply rate limit
-    const result = await RedisHelper.rateLimit.tokenBucket.consume(`user:${userId}`, config);
+    const result = await RedisHelper.rateLimit.tokenBucketConsume(`user:${userId}`, config);
 
     if (!result.allowed) {
       const minutes = Math.ceil(result.resetIn / 60);

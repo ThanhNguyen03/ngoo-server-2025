@@ -1,8 +1,8 @@
-import type { TPayPalWebhookEvent } from '@helper';
-import { QueueService, type TQueueJob, type TQueueOptions, type TQueuePriority } from '@lib';
+import { RedisHelper, type TPayPalWebhookEvent } from '@helper';
+import { QueueService, type TQueueJobData, type TQueueOptions, type TQueuePriority } from '@lib';
 
 export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
-  private processingJobsCache = new Map<string, { lastUpdated: number; data: TPayPalWebhookEvent }>();
+  private processingJobs = new Set<string>();
 
   constructor(options: TQueueOptions = {}) {
     super({
@@ -22,38 +22,61 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
   // ========== ENHANCED PUBLIC API ==========
 
   /**
-   * Cancel a job by ID
-   * @param jobId - The job ID to cancel
-   * @param forceRemove - Whether to immediately remove from queue
-   * @returns Whether the job was cancelled
+   * Override add method to include webhook-specific logic
    */
-  cancel(jobId: string, forceRemove: boolean = false): boolean {
-    // Cancel queued job
-    const queuedJob = this.queue.find((job) => job.id === jobId);
-    if (queuedJob) {
-      if (forceRemove) {
-        const index = this.queue.findIndex((job) => job.id === jobId);
-        if (index !== -1) {
-          this.queue.splice(index, 1);
-          console.log(`[WebhookQueueService] Force removed job ${jobId}`);
-          return true;
+  async add(
+    event: TPayPalWebhookEvent,
+    orderId: string,
+    captureId: string,
+    priority: TQueuePriority = 'normal',
+  ): Promise<string> {
+    const jobKey = `${orderId}:${captureId}`;
+
+    // Check memory set trước
+    if (this.processingJobs.has(jobKey)) {
+      console.log(`[WebhookQueue] Duplicate webhook detected for ${orderId}`);
+      return `duplicate-${orderId}`;
+    }
+
+    const lockKey = `webhook:lock:${orderId}:${captureId}`;
+
+    try {
+      // Lock with short timeout
+      const result = await RedisHelper.lock.withLock(lockKey, 1000, async () => {
+        // Double-check
+        if (this.processingJobs.has(jobKey)) {
+          return `duplicate-${orderId}`;
         }
-      } else {
-        queuedJob.cancelled = true;
-        console.log(`[WebhookQueueService] Marked job ${jobId} as cancelled`);
-        return true;
-      }
-    }
 
-    // Job is currently processing, we can't cancel it immediately
-    // but we can mark it for cleanup after completion
-    if (this.processing.has(jobId)) {
-      console.log(`[WebhookQueueService] Job ${jobId} is currently processing, cannot cancel immediately`);
-      return false;
-    }
+        // Mark as processing
+        this.processingJobs.add(jobKey);
 
-    console.log(`[WebhookQueueService] Job ${jobId} not found`);
-    return false;
+        // Auto cleanup sau 5 phút
+        setTimeout(
+          () => {
+            this.processingJobs.delete(jobKey);
+          },
+          5 * 60 * 1000,
+        );
+
+        return super.add(event, orderId, captureId, priority);
+      });
+      return result;
+    } catch (error) {
+      // Lock failed
+      console.warn(`[WebhookQueue] Lock failed for ${orderId}, continuing without lock`);
+
+      // Track job in memory
+      this.processingJobs.add(jobKey);
+      setTimeout(
+        () => {
+          this.processingJobs.delete(jobKey);
+        },
+        5 * 60 * 1000,
+      );
+
+      return super.add(event, orderId, captureId, priority);
+    }
   }
 
   /**
@@ -67,6 +90,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     // Cancel queued jobs
     this.queue.forEach((job) => {
       if (job.orderId === orderId && !job.cancelled) {
+        this['clearJobTimeout'](job.id);
         job.cancelled = true;
         cancelledCount++;
       }
@@ -92,6 +116,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     // Cancel queued jobs
     this.queue.forEach((job) => {
       if (job.captureId === captureId && !job.cancelled) {
+        this['clearJobTimeout'](job.id);
         job.cancelled = true;
         cancelledCount++;
       }
@@ -106,7 +131,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
    * @param orderId - The order ID to filter by
    * @returns Array of jobs
    */
-  getJobsByOrderId(orderId: string): TQueueJob<TPayPalWebhookEvent>[] {
+  getJobsByOrderId(orderId: string): TQueueJobData<TPayPalWebhookEvent>[] {
     const queuedJobs = this.queue
       .filter((job) => job.orderId === orderId)
       .map((job) => ({
@@ -141,58 +166,15 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
   }
 
   /**
-   * Override add method to include webhook-specific logic
-   */
-  add(event: TPayPalWebhookEvent, orderId: string, captureId: string, priority: TQueuePriority = 'normal'): string {
-    // Check if similar job already exists and is still processing
-    const similarJob = Array.from(this.processing.values()).find(
-      (info) => info.job.orderId === orderId && info.job.captureId === captureId,
-    );
-
-    if (similarJob) {
-      console.log(`[WebhookQueueService] Similar job already processing for order ${orderId}, capture ${captureId}`);
-      // Cache the new event for potential later processing
-      this.cacheProcessingJob(orderId, captureId, event);
-    }
-
-    return super.add(event, orderId, captureId, priority);
-  }
-
-  /**
    * Override getStats to include webhook-specific metrics
    */
   getStats() {
     const baseStats = super.getStats();
     return {
       ...baseStats,
-      processingJobsCacheSize: this.processingJobsCache.size,
+      processingJobsSize: this.processingJobs.size,
       cancelledJobs: this.queue.filter((job) => job.cancelled).length,
     };
-  }
-
-  // ========== PRIVATE METHODS ==========
-  private cacheProcessingJob(orderId: string, captureId: string, event: TPayPalWebhookEvent): void {
-    const cacheKey = `${orderId}:${captureId}`;
-    this.processingJobsCache.set(cacheKey, {
-      lastUpdated: Date.now(),
-      data: event,
-    });
-
-    // Cleanup old cache entries periodically
-    setTimeout(() => {
-      this.cleanupOldCacheEntries();
-    }, 60000); // Cleanup every minute
-  }
-
-  private cleanupOldCacheEntries(): void {
-    const now = Date.now();
-    const maxAge = 5 * 60 * 1000; // 5 minutes
-
-    for (const [key, value] of this.processingJobsCache.entries()) {
-      if (now - value.lastUpdated > maxAge) {
-        this.processingJobsCache.delete(key);
-      }
-    }
   }
 }
 

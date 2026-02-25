@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import {
   ERole,
   TCategory,
@@ -21,7 +22,7 @@ export const RedisHelperItem = RedisHelperDerive<
 export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'orderLimit'>(RedisInstance);
 export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
 
-export const RedisHelperRateLimit = RedisHelperDerive<'rateLimit'>(RedisInstance);
+export const RedisHelperRateLimit = RedisHelperDerive<'tokenBucket' | 'slidingWindow'>(RedisInstance);
 
 const ONE_HOUR_EXPIRATION_TIME_SEC = 60 * 60; // 1h
 export const BEARER_LENGTH = 7; // 7 is length of `Bearer + space`
@@ -315,24 +316,23 @@ export const RedisHelper = {
   },
 
   rateLimit: {
-    tokenBucket: {
-      async get(key: string): Promise<TokenBucket | null> {
-        const data = await RedisHelperRateLimit.rateLimit(`bucket:${key}`).get();
-        return data ? JSON.parse(data) : null;
-      },
+    async tokenBucketGet(key: string): Promise<TokenBucket | null> {
+      const data = await RedisHelperRateLimit.tokenBucket(key).get();
+      return data ? JSON.parse(data) : null;
+    },
 
-      async set(key: string, bucket: TokenBucket): Promise<void> {
-        await RedisHelperRateLimit.rateLimit(`bucket:${key}`).set(JSON.stringify(bucket), ONE_HOUR_EXPIRATION_TIME_SEC);
-      },
+    async tokenBucketSet(key: string, bucket: TokenBucket): Promise<void> {
+      await RedisHelperRateLimit.tokenBucket(key).set(JSON.stringify(bucket), ONE_HOUR_EXPIRATION_TIME_SEC);
+    },
 
-      async consume(
-        key: string,
-        config: RateLimitConfig,
-      ): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
-        const now = Math.floor(Date.now() / 1000);
-        const bucketKey = `token-bucket:${key}`;
+    async tokenBucketConsume(
+      key: string,
+      config: RateLimitConfig,
+    ): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
+      const now = Math.floor(Date.now() / 1000);
+      const bucketKey = `token-bucket:${key}`;
 
-        const script = `
+      const script = `
           local key = KEYS[1]
           local now = tonumber(ARGV[1])
           local bucketSize = tonumber(ARGV[2])
@@ -388,54 +388,45 @@ export const RedisHelper = {
           end
         `;
 
-        const result = await RedisInstance.eval(
-          script,
-          [bucketKey], // keys
-          [
-            now.toString(),
-            config.bucketSize.toString(),
-            config.refillRate.toString(),
-            config.refillInterval.toString(),
-          ], // args
-        );
+      const result = await RedisInstance.eval(
+        script,
+        [bucketKey], // keys
+        [now.toString(), config.bucketSize.toString(), config.refillRate.toString(), config.refillInterval.toString()], // args
+      );
 
-        // Handle result
-        let resultStr: string;
-        if (Buffer.isBuffer(result)) {
-          resultStr = result.toString('utf8');
-        } else if (typeof result === 'string') {
-          resultStr = result;
-        } else {
-          resultStr = JSON.stringify(result);
-        }
+      // Handle result
+      let resultStr: string;
+      if (Buffer.isBuffer(result)) {
+        resultStr = result.toString('utf8');
+      } else if (typeof result === 'string') {
+        resultStr = result;
+      } else {
+        resultStr = JSON.stringify(result);
+      }
 
-        const parsed = JSON.parse(resultStr);
-        return {
-          allowed: parsed.allowed === 1,
-          remaining: parsed.remaining,
-          resetIn: Math.max(0, parsed.resetIn),
-        };
-      },
-
-      // Reset bucket (useful for testing or manual override)
-      async reset(key: string): Promise<void> {
-        await RedisHelperRateLimit.rateLimit(`bucket:${key}`).delete();
-      },
+      const parsed = JSON.parse(resultStr);
+      return {
+        allowed: parsed.allowed === 1,
+        remaining: parsed.remaining,
+        resetIn: Math.max(0, parsed.resetIn),
+      };
     },
 
-    // Sliding window for additional protection
-    slidingWindow: {
-      async increment(key: string, windowMs: number, max: number): Promise<boolean> {
-        const now = Date.now();
-        const windowKey = `sliding:${key}:${Math.floor(now / windowMs)}`;
+    // Reset bucket (useful for testing or manual override)
+    async tokenBucketReset(key: string): Promise<void> {
+      await RedisHelperRateLimit.tokenBucket(key).delete();
+    },
 
-        const count = await RedisHelperRateLimit.rateLimit(windowKey).incre();
-        if (count === 1) {
-          await RedisHelperRateLimit.rateLimit(windowKey).expire(Math.ceil(windowMs / 1000));
-        }
+    async slidingWindowIncrement(key: string, windowMs: number, max: number): Promise<boolean> {
+      const now = Date.now();
+      const windowKey = `${key}:${Math.floor(now / windowMs)}`;
 
-        return count <= max;
-      },
+      const count = await RedisHelperRateLimit.slidingWindow(windowKey).incre();
+      if (count === 1) {
+        await RedisHelperRateLimit.slidingWindow(windowKey).expire(Math.ceil(windowMs / 1000));
+      }
+
+      return count <= max;
     },
   },
 };
