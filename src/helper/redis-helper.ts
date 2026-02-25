@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 import {
   ERole,
   TCategory,
@@ -7,9 +8,10 @@ import {
   type TUserInfoSnapshot,
 } from '@generated/graphql';
 import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload, type TWebhookData } from '@helper';
-import { RedisHelperDerive, RedisInstance, RedisLock } from '@service';
+import { RedisHelperDerive, RedisInstance } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
+import type { RateLimitConfig, TokenBucket } from './rate-limit';
 
 // domain helpers
 export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userInfo' | 'walletMessage'>(RedisInstance);
@@ -17,10 +19,10 @@ export const RedisHelperCategory = RedisHelperDerive<'category'>(RedisInstance);
 export const RedisHelperItem = RedisHelperDerive<
   'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById'
 >(RedisInstance);
-export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'rateLimit'>(RedisInstance);
-
+export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'orderLimit'>(RedisInstance);
 export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
-export const RedisLockHelper = new RedisLock(RedisInstance);
+
+export const RedisHelperRateLimit = RedisHelperDerive<'tokenBucket' | 'slidingWindow'>(RedisInstance);
 
 const ONE_HOUR_EXPIRATION_TIME_SEC = 60 * 60; // 1h
 export const BEARER_LENGTH = 7; // 7 is length of `Bearer + space`
@@ -227,74 +229,32 @@ export const RedisHelper = {
     },
 
     limitProcessingSet: async (userId: string, value: { orderId: string; paymentMethod: string; cacheTime: Date }) => {
-      await RedisHelperOrder.rateLimit(userId).set(JSON.stringify(value));
-      await RedisHelperOrder.rateLimit(userId).expire(2 * 60); // 2 mins
+      await RedisHelperOrder.orderLimit(userId).set(JSON.stringify(value));
+      await RedisHelperOrder.orderLimit(userId).expire(2 * 60); // 2 mins
     },
 
     limitProcessingGet: async (
       userId: string,
     ): Promise<{ orderId: string; paymentMethod: string; cacheTime: Date } | null> => {
-      const data = await RedisHelperOrder.rateLimit(userId).get();
+      const data = await RedisHelperOrder.orderLimit(userId).get();
       return data ? (JSON.parse(data) as { orderId: string; paymentMethod: string; cacheTime: Date }) : null;
     },
 
     limitProcessingDel: async (userId: string) => {
-      await RedisHelperOrder.rateLimit(userId).delete();
+      await RedisHelperOrder.orderLimit(userId).delete();
     },
 
     limitAttemptIncrement: async (userId: string) => {
-      const attempts = await RedisHelperOrder.rateLimit(userId).incre();
+      const attempts = await RedisHelperOrder.orderLimit(userId).incre();
       if (attempts === 1) {
-        await RedisHelperOrder.rateLimit(userId).expire(10 * 60); // Reset after 10 mins
+        await RedisHelperOrder.orderLimit(userId).expire(10 * 60); // Reset after 10 mins
       }
       return attempts;
     },
 
     limitAttemptGet: async (userId: string) => {
-      const attempts = await RedisHelperOrder.rateLimit(userId).get();
+      const attempts = await RedisHelperOrder.orderLimit(userId).get();
       return parseInt(attempts || '0');
-    },
-  },
-
-  lock: {
-    withLock: async <T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> => {
-      const lockValue = await RedisLockHelper.acquire(key, ttl);
-      if (!lockValue) {
-        throw new Error('Resource is locked');
-      }
-
-      try {
-        return await fn();
-      } finally {
-        await RedisLockHelper.release(key, lockValue);
-      }
-    },
-
-    withRetryLock: async <T>(
-      key: string,
-      ttl: number,
-      fn: () => Promise<T>,
-      options?: { maxRetries?: number; retryDelay?: number },
-    ): Promise<T> => {
-      const maxRetries = options?.maxRetries || 3;
-      const retryDelay = options?.retryDelay || 100;
-
-      for (let i = 0; i < maxRetries; i++) {
-        const lockValue = await RedisLockHelper.acquire(key, ttl);
-        if (lockValue) {
-          try {
-            return await fn();
-          } finally {
-            await RedisLockHelper.release(key, lockValue);
-          }
-        }
-
-        if (i < maxRetries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, retryDelay));
-        }
-      }
-
-      throw new Error(`Failed to acquire lock after ${maxRetries} attempts`);
     },
   },
 
@@ -318,6 +278,155 @@ export const RedisHelper = {
       const result = await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashSet(value);
       await RedisHelperPaypal.paypalOrder(`status:${orderId}`).expire(5 * 60); // 5 minutes
       return result;
+    },
+  },
+
+  lock: {
+    async withLock<T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> {
+      const lockValue = await RedisInstance.lockAcquire(key, ttl);
+      if (!lockValue) {
+        throw new Error('Resource is locked');
+      }
+
+      try {
+        return await fn();
+      } finally {
+        await RedisInstance.lockRelease(key, lockValue);
+      }
+    },
+
+    async withRetryLock<T>(
+      key: string,
+      ttl: number,
+      fn: () => Promise<T>,
+      options?: { maxRetries?: number; retryDelay?: number },
+    ): Promise<T> {
+      const lockValue = await RedisInstance.lockWithRetry(key, ttl, options);
+
+      try {
+        return await fn();
+      } finally {
+        await RedisInstance.lockRelease(key, lockValue);
+      }
+    },
+
+    async extend(key: string, value: string, ttl: number): Promise<boolean> {
+      return await RedisInstance.lockExtend(key, value, ttl);
+    },
+  },
+
+  rateLimit: {
+    async tokenBucketGet(key: string): Promise<TokenBucket | null> {
+      const data = await RedisHelperRateLimit.tokenBucket(key).get();
+      return data ? JSON.parse(data) : null;
+    },
+
+    async tokenBucketSet(key: string, bucket: TokenBucket): Promise<void> {
+      await RedisHelperRateLimit.tokenBucket(key).set(JSON.stringify(bucket), ONE_HOUR_EXPIRATION_TIME_SEC);
+    },
+
+    async tokenBucketConsume(
+      key: string,
+      config: RateLimitConfig,
+    ): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
+      const now = Math.floor(Date.now() / 1000);
+      const bucketKey = `token-bucket:${key}`;
+
+      const script = `
+          local key = KEYS[1]
+          local now = tonumber(ARGV[1])
+          local bucketSize = tonumber(ARGV[2])
+          local refillRate = tonumber(ARGV[3])
+          local refillInterval = tonumber(ARGV[4])
+          
+          local bucket = redis.call('GET', key)
+          
+          if not bucket then
+            bucket = cjson.encode({
+              tokens = bucketSize - 1,
+              lastRefill = now
+            })
+            redis.call('SET', key, bucket, 'EX', 3600)
+            return cjson.encode({
+              allowed = 1,
+              remaining = bucketSize - 1,
+              resetIn = refillInterval
+            })
+          end
+          
+          bucket = cjson.decode(bucket)
+          
+          local timePassed = now - bucket.lastRefill
+          local refillCycles = math.floor(timePassed / refillInterval)
+          local tokensToAdd = refillCycles * refillRate
+          local newTokens = math.min(bucket.tokens + tokensToAdd, bucketSize)
+          local lastRefill = bucket.lastRefill + (refillCycles * refillInterval)
+          
+          if newTokens >= 1 then
+            bucket.tokens = newTokens - 1
+            bucket.lastRefill = lastRefill
+            
+            local nextRefill = lastRefill + refillInterval
+            local resetIn = math.max(0, nextRefill - now)
+            
+            redis.call('SET', key, cjson.encode(bucket), 'EX', 3600)
+            
+            return cjson.encode({
+              allowed = 1,
+              remaining = bucket.tokens,
+              resetIn = resetIn
+            })
+          else
+            local nextRefill = lastRefill + refillInterval
+            local resetIn = math.max(0, nextRefill - now)
+            
+            return cjson.encode({
+              allowed = 0,
+              remaining = 0,
+              resetIn = resetIn
+            })
+          end
+        `;
+
+      const result = await RedisInstance.eval(
+        script,
+        [bucketKey], // keys
+        [now.toString(), config.bucketSize.toString(), config.refillRate.toString(), config.refillInterval.toString()], // args
+      );
+
+      // Handle result
+      let resultStr: string;
+      if (Buffer.isBuffer(result)) {
+        resultStr = result.toString('utf8');
+      } else if (typeof result === 'string') {
+        resultStr = result;
+      } else {
+        resultStr = JSON.stringify(result);
+      }
+
+      const parsed = JSON.parse(resultStr);
+      return {
+        allowed: parsed.allowed === 1,
+        remaining: parsed.remaining,
+        resetIn: Math.max(0, parsed.resetIn),
+      };
+    },
+
+    // Reset bucket (useful for testing or manual override)
+    async tokenBucketReset(key: string): Promise<void> {
+      await RedisHelperRateLimit.tokenBucket(key).delete();
+    },
+
+    async slidingWindowIncrement(key: string, windowMs: number, max: number): Promise<boolean> {
+      const now = Date.now();
+      const windowKey = `${key}:${Math.floor(now / windowMs)}`;
+
+      const count = await RedisHelperRateLimit.slidingWindow(windowKey).incre();
+      if (count === 1) {
+        await RedisHelperRateLimit.slidingWindow(windowKey).expire(Math.ceil(windowMs / 1000));
+      }
+
+      return count <= max;
     },
   },
 };
