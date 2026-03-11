@@ -15,7 +15,9 @@ import {
   config,
   JwtAuthAccessTokenInstance,
   JwtAuthRefreshTokenInstance,
+  publicRateLimitWrapper,
   publicWrapper,
+  RATE_LIMIT_CONFIGS,
   RedisHelper,
   TGoogleTokenPayload,
   TRefreshTokenPayload,
@@ -146,7 +148,7 @@ export const resolverUser: Resolvers = {
   },
 
   Mutation: {
-    userRegister: publicWrapper(JOI_USER_REGISTER, async (_root, args) => {
+    userRegister: publicWrapper(JOI_USER_REGISTER, publicRateLimitWrapper(RATE_LIMIT_CONFIGS.AUTH, async (_root, args) => {
       const { email, password } = args;
 
       const existingUser = await UserModel.findOne({ email });
@@ -193,9 +195,9 @@ export const resolverUser: Resolvers = {
         }),
         refreshToken,
       };
-    }),
+    })),
 
-    userLogin: publicWrapper(JOI_USER_LOGIN, async (_root, args) => {
+    userLogin: publicWrapper(JOI_USER_LOGIN, publicRateLimitWrapper(RATE_LIMIT_CONFIGS.AUTH, async (_root, args) => {
       const { token, email, password } = args;
       const rid = randomUUID();
       let user: TUserInfoResponse = {
@@ -284,16 +286,13 @@ export const resolverUser: Resolvers = {
 
       if (email && password) {
         const existingUser = await UserModel.findOne({ email }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
-        if (!existingUser) {
-          throw new Error('Account not existed!');
-        }
-        if (!existingUser.password) {
-          throw new Error('Account is created with Google!');
+        if (!existingUser || !existingUser.password) {
+          throw new Error('Invalid email or password');
         }
 
         const isValid = await verify(existingUser.password, password);
         if (!isValid) {
-          throw new Error('Wrong password');
+          throw new Error('Invalid email or password');
         }
         // Update last login
         existingUser.lastLoginAt = new Date();
@@ -330,7 +329,7 @@ export const resolverUser: Resolvers = {
       }
 
       throw new Error('Invalid credentials');
-    }),
+    })),
 
     refreshToken: authorizedWrapper(JOI_REFRESH_TOKEN, async (_root, _args) => {
       const { refreshToken } = _args;

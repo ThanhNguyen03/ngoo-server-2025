@@ -42,7 +42,7 @@ export class PaypalService {
         oAuthClientSecret: config.PAYPAL_CLIENT_SECRET!,
       },
       timeout: 30000,
-      environment: Environment.Sandbox,
+      environment: config.PAYPAL_MODE === 'live' ? Environment.Production : Environment.Sandbox,
       logging: {
         logLevel: config.NODE_ENV === 'production' ? LogLevel.Error : LogLevel.Info,
         logRequest: { logBody: config.NODE_ENV !== 'production' },

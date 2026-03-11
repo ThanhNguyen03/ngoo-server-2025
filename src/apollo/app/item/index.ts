@@ -63,14 +63,14 @@ const JOI_ITEM_ID = Joi.object<MutationDeleteItemArgs>({
 const JOI_ITEM_BY_CATEGORY_ID = Joi.object<QueryListItemByCategoryArgs>({
   offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   categoryName: Joi.string().trim().min(5).max(30).required(),
-  limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
+  limit: Joi.number().integer().min(1).max(100).default(20),
 });
 const JOI_ITEM_BY_CATEGORY_STATUS = Joi.object<QueryListItemByStatusArgs>({
   offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   status: Joi.array()
     .items(Joi.string().valid(...Object.values(EItemStatus)))
     .required(),
-  limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
+  limit: Joi.number().integer().min(1).max(100).default(20),
 });
 const JOI_ITEM_BY_ID = Joi.object<QueryItemByIdArgs>({
   itemId: JOI_ID_SCHEMA,

@@ -110,9 +110,10 @@ export const NGOO_API = {
       '/graphql',
       expressMiddleware(server, {
         context: async ({ req }): Promise<TAppContext> => {
+          const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? 'unknown';
           const authHeader = req.headers.authorization;
           if (!authHeader) {
-            return { user: { kind: EUserAuthenticationStatus.Guest } };
+            return { ip, user: { kind: EUserAuthenticationStatus.Guest } };
           }
 
           const token = authHeader.split(' ')[1];
@@ -125,6 +126,7 @@ export const NGOO_API = {
             }
 
             return {
+              ip,
               user: {
                 kind: EUserAuthenticationStatus.Authenticated,
                 token,
@@ -135,7 +137,7 @@ export const NGOO_API = {
             };
           } catch (err) {
             console.error('JWT verify failed:', err);
-            return { user: { kind: EUserAuthenticationStatus.Guest } };
+            return { ip, user: { kind: EUserAuthenticationStatus.Guest } };
           }
         },
       }) as Application,

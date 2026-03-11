@@ -51,7 +51,7 @@ export class PaypalWebhook {
   }
 
   async verifyWebhookSignature(req: Request, event: any) {
-    if (config.NODE_ENV !== 'production') {
+    if (config.NODE_ENV !== 'prod') {
       return true;
     }
 

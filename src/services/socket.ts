@@ -1,4 +1,4 @@
-import { config, JwtAuthAccessTokenInstance } from '@helper';
+import { config, JwtAuthAccessTokenInstance, RedisHelper } from '@helper';
 import http from 'http';
 import { Server } from 'socket.io';
 
@@ -22,8 +22,16 @@ export const initSocket = (httpServer: http.Server) => {
 
       const decoded = await JwtAuthAccessTokenInstance.verify(token);
 
-      if (!decoded.payload?.uuid) {
+      if (!decoded.payload?.uuid || !decoded.payload?.sid) {
         return next(new Error('Invalid token'));
+      }
+
+      const isRevoked = await RedisHelper.account.isUserAccessTokenRevoked(
+        decoded.payload.uuid,
+        decoded.payload.sid,
+      );
+      if (isRevoked) {
+        return next(new Error('Unauthorized'));
       }
 
       // attach user info to socket

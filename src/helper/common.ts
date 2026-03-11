@@ -11,6 +11,8 @@ export enum EUserAuthenticationStatus {
 }
 
 export type TAppContext = {
+  /** Client IP address, used for IP-based rate limiting on public endpoints. */
+  ip?: string;
   /** Default user is a guest who can access public endpoints, then depends on
    * the requirement, middleware and resolver, it can be changed to
    * unauthenticated (e.g. due to invalid token) or authenticated user. */

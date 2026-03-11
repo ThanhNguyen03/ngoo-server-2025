@@ -1,5 +1,5 @@
 import type { GraphQLResolveInfo } from 'graphql';
-import type { TAuthorizedContext, THandler } from './common';
+import type { TAppContext, TAuthorizedContext, TGuestContext, THandler } from './common';
 import { RedisHelper } from './redis-helper';
 
 export type TokenBucket = {
@@ -30,6 +30,11 @@ export const RATE_LIMIT_CONFIGS = {
     bucketSize: 3,
     refillRate: 1,
     refillInterval: 300, // Refill every 5 minutes
+  },
+  AUTH: {
+    bucketSize: 10,
+    refillRate: 1,
+    refillInterval: 60, // 10 attempts per minute per IP
   },
 } as const;
 
@@ -95,5 +100,27 @@ export function rateLimitWrapper<TArgs, TResult>(
 
     // Call original resolver with extended context
     return resolver(root, args, rateLimitContext, info);
+  };
+}
+
+/**
+ * IP-based rate limit wrapper for public (unauthenticated) resolvers.
+ * Must be used inside a `publicWrapper` as the resolver argument.
+ * The context must have `ip` set (done in the Apollo context factory).
+ */
+export function publicRateLimitWrapper<TArgs, TResult>(
+  config: RateLimitConfig,
+  resolver: THandler<TArgs, TGuestContext, TResult>,
+): THandler<TArgs, TGuestContext, TResult> {
+  return async (root: any, args: TArgs, context: TGuestContext, info: GraphQLResolveInfo): Promise<TResult> => {
+    const ip = context.ip ?? 'unknown';
+    const result = await RedisHelper.rateLimit.tokenBucketConsume(`ip:auth:${ip}`, config);
+
+    if (!result.allowed) {
+      const minutes = Math.ceil(result.resetIn / 60);
+      throw new Error(`Too many requests. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}`);
+    }
+
+    return resolver(root, args, context, info);
   };
 }
