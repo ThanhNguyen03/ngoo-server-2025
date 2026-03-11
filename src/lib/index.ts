@@ -35,5 +35,6 @@ export const isOk = (asyncFunction: (...args: any[]) => Promise<any>): Promise<b
 export default isOk;
 export * from './authen';
 export * from './byte-buffer';
+export * from './errors';
 export * from './fixed-float';
 export * from './queue';

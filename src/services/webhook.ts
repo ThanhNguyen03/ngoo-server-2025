@@ -1,4 +1,5 @@
-import { processWebhookEvent, type TPayPalWebhookEvent } from '@helper';
+import { type TPayPalWebhookEvent } from '@helper';
+import { processWebhookEvent } from './paypal/handler';
 import express, { type Request, type Response } from 'express';
 import { LIST_RETRYABLE_ERROR } from 'src/constant';
 import { paypalQueueService } from './paypal/queue';

@@ -23,6 +23,8 @@ interface IOrderItem {
 
 interface IOrder {
   orderId: string;
+  /** UUID of the user who placed the order. Added for stable ownership queries. */
+  userId: string;
   transactionId: string;
   userInfoSnapshot: TUserInfoSnapshot;
   items: IOrderItem[];
@@ -70,6 +72,8 @@ const OrderItemSchema = new Schema<IOrderItem>(
 const OrderSchema = new Schema<TOrder>(
   {
     orderId: { type: String, required: true, unique: true, default: () => randomUUID() },
+    // Index defined below for compound query performance (userId + createdAt).
+    userId: { type: String, index: true },
     transactionId: { type: String, sparse: true },
     userInfoSnapshot: {
       name: { type: String },
@@ -101,5 +105,7 @@ const OrderSchema = new Schema<TOrder>(
 );
 
 OrderSchema.index({ 'userInfoSnapshot.email': 1, createdAt: -1 });
+// Compound index for paginated per-user order queries (getUserOrder, listUserPaymentHistory).
+OrderSchema.index({ userId: 1, createdAt: -1 });
 
 export const OrderModel = model<TOrder>('Order', OrderSchema);

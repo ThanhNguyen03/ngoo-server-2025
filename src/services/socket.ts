@@ -1,8 +1,27 @@
 import { config, JwtAuthAccessTokenInstance, RedisHelper } from '@helper';
+import { EPaymentStatus } from '@generated/graphql';
 import http from 'http';
 import { Server } from 'socket.io';
 
 export let io: Server;
+
+/**
+ * Emit a payment status update to the user's Socket.IO room.
+ *
+ * Centralises all `paymentStatus` emissions so callers don't need to
+ * reference the `io` singleton directly or repeat the event name/payload
+ * shape. The user is automatically joined to a room keyed by their userId
+ * on socket connection (see `initSocket`).
+ *
+ * @param userId    The UUID of the user who owns the order.
+ * @param payload   The status update data to send.
+ */
+export const emitPaymentStatus = (
+  userId: string,
+  payload: { orderId: string; paymentId: string; status: EPaymentStatus },
+): void => {
+  io.to(userId).emit('paymentStatus', payload);
+};
 
 export const initSocket = (httpServer: http.Server) => {
   io = new Server(httpServer, {

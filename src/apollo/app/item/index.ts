@@ -18,9 +18,45 @@ import {
   sortQuery,
   TPagination,
 } from '@helper';
-import { CategoryModel, ItemModel, TCategory } from '@model';
+import { ConflictError, NotFoundError } from '@lib';
+import { CategoryModel, ItemModel, TCategory, TItem } from '@model';
 import Joi from 'joi';
 import { Types } from 'mongoose';
+
+/**
+ * Minimum shape required by the mapper — compatible with both lean and
+ * hydrated Mongoose results. Using `Omit<TItem, 'category'>` removes the raw
+ * `ObjectId` ref field and replaces it with `{ name: string }`, which is a
+ * structural subset of `FlattenMaps<TCategory>` (lean) and `TCategory`
+ * (hydrated). This avoids the ObjectId vs FlattenMaps mismatch that
+ * TypeScript reports when using `.lean()` with `.populate()`.
+ */
+type TItemMappable = Omit<TItem, 'category'> & { category: Pick<TCategory, 'name'> };
+
+/**
+ * Map a Mongoose item document (with populated category) to the GraphQL
+ * `TItemResponse` type. Centralises the mapping to avoid repeating the same
+ * field assignments across every query and mutation resolver.
+ *
+ * Note: `createdAt` / `updatedAt` are converted from `Date` to Unix timestamps
+ * (milliseconds) so they match the GraphQL `Int` scalar type.
+ *
+ * @param item - Lean or hydrated item document with `category` populated.
+ */
+const toItemResponse = (item: TItemMappable): TItemResponse => ({
+  itemId: item.itemId,
+  name: item.name,
+  image: item.image,
+  price: item.price,
+  description: item.description,
+  discountPercent: item.discountPercent,
+  requireOption: item.requireOption,
+  additionalOption: item.additionalOption,
+  status: item.status,
+  categoryName: item.category.name,
+  createdAt: item.createdAt.getTime(),
+  updatedAt: item.updatedAt.getTime(),
+});
 
 enum EItemQuery {
   Status = 'status',
@@ -101,22 +137,7 @@ export const resolverItem: Resolvers = {
         limit,
         query,
         total,
-        records: listItem.map((item) => {
-          return {
-            itemId: item.itemId,
-            name: item.name,
-            image: item.image,
-            price: item.price,
-            description: item.description,
-            discountPercent: item.discountPercent,
-            requireOption: item.requireOption,
-            additionalOption: item.additionalOption,
-            status: item.status,
-            categoryName: item.category.name,
-            createdAt: item.createdAt.getTime(),
-            updatedAt: item.updatedAt.getTime(),
-          };
-        }),
+        records: listItem.map(toItemResponse),
       };
     }),
 
@@ -124,7 +145,7 @@ export const resolverItem: Resolvers = {
       const { offset = 0, limit = 20, categoryName } = _args;
       const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
       if (!category) {
-        throw new Error('Category not found');
+        throw new NotFoundError('Category not found');
       }
 
       const [listItem, total] = await Promise.all([
@@ -142,22 +163,7 @@ export const resolverItem: Resolvers = {
         limit: limit ?? 20,
         total,
         query: [],
-        records: listItem.map((item) => {
-          return {
-            itemId: item.itemId,
-            name: item.name,
-            image: item.image,
-            price: item.price,
-            description: item.description,
-            discountPercent: item.discountPercent,
-            requireOption: item.requireOption,
-            additionalOption: item.additionalOption,
-            status: item.status,
-            categoryName: item.category.name,
-            createdAt: item.createdAt.getTime(),
-            updatedAt: item.updatedAt.getTime(),
-          };
-        }),
+        records: listItem.map(toItemResponse),
       };
     }),
 
@@ -184,22 +190,7 @@ export const resolverItem: Resolvers = {
         limit: limit ?? 20,
         total,
         query: [],
-        records: listItem.map((item) => {
-          return {
-            itemId: item.itemId,
-            name: item.name,
-            image: item.image,
-            price: item.price,
-            description: item.description,
-            discountPercent: item.discountPercent,
-            requireOption: item.requireOption,
-            additionalOption: item.additionalOption,
-            status: item.status,
-            categoryName: item.category.name,
-            createdAt: item.createdAt.getTime(),
-            updatedAt: item.updatedAt.getTime(),
-          };
-        }),
+        records: listItem.map(toItemResponse),
       };
     }),
 
@@ -226,7 +217,7 @@ export const resolverItem: Resolvers = {
         .populate<{ category: TCategory }>('category')
         .exec();
       if (!result) {
-        throw new Error('Item not found!');
+        throw new NotFoundError('Item not found');
       }
 
       const response = {
@@ -254,7 +245,7 @@ export const resolverItem: Resolvers = {
       const { categoryName, name, ...data } = input;
       const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
       if (!category) {
-        throw new Error('Category not found');
+        throw new NotFoundError('Category not found');
       }
 
       const existingItem = await ItemModel.findOne({
@@ -263,7 +254,7 @@ export const resolverItem: Resolvers = {
       });
 
       if (existingItem) {
-        throw new Error('Item already exist!');
+        throw new ConflictError('Item already exists');
       }
 
       const item = await ItemModel.findOneAndUpdate(
@@ -282,23 +273,10 @@ export const resolverItem: Resolvers = {
         .exec();
 
       if (!item) {
-        throw new Error('Failed to create item');
+        throw new NotFoundError('Failed to create item');
       }
 
-      const response = {
-        itemId: item.itemId,
-        name: item.name,
-        image: item.image,
-        price: item.price,
-        description: item.description,
-        discountPercent: item.discountPercent,
-        requireOption: item.requireOption,
-        additionalOption: item.additionalOption,
-        status: item.status,
-        categoryName: item.category.name,
-        createdAt: item.createdAt.getTime(),
-        updatedAt: item.updatedAt.getTime(),
-      };
+      const response = toItemResponse(item);
       await RedisHelper.item.itemByIdSet(response);
 
       return response;
@@ -311,14 +289,14 @@ export const resolverItem: Resolvers = {
         .populate<{ category: TCategory }>('category')
         .exec();
       if (!existingItem) {
-        throw new Error('Item not found!');
+        throw new NotFoundError('Item not found');
       }
 
       let newCategoryId: Types.ObjectId | undefined;
       if (categoryName) {
         const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
         if (!category) {
-          throw new Error('Category not found');
+          throw new NotFoundError('Category not found');
         }
         newCategoryId = category._id;
       }
@@ -332,34 +310,21 @@ export const resolverItem: Resolvers = {
         .exec();
 
       if (!item) {
-        throw new Error('Failed to update item!');
+        throw new NotFoundError('Failed to update item');
       }
 
-      const response: TItemResponse = {
-        itemId: item.itemId,
-        name: item.name,
-        image: item.image,
-        price: item.price,
-        description: item.description,
-        discountPercent: item.discountPercent,
-        requireOption: item.requireOption,
-        additionalOption: item.additionalOption,
-        status: item.status,
-        categoryName: item.category.name,
-        createdAt: item.createdAt.getTime(),
-        updatedAt: item.updatedAt.getTime(),
-      };
+      const response = toItemResponse(item);
 
       await RedisHelper.item.itemByIdSet(response);
 
       return response;
     }),
 
-    deleteItem: adminWrapper(JOI_ITEM_ID, async (_root, _arg) => {
-      const { itemId } = _arg;
+    deleteItem: adminWrapper(JOI_ITEM_ID, async (_root, _args) => {
+      const { itemId } = _args;
       const item = await ItemModel.findOneAndUpdate({ itemId }, { isDeleted: true }, { new: true });
       if (!item) {
-        throw new Error('Item not found');
+        throw new NotFoundError('Item not found');
       }
       await RedisHelper.item.itemByIdDel(itemId);
       return true;

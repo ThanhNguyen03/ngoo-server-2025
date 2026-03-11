@@ -37,7 +37,12 @@ export const sortQuery = (query: TQueryBy[]) => {
     }
   }
 
-  sort.createdAt = -1;
+  // Only apply default descending sort on createdAt if the user hasn't
+  // explicitly requested a sort on that column, to avoid silently overriding
+  // user-specified sort directions (e.g. `createdAt: asc`).
+  if (!sort.createdAt) {
+    sort.createdAt = -1;
+  }
 
   return sort;
 };

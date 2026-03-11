@@ -1,4 +1,5 @@
 import type { GraphQLResolveInfo } from 'graphql';
+import { RateLimitError } from '@lib';
 import type { TAppContext, TAuthorizedContext, TGuestContext, THandler } from './common';
 import { RedisHelper } from './redis-helper';
 
@@ -78,7 +79,7 @@ export function rateLimitWrapper<TArgs, TResult>(
   config: RateLimitConfig,
   resolver: THandler<TArgs, TAuthorizedContext & TRateLimitContext, TResult>,
 ): THandler<TArgs, TAuthorizedContext, TResult> {
-  return async (root: any, args: TArgs, context: TAuthorizedContext, info: GraphQLResolveInfo): Promise<TResult> => {
+  return async (root: unknown, args: TArgs, context: TAuthorizedContext, info: GraphQLResolveInfo): Promise<TResult> => {
     const userId = context.user.userId;
 
     // Apply rate limit
@@ -86,7 +87,7 @@ export function rateLimitWrapper<TArgs, TResult>(
 
     if (!result.allowed) {
       const minutes = Math.ceil(result.resetIn / 60);
-      throw new Error(`Rate limit exceeded. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}`);
+      throw new RateLimitError(`Rate limit exceeded. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}`);
     }
 
     // Add rate limit info to context
@@ -112,13 +113,13 @@ export function publicRateLimitWrapper<TArgs, TResult>(
   config: RateLimitConfig,
   resolver: THandler<TArgs, TGuestContext, TResult>,
 ): THandler<TArgs, TGuestContext, TResult> {
-  return async (root: any, args: TArgs, context: TGuestContext, info: GraphQLResolveInfo): Promise<TResult> => {
+  return async (root: unknown, args: TArgs, context: TGuestContext, info: GraphQLResolveInfo): Promise<TResult> => {
     const ip = context.ip ?? 'unknown';
     const result = await RedisHelper.rateLimit.tokenBucketConsume(`ip:auth:${ip}`, config);
 
     if (!result.allowed) {
       const minutes = Math.ceil(result.resetIn / 60);
-      throw new Error(`Too many requests. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}`);
+      throw new RateLimitError(`Too many requests. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}`);
     }
 
     return resolver(root, args, context, info);

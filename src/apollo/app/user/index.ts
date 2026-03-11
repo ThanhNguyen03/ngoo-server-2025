@@ -22,7 +22,7 @@ import {
   TGoogleTokenPayload,
   TRefreshTokenPayload,
 } from '@helper';
-import isOk, { JOI_ERC55_ADDRESS, JWTAuthentication } from '@lib';
+import isOk, { AuthenticationError, ConflictError, JOI_ERC55_ADDRESS, JWTAuthentication, NotFoundError } from '@lib';
 import { TUserInfo, UserInfoModel, UserModel } from '@model';
 import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
@@ -34,7 +34,7 @@ import type { HydratedDocument } from 'mongoose';
 // dsaChallenge is a hex string with 132 characters long = 65 * 2 + 2 (2 is for prefix `0x`)
 export const DSA_SIGNATURE_BYTE_LENGTH = 65;
 
-const JOI_PASSWPORD = Joi.string()
+const JOI_PASSWORD = Joi.string()
   .min(8)
   .max(16)
   .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9.,]).{8,16}$/)
@@ -58,7 +58,7 @@ const JOI_USER_LOGIN = Joi.object<MutationUserLoginArgs>({
 });
 const JOI_USER_REGISTER = Joi.object<MutationUserRegisterArgs>({
   email: Joi.string().email().trim().lowercase().required(),
-  password: JOI_PASSWPORD.required(),
+  password: JOI_PASSWORD.required(),
 });
 const JOI_USER_LOGOUT = Joi.object<MutationUserLogoutArgs>({
   logoutEverywhere: Joi.bool().optional().default(false),
@@ -75,7 +75,7 @@ const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalle
       if (isHexString(value, DSA_SIGNATURE_BYTE_LENGTH)) {
         return value;
       }
-      throw new Error('Signature invalid');
+      throw new Error('Signature invalid'); // Joi custom validator — must throw Error, not AppError
     }),
   address: JOI_ERC55_ADDRESS.required(),
 });
@@ -116,7 +116,7 @@ export const resolverUser: Resolvers = {
 
       const user = await UserModel.findOne({ uuid: userId, role }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
       if (!user) {
-        throw new Error('User not found');
+        throw new NotFoundError('User not found');
       }
 
       const info: TUserInfoResponse = {
@@ -153,7 +153,7 @@ export const resolverUser: Resolvers = {
 
       const existingUser = await UserModel.findOne({ email });
       if (existingUser) {
-        throw new Error('Email already registered');
+        throw new ConflictError('Email already registered');
       }
 
       const hashedPassword = await hash(password, { type: 2, salt: randomBytes(16) });
@@ -215,7 +215,7 @@ export const resolverUser: Resolvers = {
         // Verify Google token
         const { payload } = await JWTAuthentication.verifyGoogleId<TGoogleTokenPayload>(token, config.GOOGLE_CLIENT_ID);
         if (!payload || !payload.email || !payload.email_verified) {
-          throw new Error('Invalid Google token');
+          throw new AuthenticationError('Invalid Google token');
         }
 
         const nameFromGoogle = (payload.name ?? '').trim();
@@ -287,12 +287,12 @@ export const resolverUser: Resolvers = {
       if (email && password) {
         const existingUser = await UserModel.findOne({ email }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
         if (!existingUser || !existingUser.password) {
-          throw new Error('Invalid email or password');
+          throw new AuthenticationError('Invalid email or password');
         }
 
         const isValid = await verify(existingUser.password, password);
         if (!isValid) {
-          throw new Error('Invalid email or password');
+          throw new AuthenticationError('Invalid email or password');
         }
         // Update last login
         existingUser.lastLoginAt = new Date();
@@ -328,64 +328,73 @@ export const resolverUser: Resolvers = {
         };
       }
 
-      throw new Error('Invalid credentials');
+      throw new AuthenticationError('Invalid credentials');
     })),
 
-    refreshToken: authorizedWrapper(JOI_REFRESH_TOKEN, async (_root, _args) => {
-      const { refreshToken } = _args;
+    // FIX: Was incorrectly wrapped with `authorizedWrapper` which requires a valid
+    // access token — defeating the purpose of a refresh endpoint (called when
+    // the access token is expired). Changed to `publicWrapper` + IP-based rate
+    // limiting to prevent brute-force attacks against the refresh token.
+    refreshToken: publicWrapper(
+      JOI_REFRESH_TOKEN,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.AUTH, async (_root, _args) => {
+        const { refreshToken } = _args;
 
-      let payload: TRefreshTokenPayload;
-      try {
-        const verified = await JwtAuthRefreshTokenInstance.verify(refreshToken);
-        payload = verified.payload;
-      } catch (e) {
-        throw new Error('Invalid refresh token');
-      }
+        let payload: TRefreshTokenPayload;
+        try {
+          const verified = await JwtAuthRefreshTokenInstance.verify(refreshToken);
+          payload = verified.payload;
+        } catch (e) {
+          throw new AuthenticationError('Invalid refresh token');
+        }
 
-      const { uuid, role } = payload;
+        const { uuid, role } = payload;
 
-      // Creat new session
-      const newSid = randomUUID();
-      const newRid = randomUUID();
+        // Create new session IDs for the rotated tokens
+        const newSid = randomUUID();
+        const newRid = randomUUID();
 
-      const newAccessToken = await JwtAuthAccessTokenInstance.sign({
-        uuid,
-        sid: newSid,
-        role,
-      });
+        const newAccessToken = await JwtAuthAccessTokenInstance.sign({
+          uuid,
+          sid: newSid,
+          role,
+        });
 
-      const newRefreshToken = await JwtAuthRefreshTokenInstance.sign({
-        uuid,
-        rid: newRid,
-        role,
-      });
+        const newRefreshToken = await JwtAuthRefreshTokenInstance.sign({
+          uuid,
+          rid: newRid,
+          role,
+        });
 
-      await RedisHelper.account.userAccessTokenAdd(uuid, newSid);
+        // Register the new session in Redis
+        await RedisHelper.account.userAccessTokenAdd(uuid, newSid);
 
-      return {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-        userUuid: uuid,
-      };
-    }),
+        return {
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+          userUuid: uuid,
+        };
+      }),
+    ),
 
     userLogout: authorizedWrapper(JOI_USER_LOGOUT, async (_root, _args, context) => {
       const { logoutEverywhere } = _args;
       const token = context.user.token;
 
       if (!token) {
-        throw new Error('Missing auth token');
+        throw new AuthenticationError('Missing auth token');
       }
 
       if (logoutEverywhere) {
-        // Revoke all access token and refresh token
+        // Revoke all sessions for this user
         return isOk(() => RedisHelper.account.userAccessTokenRemoveAll(context.user.userId));
       }
 
-      // revoke current token
+      // FIX: `authenticateUser` (in common.ts) already decodes the JWT and sets
+      // `context.user.sid`. Re-verifying the token here is redundant and wastes
+      // an async round-trip. Use the sid from context directly.
       return isOk(async () => {
-        const verifiedJwtPayload = (await JwtAuthAccessTokenInstance.verifyHeader(context.user.token)).payload;
-        await RedisHelper.account.userAccessTokenRemove(context.user.userId, verifiedJwtPayload.sid);
+        await RedisHelper.account.userAccessTokenRemove(context.user.userId, context.user.sid);
       });
     }),
 
@@ -430,7 +439,7 @@ export const resolverUser: Resolvers = {
         .populate<{ userInfo: HydratedDocument<TUserInfo> }>('userInfo')
         .exec();
       if (!user) {
-        throw new Error('User not found');
+        throw new NotFoundError('User not found');
       }
 
       const userInfo = user.userInfo;
