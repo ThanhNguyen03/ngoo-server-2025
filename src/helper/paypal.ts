@@ -1,4 +1,3 @@
-/* eslint-disable camelcase */
 /**
  * Pure PayPal utility types and helpers.
  *

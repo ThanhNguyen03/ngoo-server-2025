@@ -79,7 +79,9 @@ export function rateLimitWrapper<TArgs, TResult>(
   config: RateLimitConfig,
   resolver: THandler<TArgs, TAuthorizedContext & TRateLimitContext, TResult>,
 ): THandler<TArgs, TAuthorizedContext, TResult> {
-  return async (root: unknown, args: TArgs, context: TAuthorizedContext, info: GraphQLResolveInfo): Promise<TResult> => {
+  return async (
+    root: unknown, args: TArgs, context: TAuthorizedContext, info: GraphQLResolveInfo,
+  ): Promise<TResult> => {
     const userId = context.user.userId;
 
     // Apply rate limit

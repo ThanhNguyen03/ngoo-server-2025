@@ -148,7 +148,9 @@ export const resolverUser: Resolvers = {
   },
 
   Mutation: {
-    userRegister: publicWrapper(JOI_USER_REGISTER, publicRateLimitWrapper(RATE_LIMIT_CONFIGS.AUTH, async (_root, args) => {
+    userRegister: publicWrapper(
+      JOI_USER_REGISTER,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.AUTH, async (_root, args) => {
       const { email, password } = args;
 
       const existingUser = await UserModel.findOne({ email });
@@ -195,7 +197,8 @@ export const resolverUser: Resolvers = {
         }),
         refreshToken,
       };
-    })),
+      }),
+    ),
 
     userLogin: publicWrapper(JOI_USER_LOGIN, publicRateLimitWrapper(RATE_LIMIT_CONFIGS.AUTH, async (_root, args) => {
       const { token, email, password } = args;

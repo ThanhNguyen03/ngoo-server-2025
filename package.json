@@ -13,7 +13,7 @@
     "dev": "tsx --watch src/index.ts",
     "proxy": "npx ngrok http 1337",
     "dev:debug": "tsx --inspect ./src/index.ts",
-    "build": "rollup -c",
+    "build": "eslint && rollup -c",
     "start": "node build/index.js"
   },
   "dependencies": {
