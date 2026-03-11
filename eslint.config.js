@@ -96,7 +96,6 @@ export default [
           ignoreRestSiblings: true,
         },
       ],
-      '@typescript-eslint/no-unused-vars': 'off',
       'no-empty': ['error', { allowEmptyCatch: true }],
 
       camelcase: 2,

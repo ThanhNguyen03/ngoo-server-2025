@@ -1,6 +1,6 @@
 import type { GraphQLResolveInfo } from 'graphql';
 import { RateLimitError } from '@lib';
-import type { TAppContext, TAuthorizedContext, TGuestContext, THandler } from './common';
+import type { TAuthorizedContext, TGuestContext, THandler } from './common';
 import { RedisHelper } from './redis-helper';
 
 export type TokenBucket = {

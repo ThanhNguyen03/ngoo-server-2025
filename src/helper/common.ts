@@ -239,8 +239,8 @@ export function optionalAuthWrapper<TArgs, TValidatedArgs, TResult>(
 
     try {
       optionalAuthContext = await authenticateUser(context);
-    } catch (error) {
-      // Ignore unauthenticated error
+    } catch {
+      // Ignore unauthenticated error — context stays as guest
     }
 
     // No schema case

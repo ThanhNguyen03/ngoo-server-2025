@@ -11,7 +11,7 @@
  * Helpers must remain pure utilities with no model or service dependencies.
  */
 import { EOrderStatus, EPaymentMethod, EPaymentStatus } from '@generated/graphql';
-import { NotFoundError, PaymentError } from '@lib';
+import { createLogger, NotFoundError, PaymentError } from '@lib';
 import { OrderModel, PaymentModel, type TOrder } from '@model';
 import {
   RedisHelper,
@@ -25,6 +25,8 @@ import mongoose, { type HydratedDocument } from 'mongoose';
 // Import directly from sibling modules to avoid circular deps through services/index.ts
 import { emitPaymentStatus } from '../socket';
 import { paypalService } from './service';
+
+const logger = createLogger('PayPalHandler');
 
 /**
  * Handles `PAYMENT.CAPTURE.*` events from PayPal.
@@ -86,7 +88,7 @@ export const processPaymentCaptureEvent = async (
         status: payment.status,
       });
 
-      console.log(`[Webhook] Payment ${systemOrderId} expired, marked as failed`);
+      logger.info({ systemOrderId }, 'Payment expired, marked as failed');
       return;
     }
 
@@ -227,7 +229,7 @@ export const processCheckoutOrderApproved = async (
 
   // Capture the PayPal order — this triggers the actual fund transfer
   await paypalService.capturePaypalOrder(paypalOrderId);
-  console.log(`[Webhook] Captured PayPal order ${paypalOrderId} for system order ${systemOrderId}`);
+  logger.info({ paypalOrderId, systemOrderId }, 'PayPal order captured');
 };
 
 /**
@@ -266,7 +268,7 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
   // Fast path: already processed
   const alreadyProcessed = await RedisHelper.paypal.webhookProcessKeyGet(idempotencyKey);
   if (alreadyProcessed) {
-    console.log(`[Webhook] Event already processed: ${idempotencyKey}`);
+    logger.debug({ idempotencyKey }, 'Webhook event already processed (fast-path skip)');
     return;
   }
 
@@ -280,7 +282,7 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
     // waited to acquire the lock.
     const doubleCheck = await RedisHelper.paypal.webhookProcessKeyGet(idempotencyKey);
     if (doubleCheck) {
-      console.log(`[Webhook] Event processed while acquiring lock: ${idempotencyKey}`);
+      logger.debug({ idempotencyKey }, 'Webhook event processed while acquiring lock (double-check skip)');
       return;
     }
 
@@ -318,16 +320,16 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
             throw new PaymentError(`No capture ID found for event ${event_type}`);
           }
           await processPaymentCaptureEvent(event_type, systemOrderId, captureId);
-          console.log(`[Webhook] Processed ${event_type} for order ${systemOrderId}`);
+          logger.info({ eventType: event_type, systemOrderId }, 'Payment capture event processed');
           break;
 
         case 'CHECKOUT.ORDER.COMPLETED':
           // Payment capture events handle the actual status update.
-          console.log(`[Webhook] Order ${systemOrderId} completed`);
+          logger.info({ systemOrderId }, 'Checkout order completed');
           break;
 
         default:
-          console.warn(`[Webhook] Unhandled event type: ${event_type}`);
+          logger.warn({ eventType: event_type, systemOrderId }, 'Unhandled webhook event type');
       }
 
       // Record idempotency key with a 24-hour TTL so PayPal retries are ignored.
@@ -340,7 +342,7 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
         }),
       );
     } catch (error) {
-      console.error(`[Webhook] Error processing ${event_type} for order ${systemOrderId}:`, error);
+      logger.error({ err: error, eventType: event_type, systemOrderId }, 'Webhook event processing failed');
       throw error;
     }
   });

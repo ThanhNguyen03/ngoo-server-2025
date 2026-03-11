@@ -1,8 +1,11 @@
 /* eslint-disable camelcase */
 import { config } from '@helper';
+import { createLogger } from '@lib';
 import type { AxiosInstance } from 'axios';
 import axios from 'axios';
 import { type Request } from 'express';
+
+const logger = createLogger('PayPalWebhook');
 
 type TPayPalToken = {
   token: string;
@@ -45,7 +48,7 @@ export class PaypalWebhook {
 
       return this.accessToken.token;
     } catch (error) {
-      console.error('[PayPalWebhook] Failed to get access token:', error);
+      logger.error({ err: error }, 'Failed to get PayPal access token');
       throw new Error('Failed to authenticate with PayPal');
     }
   }
@@ -81,7 +84,7 @@ export class PaypalWebhook {
 
       return response.data.verification_status === 'SUCCESS';
     } catch (error) {
-      console.error('[PaypalWebhook] Webhook verification failed:', error);
+      logger.error({ err: error }, 'PayPal webhook signature verification failed');
       return false;
     }
   }

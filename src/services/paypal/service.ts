@@ -1,6 +1,9 @@
 import type { OrderItemInput, TUserInfoSnapshot } from '@generated/graphql';
 import { config } from '@helper';
+import { createLogger } from '@lib';
 import type { TItem } from '@model';
+
+const logger = createLogger('PayPalService');
 import {
   CheckoutPaymentIntent,
   Client,
@@ -146,7 +149,7 @@ export class PaypalService {
         approvalUrl: approvalLink?.href,
       };
     } catch (error) {
-      console.error('[PayPalService] Create order failed:', error);
+      logger.error({ err: error }, 'PayPal order creation failed');
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       throw new Error(`PayPal order creation failed: ${errorMessage}`);
     }
@@ -174,7 +177,7 @@ export class PaypalService {
 
       return data;
     } catch (error) {
-      console.error(`[PaypalService] Capture failed for order ${paypalOrderId}:`, error);
+      logger.error({ err: error, paypalOrderId }, 'PayPal order capture failed');
       const errorMessage = error instanceof Error ? error.message : 'Unknown capture error';
       throw new Error(`PayPal capture failed: ${errorMessage}`);
     }

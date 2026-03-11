@@ -2,13 +2,13 @@ import {
   EAuthMethod,
   ERole,
   MutationRefreshTokenArgs,
-  MutationUserConnectCryptoWalletArgs,
   MutationUserLoginArgs,
   MutationUserLogoutArgs,
   MutationUserRegisterArgs,
   Resolvers,
   TUserInfoResponse,
   type MutationUserUpdateInfoArgs,
+  // MutationUserConnectCryptoWalletArgs, // TODO: re-enable when userConnectCryptoWallet is implemented
 } from '@generated/graphql';
 import {
   authorizedWrapper,
@@ -22,13 +22,19 @@ import {
   TGoogleTokenPayload,
   TRefreshTokenPayload,
 } from '@helper';
-import isOk, { AuthenticationError, ConflictError, JOI_ERC55_ADDRESS, JWTAuthentication, NotFoundError } from '@lib';
+import isOk, {
+  AuthenticationError,
+  ConflictError,
+  // JOI_ERC55_ADDRESS, // TODO: re-enable when userConnectCryptoWallet is implemented
+  JWTAuthentication,
+  NotFoundError,
+} from '@lib';
 import { TUserInfo, UserInfoModel, UserModel } from '@model';
 import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
-import { isHexString } from 'ethers';
+// import { isHexString } from 'ethers'; // TODO: re-enable when userConnectCryptoWallet is implemented
 import Joi from 'joi';
-import type { HydratedDocument } from 'mongoose';
+import mongoose, { type HydratedDocument } from 'mongoose';
 
 // const AUTH_CODE_LENGTH = 32;
 // dsaChallenge is a hex string with 132 characters long = 65 * 2 + 2 (2 is for prefix `0x`)
@@ -67,18 +73,14 @@ const JOI_REFRESH_TOKEN = Joi.object<MutationRefreshTokenArgs>({
   refreshToken: Joi.string().required(),
 });
 
-const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalletArgs>({
-  signature: Joi.string()
-    .trim()
-    .required()
-    .custom((value) => {
-      if (isHexString(value, DSA_SIGNATURE_BYTE_LENGTH)) {
-        return value;
-      }
-      throw new Error('Signature invalid'); // Joi custom validator — must throw Error, not AppError
-    }),
-  address: JOI_ERC55_ADDRESS.required(),
-});
+// TODO: JOI_USER_CONNECT_CRYPTO_WALLET will be used when userConnectCryptoWallet is implemented
+// const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalletArgs>({
+//   signature: Joi.string().trim().required().custom((value) => {
+//     if (isHexString(value, DSA_SIGNATURE_BYTE_LENGTH)) return value;
+//     throw new Error('Signature invalid');
+//   }),
+//   address: JOI_ERC55_ADDRESS.required(),
+// });
 
 const JOI_USER_UPDATE_INFO = Joi.object<MutationUserUpdateInfoArgs>({
   userInfo: Joi.object({
@@ -159,18 +161,37 @@ export const resolverUser: Resolvers = {
       }
 
       const hashedPassword = await hash(password, { type: 2, salt: randomBytes(16) });
-      const newUserInfo = await UserInfoModel.create({});
-
-      const newUser = await UserModel.create({
-        uuid: randomUUID(),
-        email,
-        password: hashedPassword,
-        role: ERole.User,
-        authMethods: [EAuthMethod.Credential],
-        userInfo: newUserInfo._id,
-      });
-
+      const userUuid = randomUUID();
       const rid = randomUUID();
+
+      // Wrap both document creations in a transaction so an orphaned UserInfoModel
+      // cannot exist if UserModel.create fails.
+      type TRegisterResult = {
+        newUser: (typeof UserModel.prototype);
+        newUserInfo: (typeof UserInfoModel.prototype);
+      };
+      const session = await mongoose.startSession();
+      const result = await session.withTransaction(async (): Promise<TRegisterResult> => {
+        const [createdUserInfo] = await UserInfoModel.create([{}], { session });
+        const [createdUser] = await UserModel.create(
+          [
+            {
+              uuid: userUuid,
+              email,
+              password: hashedPassword,
+              role: ERole.User,
+              authMethods: [EAuthMethod.Credential],
+              userInfo: createdUserInfo._id,
+            },
+          ],
+          { session },
+        );
+        return { newUser: createdUser, newUserInfo: createdUserInfo };
+      });
+      session.endSession();
+
+      const { newUser, newUserInfo } = result;
+
       const refreshToken = await JwtAuthRefreshTokenInstance.sign({
         name: newUserInfo.name,
         uuid: newUser.uuid,
@@ -227,27 +248,38 @@ export const resolverUser: Resolvers = {
           .populate<{ userInfo: TUserInfo }>('userInfo')
           .exec();
         if (!existingUser) {
-          // If don't have create new user
-          const newUserInfo = await UserInfoModel.create({
-            name: nameFromGoogle,
+          // Create new user — wrap in transaction to prevent orphaned UserInfoModel
+          // if UserModel.create fails.
+          const googleSession = await mongoose.startSession();
+          const googleResult = await googleSession.withTransaction(async () => {
+            const [createdUserInfo] = await UserInfoModel.create(
+              [{ name: nameFromGoogle }],
+              { session: googleSession },
+            );
+            const [createdUser] = await UserModel.create(
+              [
+                {
+                  uuid: randomUUID(),
+                  email: payload.email,
+                  role: ERole.User,
+                  authMethods: [EAuthMethod.Google],
+                  userInfo: createdUserInfo._id,
+                  lastLoginAt: new Date(),
+                },
+              ],
+              { session: googleSession },
+            );
+            return { newUser: createdUser, newUserInfo: createdUserInfo };
           });
-
-          const newUser = await UserModel.create({
-            uuid: randomUUID(),
-            email: payload.email,
-            role: ERole.User,
-            authMethods: [EAuthMethod.Google],
-            userInfo: newUserInfo._id,
-            lastLoginAt: new Date(),
-          });
+          googleSession.endSession();
 
           user = {
-            uuid: newUser.uuid,
-            email: newUser.email,
-            name: newUserInfo.name,
-            authMethods: newUser.authMethods,
+            uuid: googleResult.newUser.uuid,
+            email: googleResult.newUser.email,
+            name: googleResult.newUserInfo.name,
+            authMethods: googleResult.newUser.authMethods,
           };
-          role = newUser.role;
+          role = googleResult.newUser.role;
         } else {
           if (!existingUser.authMethods.includes(EAuthMethod.Google)) {
             existingUser.authMethods.push(EAuthMethod.Google);
@@ -347,7 +379,7 @@ export const resolverUser: Resolvers = {
         try {
           const verified = await JwtAuthRefreshTokenInstance.verify(refreshToken);
           payload = verified.payload;
-        } catch (e) {
+        } catch {
           throw new AuthenticationError('Invalid refresh token');
         }
 
@@ -447,19 +479,26 @@ export const resolverUser: Resolvers = {
 
       const userInfo = user.userInfo;
 
-      userInfo.name = name || '';
-      userInfo.phoneNumber = phoneNumber || '';
-      userInfo.address = address || '';
+      // Only update fields that were explicitly provided in the request.
+      // - `undefined` means the field was omitted → preserve existing value.
+      // - `null` means the field was explicitly cleared → set to empty string.
+      // - `string` → update to the new value.
+      // `?? ''` narrows `string | null` → `string` to satisfy the model type.
+      if (name !== undefined) userInfo.name = name ?? '';
+      if (phoneNumber !== undefined) userInfo.phoneNumber = phoneNumber ?? '';
+      if (address !== undefined) userInfo.address = address ?? '';
 
       await userInfo.save();
 
+      // Build cache entry from the saved document — reflects the correct state
+      // after partial update (not the raw args which may be undefined).
       const info: TUserInfoResponse = {
         uuid: user.uuid,
         email: user.email,
-        name: name ?? userInfo.name,
+        name: userInfo.name,
         authMethods: user.authMethods,
-        address: address ?? userInfo.address,
-        phoneNumber: phoneNumber ?? userInfo.phoneNumber,
+        address: userInfo.address,
+        phoneNumber: userInfo.phoneNumber,
       };
 
       // Cache user info

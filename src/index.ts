@@ -1,12 +1,15 @@
 import { config } from '@helper';
+import { createLogger } from '@lib';
 import { paypalQueueService, RedisInstance } from '@service';
 import mongoose from 'mongoose';
 import { NGOO_API } from './app';
 import { initPaypalWebhookWorker } from './services/webhook';
 
+const logger = createLogger('Main');
+
 const connect = async () => {
   try {
-    console.log('🚀 Initializing services...');
+    logger.info('Initializing services...');
 
     // connect mongo db
     await mongoose.connect(config.MONGODB_URL, {
@@ -14,12 +17,12 @@ const connect = async () => {
       serverSelectionTimeoutMS: 5000,
       dbName: config.MONGODB_TABLE_NAME,
     });
-    console.log('✅ MongoDB connected');
+    logger.info('MongoDB connected');
     // start application
     await NGOO_API.payload();
     initPaypalWebhookWorker();
   } catch (err) {
-    console.error('❌ Connection failed:', err);
+    logger.error({ err }, 'Connection failed — exiting');
     if (RedisInstance.redis.isOpen) {
       RedisInstance.redis.quit();
     }
@@ -28,7 +31,7 @@ const connect = async () => {
 };
 
 process.on('SIGINT', async () => {
-  console.log('⚠️ Shutting down...');
+  logger.info('Shutting down...');
   // queue service
   await paypalQueueService.shutdown(10000);
 
@@ -38,8 +41,8 @@ process.on('SIGINT', async () => {
 
   // db
   await mongoose.disconnect();
-  console.log('✅ Disconnect MongoDB...');
-  console.log('✅ Done');
+  logger.info('MongoDB disconnected');
+  logger.info('Shutdown complete');
   process.exit(0);
 });
 

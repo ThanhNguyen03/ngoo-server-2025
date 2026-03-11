@@ -41,6 +41,9 @@ const envSchema = Joi.object({
     .required(),
   REDIS_KEY_PREFIX: Joi.string().trim().optional().default('thanhfng_server'),
 
+  // logging
+  LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').optional().default('info'),
+
   // paypal
   PAYPAL_CLIENT_ID: Joi.string().required(),
   PAYPAL_CLIENT_SECRET: Joi.string().required(),
@@ -83,6 +86,9 @@ export const config = {
   // redis
   REDIS_URL: envVars.REDIS_URL,
   REDIS_KEY_PREFIX: envVars.REDIS_KEY_PREFIX,
+
+  // logging
+  LOG_LEVEL: envVars.LOG_LEVEL as 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace',
 
   // paypal
   PAYPAL_CLIENT_ID: envVars.PAYPAL_CLIENT_ID,

@@ -1,5 +1,7 @@
 import { RedisHelper, type TPayPalWebhookEvent } from '@helper';
-import { QueueService, type TQueueJobData, type TQueueOptions, type TQueuePriority } from '@lib';
+import { createLogger, QueueService, type TQueueJobData, type TQueueOptions, type TQueuePriority } from '@lib';
+
+const logger = createLogger('WebhookQueue');
 
 export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
   private processingJobs = new Set<string>();
@@ -32,9 +34,9 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
   ): Promise<string> {
     const jobKey = `${orderId}:${captureId}`;
 
-    // Check memory set trước
+    // Check in-memory set first — fast dedup before acquiring lock
     if (this.processingJobs.has(jobKey)) {
-      console.log(`[WebhookQueue] Duplicate webhook detected for ${orderId}`);
+      logger.debug({ orderId }, 'Duplicate webhook detected, skipping');
       return `duplicate-${orderId}`;
     }
 
@@ -63,8 +65,8 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
       });
       return result;
     } catch (error) {
-      // Lock failed
-      console.warn(`[WebhookQueue] Lock failed for ${orderId}, continuing without lock`);
+      // Lock failed — continue without lock, in-memory dedup still protects against duplicates
+      logger.warn({ orderId, err: error }, 'Webhook lock failed, continuing without lock');
 
       // Track job in memory
       this.processingJobs.add(jobKey);
@@ -99,8 +101,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     // Note: Processing jobs cannot be cancelled immediately
     const processingJobs = Array.from(this.processing.values()).filter((info) => info.job.orderId === orderId);
 
-    console.log(`[WebhookQueueService] Cancelled ${cancelledCount} jobs for order ${orderId}`);
-    console.log(`[WebhookQueueService] ${processingJobs.length} jobs still processing for order ${orderId}`);
+    logger.info({ orderId, cancelledCount, processingCount: processingJobs.length }, 'Jobs cancelled for order');
 
     return cancelledCount;
   }
@@ -122,7 +123,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
       }
     });
 
-    console.log(`[WebhookQueueService] Cancelled ${cancelledCount} jobs for capture ${captureId}`);
+    logger.info({ captureId, cancelledCount }, 'Jobs cancelled for capture');
     return cancelledCount;
   }
 
@@ -159,7 +160,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     const removedCount = initialLength - this.queue.length;
 
     if (removedCount > 0) {
-      console.log(`[WebhookQueueService] Cleaned up ${removedCount} cancelled jobs`);
+      logger.debug({ removedCount }, 'Cleaned up cancelled jobs');
     }
 
     return removedCount;

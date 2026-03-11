@@ -83,11 +83,15 @@ export const resolverCategory: Resolvers = {
         throw new NotFoundError('Category not found');
       }
 
-      // Update cache
-      if (oldCategory.name !== name) {
+      // Capture old name before mutation so we can remove the stale cache entry.
+      // Mutating oldCategory.name first and then passing it to categoryDel would
+      // delete the NEW name from cache rather than the old one.
+      const oldName = oldCategory.name;
+      if (oldName !== name) {
         oldCategory.name = name;
         await oldCategory.save();
-        await RedisHelper.category.categoryDel(oldCategory.name);
+        // Remove the stale cache entry keyed by the OLD name
+        await RedisHelper.category.categoryDel(oldName);
       }
 
       const response = {

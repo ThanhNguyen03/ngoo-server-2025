@@ -1,7 +1,10 @@
 import { config, JwtAuthAccessTokenInstance, RedisHelper } from '@helper';
 import { EPaymentStatus } from '@generated/graphql';
+import { createLogger } from '@lib';
 import http from 'http';
 import { Server } from 'socket.io';
+
+const logger = createLogger('Socket');
 
 export let io: Server;
 
@@ -62,7 +65,7 @@ export const initSocket = (httpServer: http.Server) => {
 
       next();
     } catch (err) {
-      console.error('[Socket Auth Error]', err);
+      logger.error({ err }, 'Socket authentication error');
       next(new Error('Unauthorized'));
     }
   });
@@ -73,9 +76,9 @@ export const initSocket = (httpServer: http.Server) => {
 
     // join room = userId (trusted)
     socket.join(userId);
-    console.log(`[socket] connected`, socket.id);
+    logger.debug({ socketId: socket.id }, 'Socket connected');
     socket.on('disconnect', (reason) => {
-      console.log(`[socket] user in ${socket.id} disconnected: `, reason);
+      logger.debug({ socketId: socket.id, reason }, 'Socket disconnected');
     });
   });
 };

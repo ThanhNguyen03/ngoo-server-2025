@@ -7,6 +7,9 @@
  * the helper layer (pure utilities) and the service layer (business logic).
  */
 import { EOrderStatus, EPaymentStatus, type TPaymentSocketResponse } from '@generated/graphql';
+import { createLogger } from '@lib';
+
+const logger = createLogger('PayPalHelper');
 
 export type TPayPalPayer = {
   email_address?: string;
@@ -59,7 +62,7 @@ declare global {
   }
 }
 
-export const getPayerInfo = async (systemOrderId: string, resource: TPayPalResource) => {
+export const getPayerInfo = async (_systemOrderId: string, resource: TPayPalResource) => {
   let email: string = '';
   let payerId: string = '';
 
@@ -105,7 +108,7 @@ export const getStatusFromEventType = (eventType: string) => {
         orderStatus: EOrderStatus.Pending,
       };
     default:
-      console.warn(`[Webhook] Unknown event type: ${eventType}`);
+      logger.warn({ eventType }, 'Unknown PayPal event type, defaulting to Processing status');
       return {
         paymentStatus: EPaymentStatus.Processing,
         orderStatus: EOrderStatus.Pending,

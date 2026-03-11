@@ -13,11 +13,14 @@ import {
   ApolloServerPluginLandingPageProductionDefault,
 } from '@apollo/server/plugin/landingPage/default';
 import { config, EUserAuthenticationStatus, JwtAuthAccessTokenInstance, TAppContext } from '@helper';
+import { createLogger } from '@lib';
 import { initSocket, RedisInstance } from '@service';
 import { RedisStore } from 'connect-redis';
 import { randomUUID } from 'crypto';
 import session from 'express-session';
 import router from './services/webhook';
+
+const logger = createLogger('App');
 
 const HSTS_HELMET_MAX_AGE_IN_SECONDS = 30 * 24 * 3600; // 30 days
 const COOKIE_SESSION_MAX_AGE_IN_SECONDS = 24 * 3600; // 1 day
@@ -75,7 +78,7 @@ export const NGOO_API = {
       typeDefs: TypedefApp,
       resolvers: ResolverApp,
       formatError: (formattedError: GraphQLFormattedError, error: unknown): GraphQLFormattedError => {
-        console.error('Root cause:', error, 'formatted:', formattedError);
+        logger.error({ err: error, formattedError }, 'GraphQL error');
         return formattedError;
       },
       introspection: config.NODE_ENV === 'local',
@@ -139,7 +142,7 @@ export const NGOO_API = {
               },
             };
           } catch (err) {
-            console.error('JWT verify failed:', err);
+            logger.warn({ err }, 'JWT verification failed');
             return { ip, user: { kind: EUserAuthenticationStatus.Guest } };
           }
         },
@@ -153,7 +156,7 @@ export const NGOO_API = {
       httpServer.listen({ port: config.PORT }, config.HOST, resolve);
     });
 
-    console.debug(`Server ready at ${config.APP_URL}:${config.PORT}/graphql`);
+    logger.info(`Server ready at ${config.APP_URL}:${config.PORT}/graphql`);
   },
 };
 
