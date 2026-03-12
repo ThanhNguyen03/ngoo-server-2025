@@ -14,6 +14,7 @@ import {
 } from '@helper';
 import { ConflictError, NotFoundError } from '@lib';
 import { CategoryModel } from '@model';
+import { logAudit } from '@service';
 import Joi from 'joi';
 
 const JOI_CATEGORY_NAME = Joi.object<MutationCreateCategoryArgs>({
@@ -47,7 +48,7 @@ export const resolverCategory: Resolvers = {
   Mutation: {
     createCategory: adminWrapper(
       JOI_CATEGORY_NAME,
-      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args) => {
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args, context) => {
         const { name } = _args;
         const cacheCategory = await RedisHelper.category.categoryGet(name);
         if (cacheCategory) {
@@ -82,13 +83,22 @@ export const resolverCategory: Resolvers = {
         await RedisHelper.category.categorySet(response);
         await RedisHelper.category.categoryAllListDel();
 
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'CREATE',
+          targetType: 'Category',
+          targetId: category.categoryId,
+          metadata: { name: category.name },
+        });
+
         return response;
       }),
     ),
 
     updateCategory: adminWrapper(
       JOI_CATEGORY,
-      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args) => {
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args, context) => {
         const { categoryId, name } = _args.category;
 
         const oldCategory = await CategoryModel.findOne({ categoryId, isDeleted: false });
@@ -115,13 +125,22 @@ export const resolverCategory: Resolvers = {
         await RedisHelper.category.categorySet(response);
         await RedisHelper.category.categoryAllListDel();
 
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'UPDATE',
+          targetType: 'Category',
+          targetId: oldCategory.categoryId,
+          diff: { oldValue: { name: oldName }, newValue: { name } },
+        });
+
         return response;
       }),
     ),
 
     deleteCategory: adminWrapper(
       JOI_CATEGORY_ID,
-      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args) => {
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args, context) => {
         const { categoryId } = _args;
         const category = await CategoryModel.findOneAndUpdate({ categoryId }, { isDeleted: true }, { new: true });
 
@@ -130,6 +149,16 @@ export const resolverCategory: Resolvers = {
         }
         await RedisHelper.category.categoryDel(category.name);
         await RedisHelper.category.categoryAllListDel();
+
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'DELETE',
+          targetType: 'Category',
+          targetId: category.categoryId,
+          metadata: { name: category.name },
+        });
+
         return true;
       }),
     ),

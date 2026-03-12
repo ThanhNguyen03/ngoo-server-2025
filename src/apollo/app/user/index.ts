@@ -29,6 +29,7 @@ import isOk, {
   JWTAuthentication,
   NotFoundError,
 } from '@lib';
+import { logAudit } from '@service';
 import { TUserInfo, UserInfoModel, UserModel } from '@model';
 import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
@@ -512,6 +513,15 @@ export const resolverUser: Resolvers = {
 
         // Cache outside transaction (best-effort)
         if (info) await RedisHelper.account.userInfoSet(info);
+
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId,
+          action: 'UPDATE',
+          targetType: 'User',
+          targetId: userId,
+        });
+
         return info;
       } finally {
         session.endSession();

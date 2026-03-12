@@ -24,6 +24,7 @@ import {
 } from '@helper';
 import mongoose, { type HydratedDocument } from 'mongoose';
 // Import directly from sibling modules to avoid circular deps through services/index.ts
+import { logAudit } from '../audit';
 import { emitPaymentStatus } from '../socket';
 import { paypalService } from './service';
 
@@ -132,6 +133,18 @@ export const processPaymentCaptureEvent = async (
       await payment.save({ session });
       await order.save({ session });
 
+      // Fire-and-forget audit log. Called inside withTransaction for simplicity;
+      // logAudit uses its own session-less write so it commits independently.
+      // In the rare event the transaction rolls back, the audit entry is orphaned
+      // but this is an acceptable trade-off for a non-critical audit trail.
+      logAudit({
+        userId: payment.userId,
+        action: 'PAYMENT',
+        targetType: 'Transaction',
+        targetId: payment.paymentId,
+        metadata: { orderId: order.orderId, status: String(payment.status) },
+      });
+
       try {
         await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
           status: payment.status,
@@ -173,6 +186,7 @@ export const processPaymentCaptureEvent = async (
       throw error;
     }
   });
+
 };
 
 /**

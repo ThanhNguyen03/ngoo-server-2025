@@ -23,6 +23,7 @@ import {
 } from '@helper';
 import { ConflictError, NotFoundError, ValidationError } from '@lib';
 import { CategoryModel, ItemModel, TCategory, TItem } from '@model';
+import { logAudit } from '@service';
 import Joi from 'joi';
 import { Types } from 'mongoose';
 
@@ -321,7 +322,7 @@ export const resolverItem: Resolvers = {
   Mutation: {
     createItem: adminWrapper(
       JOI_CREATE_ITEM_INPUT,
-      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }) => {
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }, context) => {
       const { categoryName, name, ...data } = input;
       const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
       if (!category) {
@@ -359,13 +360,22 @@ export const resolverItem: Resolvers = {
       const response = toItemResponse(item);
       await RedisHelper.item.itemByIdSet(response);
 
+      // Fire-and-forget: do not await to avoid blocking the response
+      logAudit({
+        userId: context.user.userId,
+        action: 'CREATE',
+        targetType: 'Item',
+        targetId: item.itemId,
+        metadata: { name: item.name, categoryName: item.category.name },
+      });
+
       return response;
     }),
     ),
 
     updateItem: adminWrapper(
       JOI_UPDATE_ITEM_INPUT,
-      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }) => {
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }, context) => {
       const { categoryName, itemId, ...data } = input;
 
       const existingItem = await ItemModel.findOne({ itemId, isDeleted: false })
@@ -397,8 +407,16 @@ export const resolverItem: Resolvers = {
       }
 
       const response = toItemResponse(item);
-
       await RedisHelper.item.itemByIdSet(response);
+
+      // Fire-and-forget: do not await to avoid blocking the response
+      logAudit({
+        userId: context.user.userId,
+        action: 'UPDATE',
+        targetType: 'Item',
+        targetId: item.itemId,
+        metadata: { name: item.name },
+      });
 
       return response;
     }),
@@ -406,13 +424,23 @@ export const resolverItem: Resolvers = {
 
     deleteItem: adminWrapper(
       JOI_ITEM_ID,
-      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args) => {
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args, context) => {
       const { itemId } = _args;
       const item = await ItemModel.findOneAndUpdate({ itemId }, { isDeleted: true }, { new: true });
       if (!item) {
         throw new NotFoundError('Item not found');
       }
       await RedisHelper.item.itemByIdDel(itemId);
+
+      // Fire-and-forget: do not await to avoid blocking the response
+      logAudit({
+        userId: context.user.userId,
+        action: 'DELETE',
+        targetType: 'Item',
+        targetId: itemId,
+        metadata: { name: item.name },
+      });
+
       return true;
     }),
     ),
