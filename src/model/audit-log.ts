@@ -1,23 +1,23 @@
-import mongoose, { Schema, Document, model, Types } from 'mongoose';
+import mongoose, { Schema, Document, model } from 'mongoose';
 
 export type TAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'PAYMENT' | 'OTHER';
 export type TTargetType = 'User' | 'Item' | 'Order' | 'Category' | 'Transaction' | 'System';
 
-type TAuditDiff = {
+export type TAuditDiff = {
   oldValue?: Record<string, unknown>;
   newValue?: Record<string, unknown>;
 };
 
-type TAuditMetadata = {
+export type TAuditMetadata = {
   refId?: string;
   [key: string]: string | number | boolean | undefined;
 };
 
 export interface IAuditLog extends Document {
-  user?: Types.ObjectId; // ref User
+  user?: string; // UUID of the acting user
   action: TAuditAction;
   targetType: TTargetType;
-  targetId?: Types.ObjectId; // ref to another model: item, order,...
+  targetId?: string; // UUID or business ID of the target entity
   diff?: TAuditDiff;
   metadata?: TAuditMetadata;
   createdAt: Date;
@@ -25,7 +25,7 @@ export interface IAuditLog extends Document {
 
 const AuditLogSchema = new Schema<IAuditLog>(
   {
-    user: { type: Schema.Types.ObjectId, ref: 'User', required: false },
+    user: { type: String, required: false },
     action: {
       type: String,
       enum: ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'PAYMENT', 'OTHER'],
@@ -36,7 +36,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
       enum: ['User', 'Item', 'Order', 'Category', 'Transaction', 'System'],
       required: true,
     },
-    targetId: { type: Schema.Types.ObjectId, required: false },
+    targetId: { type: String, required: false },
     diff: {
       oldValue: { type: Schema.Types.Mixed },
       newValue: { type: Schema.Types.Mixed },
@@ -49,5 +49,6 @@ const AuditLogSchema = new Schema<IAuditLog>(
 AuditLogSchema.index({ createdAt: -1 });
 AuditLogSchema.index({ user: 1 });
 AuditLogSchema.index({ targetType: 1, targetId: 1 });
+AuditLogSchema.index({ action: 1, createdAt: -1 }); // filtered listing by action
 
 export const AuditLogModel = mongoose.models.AuditLog || model<IAuditLog>('AuditLog', AuditLogSchema);

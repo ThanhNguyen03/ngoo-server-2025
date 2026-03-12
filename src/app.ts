@@ -23,17 +23,16 @@ import router from './services/webhook';
 const logger = createLogger('App');
 
 const HSTS_HELMET_MAX_AGE_IN_SECONDS = 30 * 24 * 3600; // 30 days
-const COOKIE_SESSION_MAX_AGE_IN_SECONDS = 24 * 3600; // 1 day
 
 export const NGOO_API = {
   clusterName: 'ngoo-server-api',
-  payload: async () => {
+  payload: async (): Promise<http.Server> => {
     const app = express();
 
     // --- PayPal Webhook ---
-    app.use('/webhook/paypal', express.raw({ type: 'application/json' }), router);
+    app.use('/webhook/paypal', express.raw({ type: 'application/json', limit: config.REQUEST_BODY_LIMIT }), router);
     // --- Middleware ---
-    app.use(express.json());
+    app.use(express.json({ limit: config.REQUEST_BODY_LIMIT }));
     // protect
     app.use(
       helmet({
@@ -102,7 +101,7 @@ export const NGOO_API = {
         cookie: {
           httpOnly: true,
           path: '/',
-          maxAge: COOKIE_SESSION_MAX_AGE_IN_SECONDS * 1000, // milliseconds
+          maxAge: config.SESSION_COOKIE_MAX_AGE_SEC * 1000, // milliseconds
         },
       }),
     );
@@ -157,6 +156,7 @@ export const NGOO_API = {
     });
 
     logger.info(`Server ready at ${config.APP_URL}:${config.PORT}/graphql`);
+    return httpServer;
   },
 };
 

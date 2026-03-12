@@ -55,6 +55,60 @@ const envSchema = Joi.object({
   // NGOO_CHAIN_ID: Joi.string().required(),
   // NGOO_SIGNER: Joi.string().required(),
   // MONAD_RPC_URL: Joi.string().required(),
+
+  // --- Queue ---
+  QUEUE_MAX_CONCURRENT: Joi.number().optional().default(10),
+  QUEUE_MAX_RETRIES: Joi.number().optional().default(3),
+  QUEUE_RETRY_DELAY_MS: Joi.number().optional().default(1000),
+  QUEUE_MAX_RETRY_DELAY_MS: Joi.number().optional().default(30000),
+  QUEUE_STALLED_TIMEOUT_MS: Joi.number().optional().default(30000),
+
+  // --- Rate Limiting ---
+  RATE_LIMIT_ORDER_BUCKET_SIZE: Joi.number().optional().default(5),
+  RATE_LIMIT_ORDER_REFILL_RATE: Joi.number().optional().default(1),
+  RATE_LIMIT_ORDER_INTERVAL_SEC: Joi.number().optional().default(60),
+  RATE_LIMIT_PAYMENT_BUCKET_SIZE: Joi.number().optional().default(3),
+  RATE_LIMIT_PAYMENT_REFILL_RATE: Joi.number().optional().default(1),
+  RATE_LIMIT_PAYMENT_INTERVAL_SEC: Joi.number().optional().default(300),
+  RATE_LIMIT_AUTH_BUCKET_SIZE: Joi.number().optional().default(10),
+  RATE_LIMIT_AUTH_REFILL_RATE: Joi.number().optional().default(1),
+  RATE_LIMIT_AUTH_INTERVAL_SEC: Joi.number().optional().default(60),
+  RATE_LIMIT_ADMIN_BUCKET_SIZE: Joi.number().optional().default(30),
+  RATE_LIMIT_ADMIN_REFILL_RATE: Joi.number().optional().default(5),
+  RATE_LIMIT_ADMIN_INTERVAL_SEC: Joi.number().optional().default(60),
+
+  // --- Cache TTLs (seconds) ---
+  CACHE_DEFAULT_TTL_SEC: Joi.number().optional().default(3600),
+  CACHE_ORDER_CHECKOUT_TTL_SEC: Joi.number().optional().default(180),
+  CACHE_ORDER_LIMIT_PROCESSING_TTL_SEC: Joi.number().optional().default(120),
+  CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC: Joi.number().optional().default(600),
+  CACHE_PAYPAL_STATUS_TTL_SEC: Joi.number().optional().default(300),
+  CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC: Joi.number().optional().default(604800),
+
+  // --- Lock TTLs (milliseconds) ---
+  LOCK_PAYMENT_TTL_MS: Joi.number().optional().default(30000),
+  LOCK_WEBHOOK_PROCESSING_TTL_MS: Joi.number().optional().default(60000),
+
+  // --- JWT ---
+  JWT_ACCESS_TOKEN_EXP: Joi.string().optional().default('60m'),
+  JWT_REFRESH_TOKEN_EXP: Joi.string().optional().default('30d'),
+
+  // --- MongoDB ---
+  MONGODB_MAX_POOL_SIZE: Joi.number().optional().default(20),
+  MONGODB_MIN_POOL_SIZE: Joi.number().optional().default(5),
+  MONGODB_MAX_IDLE_TIME_MS: Joi.number().optional().default(30000),
+  MONGODB_SERVER_SELECTION_TIMEOUT_MS: Joi.number().optional().default(5000),
+
+  // --- PayPal Service ---
+  PAYPAL_CLIENT_TIMEOUT_MS: Joi.number().optional().default(30000),
+  PAYPAL_WEBHOOK_TIMEOUT_MS: Joi.number().optional().default(10000),
+
+  // --- Payment ---
+  PAYMENT_DEFAULT_EXPIRY_MS: Joi.number().optional().default(600000),
+
+  // --- Session ---
+  SESSION_COOKIE_MAX_AGE_SEC: Joi.number().optional().default(86400),
+  REQUEST_BODY_LIMIT: Joi.string().optional().default('1mb'),
 }).unknown(true);
 
 const { value: envVars, error } = envSchema.validate(process.env, {
@@ -102,6 +156,60 @@ export const config = {
   // NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID,
   // NGOO_SIGNER: envVars.NGOO_SIGNER,
   // MONAD_RPC_URL: envVars.MONAD_RPC_URL,
+
+  // --- Queue ---
+  QUEUE_MAX_CONCURRENT: envVars.QUEUE_MAX_CONCURRENT as number,
+  QUEUE_MAX_RETRIES: envVars.QUEUE_MAX_RETRIES as number,
+  QUEUE_RETRY_DELAY_MS: envVars.QUEUE_RETRY_DELAY_MS as number,
+  QUEUE_MAX_RETRY_DELAY_MS: envVars.QUEUE_MAX_RETRY_DELAY_MS as number,
+  QUEUE_STALLED_TIMEOUT_MS: envVars.QUEUE_STALLED_TIMEOUT_MS as number,
+
+  // --- Rate Limiting ---
+  RATE_LIMIT_ORDER_BUCKET_SIZE: envVars.RATE_LIMIT_ORDER_BUCKET_SIZE as number,
+  RATE_LIMIT_ORDER_REFILL_RATE: envVars.RATE_LIMIT_ORDER_REFILL_RATE as number,
+  RATE_LIMIT_ORDER_INTERVAL_SEC: envVars.RATE_LIMIT_ORDER_INTERVAL_SEC as number,
+  RATE_LIMIT_PAYMENT_BUCKET_SIZE: envVars.RATE_LIMIT_PAYMENT_BUCKET_SIZE as number,
+  RATE_LIMIT_PAYMENT_REFILL_RATE: envVars.RATE_LIMIT_PAYMENT_REFILL_RATE as number,
+  RATE_LIMIT_PAYMENT_INTERVAL_SEC: envVars.RATE_LIMIT_PAYMENT_INTERVAL_SEC as number,
+  RATE_LIMIT_AUTH_BUCKET_SIZE: envVars.RATE_LIMIT_AUTH_BUCKET_SIZE as number,
+  RATE_LIMIT_AUTH_REFILL_RATE: envVars.RATE_LIMIT_AUTH_REFILL_RATE as number,
+  RATE_LIMIT_AUTH_INTERVAL_SEC: envVars.RATE_LIMIT_AUTH_INTERVAL_SEC as number,
+  RATE_LIMIT_ADMIN_BUCKET_SIZE: envVars.RATE_LIMIT_ADMIN_BUCKET_SIZE as number,
+  RATE_LIMIT_ADMIN_REFILL_RATE: envVars.RATE_LIMIT_ADMIN_REFILL_RATE as number,
+  RATE_LIMIT_ADMIN_INTERVAL_SEC: envVars.RATE_LIMIT_ADMIN_INTERVAL_SEC as number,
+
+  // --- Cache TTLs (seconds) ---
+  CACHE_DEFAULT_TTL_SEC: envVars.CACHE_DEFAULT_TTL_SEC as number,
+  CACHE_ORDER_CHECKOUT_TTL_SEC: envVars.CACHE_ORDER_CHECKOUT_TTL_SEC as number,
+  CACHE_ORDER_LIMIT_PROCESSING_TTL_SEC: envVars.CACHE_ORDER_LIMIT_PROCESSING_TTL_SEC as number,
+  CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC: envVars.CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC as number,
+  CACHE_PAYPAL_STATUS_TTL_SEC: envVars.CACHE_PAYPAL_STATUS_TTL_SEC as number,
+  CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC: envVars.CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC as number,
+
+  // --- Lock TTLs (milliseconds) ---
+  LOCK_PAYMENT_TTL_MS: envVars.LOCK_PAYMENT_TTL_MS as number,
+  LOCK_WEBHOOK_PROCESSING_TTL_MS: envVars.LOCK_WEBHOOK_PROCESSING_TTL_MS as number,
+
+  // --- JWT ---
+  JWT_ACCESS_TOKEN_EXP: envVars.JWT_ACCESS_TOKEN_EXP as string,
+  JWT_REFRESH_TOKEN_EXP: envVars.JWT_REFRESH_TOKEN_EXP as string,
+
+  // --- MongoDB ---
+  MONGODB_MAX_POOL_SIZE: envVars.MONGODB_MAX_POOL_SIZE as number,
+  MONGODB_MIN_POOL_SIZE: envVars.MONGODB_MIN_POOL_SIZE as number,
+  MONGODB_MAX_IDLE_TIME_MS: envVars.MONGODB_MAX_IDLE_TIME_MS as number,
+  MONGODB_SERVER_SELECTION_TIMEOUT_MS: envVars.MONGODB_SERVER_SELECTION_TIMEOUT_MS as number,
+
+  // --- PayPal Service ---
+  PAYPAL_CLIENT_TIMEOUT_MS: envVars.PAYPAL_CLIENT_TIMEOUT_MS as number,
+  PAYPAL_WEBHOOK_TIMEOUT_MS: envVars.PAYPAL_WEBHOOK_TIMEOUT_MS as number,
+
+  // --- Payment ---
+  PAYMENT_DEFAULT_EXPIRY_MS: envVars.PAYMENT_DEFAULT_EXPIRY_MS as number,
+
+  // --- Session ---
+  SESSION_COOKIE_MAX_AGE_SEC: envVars.SESSION_COOKIE_MAX_AGE_SEC as number,
+  REQUEST_BODY_LIMIT: envVars.REQUEST_BODY_LIMIT as string,
 };
 
 export const TABLE_NAME: TTableName = (() => {

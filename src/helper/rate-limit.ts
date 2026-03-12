@@ -2,6 +2,7 @@ import type { GraphQLResolveInfo } from 'graphql';
 import { RateLimitError } from '@lib';
 import type { TAuthorizedContext, TGuestContext, THandler } from './common';
 import { RedisHelper } from './redis-helper';
+import { config } from './config';
 
 export type TokenBucket = {
   tokens: number;
@@ -23,21 +24,26 @@ export type TRateLimitContext = {
 
 export const RATE_LIMIT_CONFIGS = {
   ORDER_CREATION: {
-    bucketSize: 5,
-    refillRate: 1, // 1 token per second
-    refillInterval: 60, // Refill every 60 seconds
+    bucketSize: config.RATE_LIMIT_ORDER_BUCKET_SIZE,
+    refillRate: config.RATE_LIMIT_ORDER_REFILL_RATE,
+    refillInterval: config.RATE_LIMIT_ORDER_INTERVAL_SEC,
   },
   PAYMENT_ATTEMPT: {
-    bucketSize: 3,
-    refillRate: 1,
-    refillInterval: 300, // Refill every 5 minutes
+    bucketSize: config.RATE_LIMIT_PAYMENT_BUCKET_SIZE,
+    refillRate: config.RATE_LIMIT_PAYMENT_REFILL_RATE,
+    refillInterval: config.RATE_LIMIT_PAYMENT_INTERVAL_SEC,
   },
   AUTH: {
-    bucketSize: 10,
-    refillRate: 1,
-    refillInterval: 60, // 10 attempts per minute per IP
+    bucketSize: config.RATE_LIMIT_AUTH_BUCKET_SIZE,
+    refillRate: config.RATE_LIMIT_AUTH_REFILL_RATE,
+    refillInterval: config.RATE_LIMIT_AUTH_INTERVAL_SEC,
   },
-} as const;
+  ADMIN_MUTATION: {
+    bucketSize: config.RATE_LIMIT_ADMIN_BUCKET_SIZE,
+    refillRate: config.RATE_LIMIT_ADMIN_REFILL_RATE,
+    refillInterval: config.RATE_LIMIT_ADMIN_INTERVAL_SEC,
+  },
+};
 
 /**
  * Wrapper for applying rate limiting to authenticated resolvers.
@@ -76,7 +82,7 @@ export const RATE_LIMIT_CONFIGS = {
  * @throws {Error} If rate limit is exceeded, with a message indicating when to retry
  */
 export function rateLimitWrapper<TArgs, TResult>(
-  config: RateLimitConfig,
+  rateLimitConfig: RateLimitConfig,
   resolver: THandler<TArgs, TAuthorizedContext & TRateLimitContext, TResult>,
 ): THandler<TArgs, TAuthorizedContext, TResult> {
   return async (
@@ -85,7 +91,7 @@ export function rateLimitWrapper<TArgs, TResult>(
     const userId = context.user.userId;
 
     // Apply rate limit
-    const result = await RedisHelper.rateLimit.tokenBucketConsume(`user:${userId}`, config);
+    const result = await RedisHelper.rateLimit.tokenBucketConsume(`user:${userId}`, rateLimitConfig);
 
     if (!result.allowed) {
       const minutes = Math.ceil(result.resetIn / 60);
@@ -112,12 +118,12 @@ export function rateLimitWrapper<TArgs, TResult>(
  * The context must have `ip` set (done in the Apollo context factory).
  */
 export function publicRateLimitWrapper<TArgs, TResult>(
-  config: RateLimitConfig,
+  rateLimitConfig: RateLimitConfig,
   resolver: THandler<TArgs, TGuestContext, TResult>,
 ): THandler<TArgs, TGuestContext, TResult> {
   return async (root: unknown, args: TArgs, context: TGuestContext, info: GraphQLResolveInfo): Promise<TResult> => {
     const ip = context.ip ?? 'unknown';
-    const result = await RedisHelper.rateLimit.tokenBucketConsume(`ip:auth:${ip}`, config);
+    const result = await RedisHelper.rateLimit.tokenBucketConsume(`ip:auth:${ip}`, rateLimitConfig);
 
     if (!result.allowed) {
       const minutes = Math.ceil(result.resetIn / 60);
