@@ -23,6 +23,10 @@ export const emitPaymentStatus = (
   userId: string,
   payload: { orderId: string; paymentId: string; status: EPaymentStatus },
 ): void => {
+  const room = io.sockets.adapter.rooms.get(userId);
+  if (!room || room.size === 0) {
+    logger.debug({ userId, orderId: payload.orderId }, 'No connected sockets for payment status emit');
+  }
   io.to(userId).emit('paymentStatus', payload);
 };
 
@@ -71,12 +75,28 @@ export const initSocket = (httpServer: http.Server) => {
   });
 
   // CONNECTION
-  io.on('connection', (socket) => {
+  io.on('connection', async (socket) => {
     const userId = socket.data.user.userId;
 
     // join room = userId (trusted)
     socket.join(userId);
     logger.debug({ socketId: socket.id }, 'Socket connected');
+
+    // Replay any pending payment status on reconnect
+    try {
+      const cachedStatus = await RedisHelper.paypal.paypalStatusGet(userId);
+      if (cachedStatus && cachedStatus.status !== EPaymentStatus.Processing) {
+        socket.emit('paymentStatus', {
+          orderId: cachedStatus.orderId,
+          paymentId: cachedStatus.paymentId,
+          status: cachedStatus.status,
+        });
+        logger.debug({ userId, orderId: cachedStatus.orderId }, 'Replayed cached payment status on reconnect');
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Failed to replay payment status on reconnect');
+    }
+
     socket.on('disconnect', (reason) => {
       logger.debug({ socketId: socket.id, reason }, 'Socket disconnected');
     });

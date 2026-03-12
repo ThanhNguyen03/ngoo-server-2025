@@ -4,7 +4,14 @@ import {
   MutationUpdateCategoryArgs,
   Resolvers,
 } from '@generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, RedisHelper } from '@helper';
+import {
+  adminWrapper,
+  JOI_ID_SCHEMA,
+  publicWrapper,
+  RATE_LIMIT_CONFIGS,
+  rateLimitWrapper,
+  RedisHelper,
+} from '@helper';
 import { ConflictError, NotFoundError } from '@lib';
 import { CategoryModel } from '@model';
 import Joi from 'joi';
@@ -38,81 +45,93 @@ export const resolverCategory: Resolvers = {
   },
 
   Mutation: {
-    createCategory: adminWrapper(JOI_CATEGORY_NAME, async (_root, _args) => {
-      const { name } = _args;
-      const cacheCategory = await RedisHelper.category.categoryGet(name);
-      if (cacheCategory) {
-        throw new ConflictError('Category already exists');
-      }
+    createCategory: adminWrapper(
+      JOI_CATEGORY_NAME,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args) => {
+        const { name } = _args;
+        const cacheCategory = await RedisHelper.category.categoryGet(name);
+        if (cacheCategory) {
+          throw new ConflictError('Category already exists');
+        }
 
-      const existingActive = await CategoryModel.findOne({
-        name,
-        isDeleted: false,
-      });
-      if (existingActive) {
+        const existingActive = await CategoryModel.findOne({
+          name,
+          isDeleted: false,
+        });
+        if (existingActive) {
+          const response = {
+            categoryId: existingActive.categoryId,
+            name: existingActive.name,
+          };
+          await RedisHelper.category.categorySet(response);
+          throw new ConflictError('Category already exists');
+        }
+        const category = await CategoryModel.findOneAndUpdate(
+          { name },
+          {
+            $setOnInsert: { name }, // if donot have -> create new
+            $set: { isDeleted: false }, // if isDelete = true -> set false
+          },
+          { new: true, upsert: true },
+        );
+
         const response = {
-          categoryId: existingActive.categoryId,
-          name: existingActive.name,
+          categoryId: category.categoryId,
+          name: category.name,
         };
         await RedisHelper.category.categorySet(response);
-        throw new ConflictError('Category already exists');
-      }
-      const category = await CategoryModel.findOneAndUpdate(
-        { name },
-        {
-          $setOnInsert: { name }, // if donot have -> create new
-          $set: { isDeleted: false }, // if isDelete = true -> set false
-        },
-        { new: true, upsert: true },
-      );
+        await RedisHelper.category.categoryAllListDel();
 
-      const response = {
-        categoryId: category.categoryId,
-        name: category.name,
-      };
-      await RedisHelper.category.categorySet(response);
+        return response;
+      }),
+    ),
 
-      return response;
-    }),
+    updateCategory: adminWrapper(
+      JOI_CATEGORY,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args) => {
+        const { categoryId, name } = _args.category;
 
-    updateCategory: adminWrapper(JOI_CATEGORY, async (_root, _args) => {
-      const { categoryId, name } = _args.category;
+        const oldCategory = await CategoryModel.findOne({ categoryId, isDeleted: false });
+        if (!oldCategory) {
+          throw new NotFoundError('Category not found');
+        }
 
-      const oldCategory = await CategoryModel.findOne({ categoryId, isDeleted: false });
-      if (!oldCategory) {
-        throw new NotFoundError('Category not found');
-      }
+        // Capture old name before mutation so we can remove the stale cache entry.
+        // Mutating oldCategory.name first and then passing it to categoryDel would
+        // delete the NEW name from cache rather than the old one.
+        const oldName = oldCategory.name;
+        if (oldName !== name) {
+          oldCategory.name = name;
+          await oldCategory.save();
+          // Remove the stale cache entry keyed by the OLD name
+          await RedisHelper.category.categoryDel(oldName);
+        }
 
-      // Capture old name before mutation so we can remove the stale cache entry.
-      // Mutating oldCategory.name first and then passing it to categoryDel would
-      // delete the NEW name from cache rather than the old one.
-      const oldName = oldCategory.name;
-      if (oldName !== name) {
-        oldCategory.name = name;
-        await oldCategory.save();
-        // Remove the stale cache entry keyed by the OLD name
-        await RedisHelper.category.categoryDel(oldName);
-      }
+        const response = {
+          categoryId: oldCategory.categoryId,
+          name,
+        };
 
-      const response = {
-        categoryId: oldCategory.categoryId,
-        name,
-      };
+        await RedisHelper.category.categorySet(response);
+        await RedisHelper.category.categoryAllListDel();
 
-      await RedisHelper.category.categorySet(response);
+        return response;
+      }),
+    ),
 
-      return response;
-    }),
+    deleteCategory: adminWrapper(
+      JOI_CATEGORY_ID,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args) => {
+        const { categoryId } = _args;
+        const category = await CategoryModel.findOneAndUpdate({ categoryId }, { isDeleted: true }, { new: true });
 
-    deleteCategory: adminWrapper(JOI_CATEGORY_ID, async (_root, _args) => {
-      const { categoryId } = _args;
-      const category = await CategoryModel.findOneAndUpdate({ categoryId }, { isDeleted: true }, { new: true });
-
-      if (!category) {
-        throw new NotFoundError('Category not found');
-      }
-      await RedisHelper.category.categoryDel(category.name);
-      return true;
-    }),
+        if (!category) {
+          throw new NotFoundError('Category not found');
+        }
+        await RedisHelper.category.categoryDel(category.name);
+        await RedisHelper.category.categoryAllListDel();
+        return true;
+      }),
+    ),
   },
 };

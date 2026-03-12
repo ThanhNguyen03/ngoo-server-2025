@@ -6,6 +6,7 @@ import {
   QueryItemByIdArgs,
   QueryListItemByCategoryArgs,
   QueryListItemByStatusArgs,
+  QueryListItemCursorArgs,
   Resolvers,
   TItemResponse,
 } from '@generated/graphql';
@@ -13,15 +14,33 @@ import {
   adminWrapper,
   JOI_ID_SCHEMA,
   publicWrapper,
+  rateLimitWrapper,
+  RATE_LIMIT_CONFIGS,
   RedisHelper,
   schemaPagination,
   sortQuery,
   TPagination,
 } from '@helper';
-import { ConflictError, NotFoundError } from '@lib';
+import { ConflictError, NotFoundError, ValidationError } from '@lib';
 import { CategoryModel, ItemModel, TCategory, TItem } from '@model';
 import Joi from 'joi';
 import { Types } from 'mongoose';
+
+/** Encode a cursor from a document's createdAt timestamp and _id. */
+const encodeCursor = (createdAt: Date, id: Types.ObjectId): string => {
+  return Buffer.from(JSON.stringify({ t: createdAt.getTime(), id: id.toHexString() })).toString('base64url');
+};
+
+/** Decode a cursor string into { t: timestamp_ms, id: hex_string }. Returns null on invalid input. */
+const decodeCursor = (cursor: string): { t: number; id: string } | null => {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (typeof parsed.t !== 'number' || typeof parsed.id !== 'string') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Minimum shape required by the mapper — compatible with both lean and
@@ -116,6 +135,13 @@ const JOI_LIST_ITEM = Joi.object<Omit<TPagination, 'total'>>({
   ...schemaPagination(Object.values(EItemQuery)),
 });
 
+const JOI_LIST_ITEM_CURSOR = Joi.object<QueryListItemCursorArgs>({
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  cursor: Joi.string().allow(null, '').default(null),
+  categoryName: Joi.string().trim().min(5).max(30).allow(null),
+  status: Joi.array().items(Joi.string().valid(...Object.values(EItemStatus))).allow(null),
+});
+
 export const resolverItem: Resolvers = {
   Query: {
     listItem: publicWrapper(JOI_LIST_ITEM, async (_root, _args) => {
@@ -194,6 +220,58 @@ export const resolverItem: Resolvers = {
       };
     }),
 
+    listItemCursor: publicWrapper(JOI_LIST_ITEM_CURSOR, async (_root, _args) => {
+      // Joi defaults ensure limit is always a number after validation
+      const limit = _args.limit ?? 20;
+      const { cursor, categoryName, status } = _args;
+      const filter: Record<string, unknown> = { isDeleted: false };
+
+      // Optional category filter
+      if (categoryName) {
+        const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
+        if (!category) throw new NotFoundError('Category not found');
+        filter.category = category._id;
+      }
+
+      // Optional status filter
+      if (status && status.length > 0) {
+        filter.status = { $in: status };
+      }
+
+      // Cursor condition: fetch documents older than the cursor position
+      if (cursor) {
+        const decoded = decodeCursor(cursor);
+        if (!decoded) throw new ValidationError('Invalid cursor format');
+
+        const cursorDate = new Date(decoded.t);
+        const cursorObjectId = new Types.ObjectId(decoded.id);
+        filter.$or = [
+          { createdAt: { $lt: cursorDate } },
+          { createdAt: cursorDate, _id: { $lt: cursorObjectId } },
+        ];
+      }
+
+      // Fetch limit + 1 to determine if there are more results
+      const items = await ItemModel.find(filter)
+        .populate<{ category: TCategory }>('category')
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(limit + 1)
+        .lean();
+
+      const hasMore = items.length > limit;
+      const pageItems = hasMore ? items.slice(0, limit) : items;
+
+      const nextCursor =
+        hasMore && pageItems.length > 0
+          ? encodeCursor(pageItems[pageItems.length - 1].createdAt, pageItems[pageItems.length - 1]._id)
+          : null;
+
+      return {
+        records: pageItems.map(toItemResponse),
+        pageInfo: { hasMore, nextCursor },
+      };
+    }),
+
     itemById: publicWrapper(JOI_ITEM_BY_ID, async (_root, _args) => {
       const { itemId } = _args;
       const cacheItemById = await RedisHelper.item.itemByIdGet(itemId);
@@ -241,7 +319,9 @@ export const resolverItem: Resolvers = {
   },
 
   Mutation: {
-    createItem: adminWrapper(JOI_CREATE_ITEM_INPUT, async (_root, { input }) => {
+    createItem: adminWrapper(
+      JOI_CREATE_ITEM_INPUT,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }) => {
       const { categoryName, name, ...data } = input;
       const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
       if (!category) {
@@ -281,8 +361,11 @@ export const resolverItem: Resolvers = {
 
       return response;
     }),
+    ),
 
-    updateItem: adminWrapper(JOI_UPDATE_ITEM_INPUT, async (_root, { input }) => {
+    updateItem: adminWrapper(
+      JOI_UPDATE_ITEM_INPUT,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }) => {
       const { categoryName, itemId, ...data } = input;
 
       const existingItem = await ItemModel.findOne({ itemId, isDeleted: false })
@@ -319,8 +402,11 @@ export const resolverItem: Resolvers = {
 
       return response;
     }),
+    ),
 
-    deleteItem: adminWrapper(JOI_ITEM_ID, async (_root, _args) => {
+    deleteItem: adminWrapper(
+      JOI_ITEM_ID,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args) => {
       const { itemId } = _args;
       const item = await ItemModel.findOneAndUpdate({ itemId }, { isDeleted: true }, { new: true });
       if (!item) {
@@ -329,5 +415,6 @@ export const resolverItem: Resolvers = {
       await RedisHelper.item.itemByIdDel(itemId);
       return true;
     }),
+    ),
   },
 };

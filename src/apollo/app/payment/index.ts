@@ -10,7 +10,10 @@ import {
 import {
   adminWrapper,
   authorizedWrapper,
+  config,
   JOI_ID_SCHEMA,
+  RATE_LIMIT_CONFIGS,
+  rateLimitWrapper,
   RedisHelper,
   schemaPagination,
   sortQuery,
@@ -99,7 +102,7 @@ const JOI_APPROVE_COD_PAYMENT = Joi.object<MutationApproveCodPaymentArgs>({
   }),
 });
 
-const PAYMENT_LOCK_TTL = 10_000;
+const PAYMENT_LOCK_TTL = config.LOCK_PAYMENT_TTL_MS;
 export const resolverPayment: Resolvers = {
   Query: {
     paymentUserHistory: authorizedWrapper(JOI_PAYMENT_ID, async (_root, _args, context) => {
@@ -163,7 +166,9 @@ export const resolverPayment: Resolvers = {
   },
 
   Mutation: {
-    approveCODPayment: adminWrapper(JOI_APPROVE_COD_PAYMENT, async (_root, { paymentInput }) => {
+    approveCODPayment: adminWrapper(
+      JOI_APPROVE_COD_PAYMENT,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { paymentInput }) => {
       const { orderId } = paymentInput;
 
       if (!orderId) {
@@ -225,5 +230,6 @@ export const resolverPayment: Resolvers = {
         };
       });
     }),
+    ),
   },
 };

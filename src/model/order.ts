@@ -94,7 +94,7 @@ const OrderSchema = new Schema<TOrder>(
     },
     orderStatus: {
       type: String,
-      enum: ['CREATED', 'PENDING', 'PAID', 'CANCELLED', 'COMPLETED'],
+      enum: ['CREATED', 'PENDING', 'PAID', 'CANCELLED', 'COMPLETED', 'FAILED'],
       default: EOrderStatus.Created,
     },
   },

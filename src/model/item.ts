@@ -53,4 +53,10 @@ const ItemSchema = new Schema<IItem>(
   { timestamps: true },
 );
 
+// Compound indexes for common query patterns — each covers isDeleted (equality)
+// followed by the secondary filter/sort field(s) to avoid collection scans.
+ItemSchema.index({ isDeleted: 1, createdAt: -1 }); // listItem
+ItemSchema.index({ isDeleted: 1, category: 1, createdAt: -1 }); // listItemByCategory
+ItemSchema.index({ isDeleted: 1, status: 1, createdAt: -1 }); // listItemByStatus
+
 export const ItemModel = model<TItem>('Item', ItemSchema);

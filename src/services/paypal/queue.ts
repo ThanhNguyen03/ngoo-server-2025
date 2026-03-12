@@ -1,10 +1,11 @@
-import { RedisHelper, type TPayPalWebhookEvent } from '@helper';
+import { config, RedisHelper, type TPayPalWebhookEvent } from '@helper';
 import { createLogger, QueueService, type TQueueJobData, type TQueueOptions, type TQueuePriority } from '@lib';
 
 const logger = createLogger('WebhookQueue');
 
 export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
   private processingJobs = new Set<string>();
+  private cleanupTimeouts = new Map<string, NodeJS.Timeout>();
 
   constructor(options: TQueueOptions = {}) {
     super({
@@ -53,13 +54,15 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
         // Mark as processing
         this.processingJobs.add(jobKey);
 
-        // Auto cleanup sau 5 phút
-        setTimeout(
-          () => {
-            this.processingJobs.delete(jobKey);
-          },
-          5 * 60 * 1000,
-        );
+        // Auto cleanup after 5 minutes
+        const existingTimeout = this.cleanupTimeouts.get(jobKey);
+        if (existingTimeout) clearTimeout(existingTimeout);
+
+        const timeout = setTimeout(() => {
+          this.processingJobs.delete(jobKey);
+          this.cleanupTimeouts.delete(jobKey);
+        }, 5 * 60 * 1000);
+        this.cleanupTimeouts.set(jobKey, timeout);
 
         return super.add(event, orderId, captureId, priority);
       });
@@ -70,12 +73,15 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
 
       // Track job in memory
       this.processingJobs.add(jobKey);
-      setTimeout(
-        () => {
-          this.processingJobs.delete(jobKey);
-        },
-        5 * 60 * 1000,
-      );
+
+      const existingTimeout = this.cleanupTimeouts.get(jobKey);
+      if (existingTimeout) clearTimeout(existingTimeout);
+
+      const timeout = setTimeout(() => {
+        this.processingJobs.delete(jobKey);
+        this.cleanupTimeouts.delete(jobKey);
+      }, 5 * 60 * 1000);
+      this.cleanupTimeouts.set(jobKey, timeout);
 
       return super.add(event, orderId, captureId, priority);
     }
@@ -92,7 +98,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     // Cancel queued jobs
     this.queue.forEach((job) => {
       if (job.orderId === orderId && !job.cancelled) {
-        this['clearJobTimeout'](job.id);
+        this.clearJobTimeout(job.id);
         job.cancelled = true;
         cancelledCount++;
       }
@@ -117,7 +123,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     // Cancel queued jobs
     this.queue.forEach((job) => {
       if (job.captureId === captureId && !job.cancelled) {
-        this['clearJobTimeout'](job.id);
+        this.clearJobTimeout(job.id);
         job.cancelled = true;
         cancelledCount++;
       }
@@ -166,6 +172,15 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     return removedCount;
   }
 
+  async shutdown(timeoutMs?: number): Promise<void> {
+    for (const [, timeout] of this.cleanupTimeouts) {
+      clearTimeout(timeout);
+    }
+    this.cleanupTimeouts.clear();
+    this.processingJobs.clear();
+    await super.shutdown(timeoutMs);
+  }
+
   /**
    * Override getStats to include webhook-specific metrics
    */
@@ -181,9 +196,9 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
 
 // Singleton for PayPal webhooks queue
 export const paypalQueueService = new WebhookQueueService({
-  maxConcurrent: 10,
-  maxRetries: 3,
-  retryDelay: 1000,
-  maxRetryDelay: 30 * 1000, // 30s
-  stalledTimeout: 60 * 1000, // 1 minute
+  maxConcurrent: config.QUEUE_MAX_CONCURRENT,
+  maxRetries: config.QUEUE_MAX_RETRIES,
+  retryDelay: config.QUEUE_RETRY_DELAY_MS,
+  maxRetryDelay: config.QUEUE_MAX_RETRY_DELAY_MS,
+  stalledTimeout: config.QUEUE_STALLED_TIMEOUT_MS,
 });

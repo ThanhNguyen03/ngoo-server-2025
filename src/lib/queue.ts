@@ -42,6 +42,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
   protected activeWorkers = 0;
   protected isShuttingDown = false;
   protected pendingTimeouts = new Set<NodeJS.Timeout>();
+  protected cleanupInterval: NodeJS.Timeout | null = null;
 
   // Map timeout to jobId to prevent MEMORY LEAK
   protected timeoutMap = new Map<string, NodeJS.Timeout>();
@@ -199,6 +200,11 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
     logger.info({ pendingJobs: this.queue.length }, 'Queue shutting down');
     this.isShuttingDown = true;
     this.removeAllListeners();
+
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
 
     // Clear all pending timeouts
     for (const [, timeout] of this.timeoutMap) {
@@ -408,8 +414,8 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
     }
   }
 
-  private startCleanupInterval(): void {
-    setInterval(
+  protected startCleanupInterval(): void {
+    this.cleanupInterval = setInterval(
       () => {
         if (this.pendingTimeouts.size !== this.timeoutMap.size) {
           logger.debug(

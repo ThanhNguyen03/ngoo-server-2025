@@ -2,13 +2,13 @@ import {
   EAuthMethod,
   ERole,
   MutationRefreshTokenArgs,
+  MutationUserConnectCryptoWalletArgs,
   MutationUserLoginArgs,
   MutationUserLogoutArgs,
   MutationUserRegisterArgs,
   Resolvers,
   TUserInfoResponse,
   type MutationUserUpdateInfoArgs,
-  // MutationUserConnectCryptoWalletArgs, // TODO: re-enable when userConnectCryptoWallet is implemented
 } from '@generated/graphql';
 import {
   authorizedWrapper,
@@ -25,14 +25,14 @@ import {
 import isOk, {
   AuthenticationError,
   ConflictError,
-  // JOI_ERC55_ADDRESS, // TODO: re-enable when userConnectCryptoWallet is implemented
+  JOI_ERC55_ADDRESS,
   JWTAuthentication,
   NotFoundError,
 } from '@lib';
 import { TUserInfo, UserInfoModel, UserModel } from '@model';
 import { hash, verify } from 'argon2';
 import { randomBytes, randomUUID } from 'crypto';
-// import { isHexString } from 'ethers'; // TODO: re-enable when userConnectCryptoWallet is implemented
+import { isHexString, verifyMessage } from 'ethers';
 import Joi from 'joi';
 import mongoose, { type HydratedDocument } from 'mongoose';
 
@@ -73,14 +73,16 @@ const JOI_REFRESH_TOKEN = Joi.object<MutationRefreshTokenArgs>({
   refreshToken: Joi.string().required(),
 });
 
-// TODO: JOI_USER_CONNECT_CRYPTO_WALLET will be used when userConnectCryptoWallet is implemented
-// const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalletArgs>({
-//   signature: Joi.string().trim().required().custom((value) => {
-//     if (isHexString(value, DSA_SIGNATURE_BYTE_LENGTH)) return value;
-//     throw new Error('Signature invalid');
-//   }),
-//   address: JOI_ERC55_ADDRESS.required(),
-// });
+const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalletArgs>({
+  signature: Joi.string()
+    .trim()
+    .required()
+    .custom((value) => {
+      if (isHexString(value, DSA_SIGNATURE_BYTE_LENGTH)) return value;
+      throw new Error('Signature invalid');
+    }),
+  address: JOI_ERC55_ADDRESS.required(),
+});
 
 const JOI_USER_UPDATE_INFO = Joi.object<MutationUserUpdateInfoArgs>({
   userInfo: Joi.object({
@@ -136,17 +138,15 @@ export const resolverUser: Resolvers = {
       return info;
     }),
 
-    // TODO
-    // cryptoWalletWithNone: authorizedWrapper(async (_root, _args, context) => {
-    //   const messageWithNonce = `Welcome to OnProver. \
-    //     Please sign the message to connect your wallet. \
-    //     This message will expire in 15 minutes. #${randomUUID()}`;
-
-    //   // await RedisHelperUser.walletLinkingMessage(context.user.userUuid).set(messageWithNonce, {
-    //   //   EX: MESSAGE_WITH_NONE_CACHE_TTL_IN_SECONDS,
-    //   // });
-    //   return messageWithNonce;
-    // }),
+    cryptoWalletWithNonce: authorizedWrapper(async (_root, _args, context) => {
+      const { userId } = context.user;
+      const nonce = randomUUID();
+      const message =
+        `Welcome to Ngoo. Please sign this message to connect your wallet. ` +
+        `This will expire in 15 minutes. Nonce: ${nonce}`;
+      await RedisHelper.account.walletMessageSet(userId, message);
+      return message;
+    }),
   },
 
   Mutation: {
@@ -433,78 +433,89 @@ export const resolverUser: Resolvers = {
       });
     }),
 
-    // TODO
-    // userConnectCryptoWallet: authorizedWrapper(JOI_USER_CONNECT_CRYPTO_WALLET, async (_root, args, context) => {
-    //   const { signature, address } = args;
-    //   const { user } = context;
+    userConnectCryptoWallet: authorizedWrapper(
+      JOI_USER_CONNECT_CRYPTO_WALLET,
+      async (_root, args, context) => {
+        const { signature, address } = args;
+        const { userId } = context.user;
 
-    //   // const redisEntry = RedisHelperUser.walletLinkingMessage(user.userUuid);
-    //   const nonceMessage = 'await redisEntry.get()';
+        // 1. Get nonce message from Redis
+        const nonceMessage = await RedisHelper.account.walletMessageGet(userId);
+        if (!nonceMessage) {
+          throw new AuthenticationError('Nonce expired or not found. Please request a new nonce.');
+        }
 
-    //   if (!nonceMessage) {
-    //     throw new Error('No nonce message found');
-    //   }
+        // 2. Verify ECDSA signature — ethers recovers the signer address
+        const recoveredAddress = verifyMessage(nonceMessage, signature);
+        if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
+          throw new AuthenticationError('Signature does not match the provided address');
+        }
 
-    //   // Verify the signature
-    //   const recoveredAddress = verifyMessage(nonceMessage, signature).toLowerCase();
+        // 3. Delete nonce (one-time use — prevents replay)
+        await RedisHelper.account.walletMessageDel(userId);
 
-    //   if (recoveredAddress !== address) {
-    //     throw new Error('Wallet address does not match the signature');
-    //   }
+        // 4. Update UserInfo.walletAddress (NOT UserModel — walletAddress lives on UserInfo)
+        const user = await UserModel.findOne({ uuid: userId }).exec();
+        if (!user) throw new NotFoundError('User not found');
+        await UserInfoModel.findByIdAndUpdate(user.userInfo, {
+          walletAddress: recoveredAddress.toLowerCase(),
+        });
 
-    //   // Remove the challenge message from Redis
-    //   // await redisEntry.delete();
+        // 5. Invalidate user info cache
+        await RedisHelper.account.userInfoDel(userId);
 
-    //   await UserModel.updateOne({ uuid: user.userId }, { walletAddress: recoveredAddress });
-
-    //   //   // Add the wallet address to the user's information in Redis
-    //   //   await RedisHelperUser.userInfo(user.userId.toString()).hashSet({ address: recoveredAddress });
-    //   return {
-    //     connectCompleted: true,
-    //     userUuid: user.userId,
-    //     walletAddress: recoveredAddress,
-    //   };
-    // }),
+        return {
+          connectCompleted: true,
+          userUuid: userId,
+          walletAddress: recoveredAddress.toLowerCase(),
+        };
+      },
+    ),
 
     userUpdateInfo: authorizedWrapper(JOI_USER_UPDATE_INFO, async (_root, _args, context) => {
       const { userId, role } = context.user;
       const { name, phoneNumber, address } = _args.userInfo;
 
-      const user = await UserModel.findOne({ uuid: userId, role })
-        .populate<{ userInfo: HydratedDocument<TUserInfo> }>('userInfo')
-        .exec();
-      if (!user) {
-        throw new NotFoundError('User not found');
+      const session = await mongoose.startSession();
+      try {
+        const info = await session.withTransaction(async () => {
+          const user = await UserModel.findOne({ uuid: userId, role })
+            .populate<{ userInfo: HydratedDocument<TUserInfo> }>('userInfo')
+            .session(session)
+            .exec();
+          if (!user) {
+            throw new NotFoundError('User not found');
+          }
+
+          const userInfo = user.userInfo;
+
+          // Only update fields that were explicitly provided in the request.
+          // - `undefined` means the field was omitted → preserve existing value.
+          // - `null` means the field was explicitly cleared → set to empty string.
+          // - `string` → update to the new value.
+          // `?? ''` narrows `string | null` → `string` to satisfy the model type.
+          if (name !== undefined) userInfo.name = name ?? '';
+          if (phoneNumber !== undefined) userInfo.phoneNumber = phoneNumber ?? '';
+          if (address !== undefined) userInfo.address = address ?? '';
+
+          await userInfo.save({ session });
+
+          return {
+            uuid: user.uuid,
+            email: user.email,
+            name: userInfo.name,
+            authMethods: user.authMethods,
+            address: userInfo.address,
+            phoneNumber: userInfo.phoneNumber,
+          } as TUserInfoResponse;
+        });
+
+        // Cache outside transaction (best-effort)
+        if (info) await RedisHelper.account.userInfoSet(info);
+        return info;
+      } finally {
+        session.endSession();
       }
-
-      const userInfo = user.userInfo;
-
-      // Only update fields that were explicitly provided in the request.
-      // - `undefined` means the field was omitted → preserve existing value.
-      // - `null` means the field was explicitly cleared → set to empty string.
-      // - `string` → update to the new value.
-      // `?? ''` narrows `string | null` → `string` to satisfy the model type.
-      if (name !== undefined) userInfo.name = name ?? '';
-      if (phoneNumber !== undefined) userInfo.phoneNumber = phoneNumber ?? '';
-      if (address !== undefined) userInfo.address = address ?? '';
-
-      await userInfo.save();
-
-      // Build cache entry from the saved document — reflects the correct state
-      // after partial update (not the raw args which may be undefined).
-      const info: TUserInfoResponse = {
-        uuid: user.uuid,
-        email: user.email,
-        name: userInfo.name,
-        authMethods: user.authMethods,
-        address: userInfo.address,
-        phoneNumber: userInfo.phoneNumber,
-      };
-
-      // Cache user info
-      await RedisHelper.account.userInfoSet(info);
-
-      return info;
     }),
   },
 };

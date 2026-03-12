@@ -37,7 +37,7 @@ type TOrderResponse {
   transactionId: String
   userInfoSnapshot: TUserInfoSnapshot!
   items: [TOrderItem!]!
-  totalPrice: Int!
+  totalPrice: Float!
   paymentMethod: EPaymentMethod!
   orderStatus: EOrderStatus!
   createdAt: Timestamp!

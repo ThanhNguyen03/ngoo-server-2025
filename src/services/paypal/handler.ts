@@ -15,6 +15,7 @@ import { createLogger, NotFoundError, PaymentError } from '@lib';
 import { OrderModel, PaymentModel, type TOrder } from '@model';
 import {
   RedisHelper,
+  config,
   getPayerInfo,
   getStatusFromEventType,
   type TPayPalResource,
@@ -56,6 +57,7 @@ export const processPaymentCaptureEvent = async (
       .session(session);
 
     if (!payment) {
+      logger.warn({ systemOrderId }, 'Payment not found — likely out-of-order webhook, will retry');
       throw new NotFoundError(`Payment not found for order ${systemOrderId}`);
     }
 
@@ -74,19 +76,23 @@ export const processPaymentCaptureEvent = async (
       await payment.save({ session });
       await order.save({ session });
 
-      await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-        status: payment.status,
-        userId: payment.userId,
-        paymentId: payment.paymentId,
-        cachedAt: Date.now(),
-        orderId: order.orderId,
-      } as TWebhookData);
+      try {
+        await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+          status: payment.status,
+          userId: payment.userId,
+          paymentId: payment.paymentId,
+          cachedAt: Date.now(),
+          orderId: order.orderId,
+        } as TWebhookData);
 
-      emitPaymentStatus(payment.userId, {
-        orderId: order.orderId,
-        paymentId: payment.paymentId,
-        status: payment.status,
-      });
+        emitPaymentStatus(payment.userId, {
+          orderId: order.orderId,
+          paymentId: payment.paymentId,
+          status: payment.status,
+        });
+      } catch (cacheErr) {
+        logger.warn({ err: cacheErr, systemOrderId }, 'Failed to update cache/socket (non-critical)');
+      }
 
       logger.info({ systemOrderId }, 'Payment expired, marked as failed');
       return;
@@ -95,19 +101,23 @@ export const processPaymentCaptureEvent = async (
     // Already processed with the same capture ID — skip DB write and just
     // refresh the cache + notify the client with the existing status.
     if (payment.paypalTransaction?.paypalCaptureId === captureId && payment.status !== EPaymentStatus.Processing) {
-      await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-        status: payment.status,
-        userId: payment.userId,
-        paymentId: payment.paymentId,
-        cachedAt: Date.now(),
-        orderId: order.orderId,
-      } as TWebhookData);
+      try {
+        await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+          status: payment.status,
+          userId: payment.userId,
+          paymentId: payment.paymentId,
+          cachedAt: Date.now(),
+          orderId: order.orderId,
+        } as TWebhookData);
 
-      emitPaymentStatus(payment.userId, {
-        orderId: order.orderId,
-        paymentId: payment.paymentId,
-        status: payment.status,
-      });
+        emitPaymentStatus(payment.userId, {
+          orderId: order.orderId,
+          paymentId: payment.paymentId,
+          status: payment.status,
+        });
+      } catch (cacheErr) {
+        logger.warn({ err: cacheErr, systemOrderId }, 'Failed to update cache/socket (non-critical)');
+      }
       return;
     }
 
@@ -122,36 +132,44 @@ export const processPaymentCaptureEvent = async (
       await payment.save({ session });
       await order.save({ session });
 
-      await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-        status: payment.status,
-        userId: payment.userId,
-        paymentId: payment.paymentId,
-        cachedAt: Date.now(),
-        orderId: order.orderId,
-      } as TWebhookData);
+      try {
+        await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+          status: payment.status,
+          userId: payment.userId,
+          paymentId: payment.paymentId,
+          cachedAt: Date.now(),
+          orderId: order.orderId,
+        } as TWebhookData);
 
-      emitPaymentStatus(payment.userId, {
-        orderId: order.orderId,
-        paymentId: payment.paymentId,
-        status: payment.status,
-      });
+        emitPaymentStatus(payment.userId, {
+          orderId: order.orderId,
+          paymentId: payment.paymentId,
+          status: payment.status,
+        });
+      } catch (cacheErr) {
+        logger.warn({ err: cacheErr, systemOrderId }, 'Failed to update cache/socket (non-critical)');
+      }
     } catch (error) {
       // Even on failure, cache the current status and notify the client so
       // the frontend doesn't wait indefinitely. The status may still be
       // PROCESSING at this point, which is acceptable.
-      await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-        status: payment.status,
-        userId: payment.userId,
-        paymentId: payment.paymentId,
-        cachedAt: Date.now(),
-        orderId: order.orderId,
-      } as TWebhookData);
+      try {
+        await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+          status: payment.status,
+          userId: payment.userId,
+          paymentId: payment.paymentId,
+          cachedAt: Date.now(),
+          orderId: order.orderId,
+        } as TWebhookData);
 
-      emitPaymentStatus(payment.userId, {
-        orderId: order.orderId,
-        paymentId: payment.paymentId,
-        status: payment.status,
-      });
+        emitPaymentStatus(payment.userId, {
+          orderId: order.orderId,
+          paymentId: payment.paymentId,
+          status: payment.status,
+        });
+      } catch (cacheErr) {
+        logger.warn({ err: cacheErr, systemOrderId }, 'Failed to update cache/socket (non-critical)');
+      }
       throw error;
     }
   });
@@ -277,7 +295,7 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
       ? `order:${systemOrderId}:${event_type}:${paypalOrderId}:${webhookId}`
       : `order:${systemOrderId}:${event_type}:${captureId}:${webhookId}`;
 
-  return await RedisHelper.lock.withLock(lockKey, 60_000, async () => {
+  return await RedisHelper.lock.withLock(lockKey, config.LOCK_WEBHOOK_PROCESSING_TTL_MS, async () => {
     // Double-check: another worker may have processed the event while we
     // waited to acquire the lock.
     const doubleCheck = await RedisHelper.paypal.webhookProcessKeyGet(idempotencyKey);

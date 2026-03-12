@@ -128,11 +128,11 @@ class RedisKey {
       );
     }
 
-    const flat: (string | number | Buffer)[] = [];
+    const flat: string[] = [];
     for (const [k, v] of Object.entries(keyOrObj as Record<string, any>)) {
-      flat.push(k, typeof v === 'object' ? JSON.stringify(v) : v);
+      flat.push(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
     }
-    return this.client.hSet(this.fullKey(), flat as any);
+    return this.client.hSet(this.fullKey(), flat as unknown as [string, string][]);
   }
   async hashGet<T>(field: RedisArgument) {
     const raw = await this.client.hGet(this.fullKey(), field);

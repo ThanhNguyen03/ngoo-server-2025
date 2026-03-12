@@ -18,4 +18,7 @@ const CategorySchema = new Schema<TCategory>(
   { timestamps: true, versionKey: false },
 );
 
+// Compound index for filtered category lookups (isDeleted + name).
+CategorySchema.index({ isDeleted: 1, name: 1 });
+
 export const CategoryModel = model<TCategory>('Category', CategorySchema);

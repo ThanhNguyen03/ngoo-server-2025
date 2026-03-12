@@ -19,7 +19,7 @@ export class PaypalWebhook {
     // Initialize axios for direct API calls (for webhook verification)
     this.axiosInstance = axios.create({
       baseURL: config.PAYPAL_BASE_URL,
-      timeout: 10000,
+      timeout: config.PAYPAL_WEBHOOK_TIMEOUT_MS,
       maxRedirects: 0,
     });
   }
