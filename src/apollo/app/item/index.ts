@@ -14,8 +14,8 @@ import {
   adminWrapper,
   JOI_ID_SCHEMA,
   publicWrapper,
-  rateLimitWrapper,
   RATE_LIMIT_CONFIGS,
+  rateLimitWrapper,
   RedisHelper,
   schemaPagination,
   sortQuery,
@@ -140,7 +140,9 @@ const JOI_LIST_ITEM_CURSOR = Joi.object<QueryListItemCursorArgs>({
   limit: Joi.number().integer().min(1).max(100).default(20),
   cursor: Joi.string().allow(null, '').default(null),
   categoryName: Joi.string().trim().min(5).max(30).allow(null),
-  status: Joi.array().items(Joi.string().valid(...Object.values(EItemStatus))).allow(null),
+  status: Joi.array()
+    .items(Joi.string().valid(...Object.values(EItemStatus)))
+    .allow(null),
 });
 
 export const resolverItem: Resolvers = {
@@ -246,10 +248,7 @@ export const resolverItem: Resolvers = {
 
         const cursorDate = new Date(decoded.t);
         const cursorObjectId = new Types.ObjectId(decoded.id);
-        filter.$or = [
-          { createdAt: { $lt: cursorDate } },
-          { createdAt: cursorDate, _id: { $lt: cursorObjectId } },
-        ];
+        filter.$or = [{ createdAt: { $lt: cursorDate } }, { createdAt: cursorDate, _id: { $lt: cursorObjectId } }];
       }
 
       // Fetch limit + 1 to determine if there are more results
@@ -323,126 +322,126 @@ export const resolverItem: Resolvers = {
     createItem: adminWrapper(
       JOI_CREATE_ITEM_INPUT,
       rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }, context) => {
-      const { categoryName, name, ...data } = input;
-      const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
-      if (!category) {
-        throw new NotFoundError('Category not found');
-      }
+        const { categoryName, name, ...data } = input;
+        const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
+        if (!category) {
+          throw new NotFoundError('Category not found');
+        }
 
-      const existingItem = await ItemModel.findOne({
-        name,
-        isDeleted: false,
-      });
+        const existingItem = await ItemModel.findOne({
+          name,
+          isDeleted: false,
+        });
 
-      if (existingItem) {
-        throw new ConflictError('Item already exists');
-      }
+        if (existingItem) {
+          throw new ConflictError('Item already exists');
+        }
 
-      const item = await ItemModel.findOneAndUpdate(
-        { name },
-        {
-          $setOnInsert: {
-            ...data,
-            name,
-            category: category._id,
-          }, // if donot have -> create new
-          $set: { isDeleted: false }, // if isDelete = true -> set false
-        },
-        { new: true, upsert: true },
-      )
-        .populate<{ category: TCategory }>('category')
-        .exec();
+        const item = await ItemModel.findOneAndUpdate(
+          { name },
+          {
+            $setOnInsert: {
+              ...data,
+              name,
+              category: category._id,
+            }, // if donot have -> create new
+            $set: { isDeleted: false }, // if isDelete = true -> set false
+          },
+          { new: true, upsert: true },
+        )
+          .populate<{ category: TCategory }>('category')
+          .exec();
 
-      if (!item) {
-        throw new NotFoundError('Failed to create item');
-      }
+        if (!item) {
+          throw new NotFoundError('Failed to create item');
+        }
 
-      const response = toItemResponse(item);
-      await RedisHelper.item.itemByIdSet(response);
+        const response = toItemResponse(item);
+        await RedisHelper.item.itemByIdSet(response);
 
-      // Fire-and-forget: do not await to avoid blocking the response
-      logAudit({
-        userId: context.user.userId,
-        action: 'CREATE',
-        targetType: 'Item',
-        targetId: item.itemId,
-        metadata: { name: item.name, categoryName: item.category.name },
-      });
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'CREATE',
+          targetType: 'Item',
+          targetId: item.itemId,
+          metadata: { name: item.name, categoryName: item.category.name },
+        });
 
-      return response;
-    }),
+        return response;
+      }),
     ),
 
     updateItem: adminWrapper(
       JOI_UPDATE_ITEM_INPUT,
       rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }, context) => {
-      const { categoryName, itemId, ...data } = input;
+        const { categoryName, itemId, ...data } = input;
 
-      const existingItem = await ItemModel.findOne({ itemId, isDeleted: false })
-        .populate<{ category: TCategory }>('category')
-        .exec();
-      if (!existingItem) {
-        throw new NotFoundError('Item not found');
-      }
-
-      let newCategoryId: Types.ObjectId | undefined;
-      if (categoryName) {
-        const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
-        if (!category) {
-          throw new NotFoundError('Category not found');
+        const existingItem = await ItemModel.findOne({ itemId, isDeleted: false })
+          .populate<{ category: TCategory }>('category')
+          .exec();
+        if (!existingItem) {
+          throw new NotFoundError('Item not found');
         }
-        newCategoryId = category._id;
-      }
 
-      const item = await ItemModel.findOneAndUpdate(
-        { itemId, isDeleted: false },
-        { ...data, ...(newCategoryId ? { category: newCategoryId } : {}) },
-        { new: true },
-      )
-        .populate<{ category: TCategory }>('category')
-        .exec();
+        let newCategoryId: Types.ObjectId | undefined;
+        if (categoryName) {
+          const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
+          if (!category) {
+            throw new NotFoundError('Category not found');
+          }
+          newCategoryId = category._id;
+        }
 
-      if (!item) {
-        throw new NotFoundError('Failed to update item');
-      }
+        const item = await ItemModel.findOneAndUpdate(
+          { itemId, isDeleted: false },
+          { ...data, ...(newCategoryId ? { category: newCategoryId } : {}) },
+          { new: true },
+        )
+          .populate<{ category: TCategory }>('category')
+          .exec();
 
-      const response = toItemResponse(item);
-      await RedisHelper.item.itemByIdSet(response);
+        if (!item) {
+          throw new NotFoundError('Failed to update item');
+        }
 
-      // Fire-and-forget: do not await to avoid blocking the response
-      logAudit({
-        userId: context.user.userId,
-        action: 'UPDATE',
-        targetType: 'Item',
-        targetId: item.itemId,
-        metadata: { name: item.name },
-      });
+        const response = toItemResponse(item);
+        await RedisHelper.item.itemByIdSet(response);
 
-      return response;
-    }),
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'UPDATE',
+          targetType: 'Item',
+          targetId: item.itemId,
+          metadata: { name: item.name },
+        });
+
+        return response;
+      }),
     ),
 
     deleteItem: adminWrapper(
       JOI_ITEM_ID,
       rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args, context) => {
-      const { itemId } = _args;
-      const item = await ItemModel.findOneAndUpdate({ itemId }, { isDeleted: true }, { new: true });
-      if (!item) {
-        throw new NotFoundError('Item not found');
-      }
-      await RedisHelper.item.itemByIdDel(itemId);
+        const { itemId } = _args;
+        const item = await ItemModel.findOneAndUpdate({ itemId }, { isDeleted: true }, { new: true });
+        if (!item) {
+          throw new NotFoundError('Item not found');
+        }
+        await RedisHelper.item.itemByIdDel(itemId);
 
-      // Fire-and-forget: do not await to avoid blocking the response
-      logAudit({
-        userId: context.user.userId,
-        action: 'DELETE',
-        targetType: 'Item',
-        targetId: itemId,
-        metadata: { name: item.name },
-      });
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'DELETE',
+          targetType: 'Item',
+          targetId: itemId,
+          metadata: { name: item.name },
+        });
 
-      return true;
-    }),
+        return true;
+      }),
     ),
   },
 };

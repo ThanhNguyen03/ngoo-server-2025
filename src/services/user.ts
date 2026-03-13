@@ -50,9 +50,7 @@ export const getOrCacheUserInfo = async (userId: string): Promise<TUserInfoRespo
 
   try {
     // 3. Fetch from DB
-    const user = await UserModel.findOne({ uuid: userId })
-      .populate<{ userInfo: TUserInfo }>('userInfo')
-      .exec();
+    const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
 
     if (!user) {
       throw new AuthenticationError('Authorization failed');

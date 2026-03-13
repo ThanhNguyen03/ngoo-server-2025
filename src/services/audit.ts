@@ -1,5 +1,5 @@
-import { AuditLogModel, type TAuditAction, type TTargetType } from '@model';
 import { createLogger } from '@lib';
+import { AuditLogModel, type TAuditAction, type TTargetType } from '@model';
 
 const logger = createLogger('AuditService');
 

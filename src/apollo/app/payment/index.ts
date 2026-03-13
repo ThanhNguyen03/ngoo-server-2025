@@ -46,9 +46,7 @@ type TPaymentAdminMappable = TPaymentUserMappable;
  * Map a payment + populated order to the user-facing `TUserPaymentResponse`.
  * Used by per-user payment history queries.
  */
-const toUserPaymentResponse = (
-  history: TPaymentUserMappable,
-): TUserPaymentResponse => ({
+const toUserPaymentResponse = (history: TPaymentUserMappable): TUserPaymentResponse => ({
   paymentId: history.paymentId,
   orderId: history.orderId,
   paymentMethod: history.order.paymentMethod,
@@ -65,9 +63,7 @@ const toUserPaymentResponse = (
  * Map a payment + populated order to the admin-facing `TPaymentResponse`.
  * Includes payment-method-specific fields (txHash, paypalTransaction, codTransactionId).
  */
-const toAdminPaymentResponse = (
-  history: TPaymentAdminMappable,
-): TPaymentResponse => ({
+const toAdminPaymentResponse = (history: TPaymentAdminMappable): TPaymentResponse => ({
   paymentId: history.paymentId,
   orderId: history.orderId,
   paymentMethod: history.order.paymentMethod,
@@ -169,67 +165,67 @@ export const resolverPayment: Resolvers = {
     approveCODPayment: adminWrapper(
       JOI_APPROVE_COD_PAYMENT,
       rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { paymentInput }) => {
-      const { orderId } = paymentInput;
+        const { orderId } = paymentInput;
 
-      if (!orderId) {
-        throw new ValidationError('Invalid order ID');
-      }
-
-      return await RedisHelper.lock.withLock(orderId, PAYMENT_LOCK_TTL, async () => {
-        const order = await OrderModel.findOne({ orderId });
-        if (!order) {
-          throw new NotFoundError('Order not found');
+        if (!orderId) {
+          throw new ValidationError('Invalid order ID');
         }
 
-        // existed payment by transaction hash
-        const payment = await PaymentModel.findOne({
-          order: order._id,
-          status: { $in: [EPaymentStatus.Processing, EPaymentStatus.Success] },
-          $or: [{ codTransactionId: order.transactionId }],
-        });
-
-        if (!payment) {
-          throw new NotFoundError('COD payment record not found');
-        }
-
-        if (payment.status === EPaymentStatus.Processing) {
-          // Wrap both saves in a transaction so Order and Payment are always
-          // updated atomically. The outer Redis lock prevents concurrent calls,
-          // but the transaction adds DB-level atomicity as a safety net.
-          const session = await mongoose.startSession();
-          try {
-            await session.withTransaction(async () => {
-              order.orderStatus = EOrderStatus.Paid;
-              await order.save({ session });
-
-              payment.status = EPaymentStatus.Success;
-              await payment.save({ session });
-            });
-          } finally {
-            session.endSession();
+        return await RedisHelper.lock.withLock(orderId, PAYMENT_LOCK_TTL, async () => {
+          const order = await OrderModel.findOne({ orderId });
+          if (!order) {
+            throw new NotFoundError('Order not found');
           }
 
-          emitPaymentStatus(payment.userId, {
-            orderId,
-            paymentId: payment.paymentId,
-            status: payment.status,
+          // existed payment by transaction hash
+          const payment = await PaymentModel.findOne({
+            order: order._id,
+            status: { $in: [EPaymentStatus.Processing, EPaymentStatus.Success] },
+            $or: [{ codTransactionId: order.transactionId }],
           });
-        }
 
-        return {
-          paymentId: payment.paymentId,
-          orderId: order.orderId,
-          paymentMethod: order.paymentMethod,
-          totalPrice: order.totalPrice,
-          status: payment.status,
-          userInfo: order.userInfoSnapshot,
-          items: order.items,
-          transactionId: order.transactionId,
-          createdAt: payment.createdAt.getTime(),
-          updatedAt: payment.updatedAt.getTime(),
-        };
-      });
-    }),
+          if (!payment) {
+            throw new NotFoundError('COD payment record not found');
+          }
+
+          if (payment.status === EPaymentStatus.Processing) {
+            // Wrap both saves in a transaction so Order and Payment are always
+            // updated atomically. The outer Redis lock prevents concurrent calls,
+            // but the transaction adds DB-level atomicity as a safety net.
+            const session = await mongoose.startSession();
+            try {
+              await session.withTransaction(async () => {
+                order.orderStatus = EOrderStatus.Paid;
+                await order.save({ session });
+
+                payment.status = EPaymentStatus.Success;
+                await payment.save({ session });
+              });
+            } finally {
+              session.endSession();
+            }
+
+            emitPaymentStatus(payment.userId, {
+              orderId,
+              paymentId: payment.paymentId,
+              status: payment.status,
+            });
+          }
+
+          return {
+            paymentId: payment.paymentId,
+            orderId: order.orderId,
+            paymentMethod: order.paymentMethod,
+            totalPrice: order.totalPrice,
+            status: payment.status,
+            userInfo: order.userInfoSnapshot,
+            items: order.items,
+            transactionId: order.transactionId,
+            createdAt: payment.createdAt.getTime(),
+            updatedAt: payment.updatedAt.getTime(),
+          };
+        });
+      }),
     ),
   },
 };

@@ -11,17 +11,17 @@
  * Helpers must remain pure utilities with no model or service dependencies.
  */
 import { EOrderStatus, EPaymentMethod, EPaymentStatus } from '@generated/graphql';
-import { createLogger, NotFoundError, PaymentError } from '@lib';
-import { OrderModel, PaymentModel, type TOrder } from '@model';
 import {
-  RedisHelper,
   config,
   getPayerInfo,
   getStatusFromEventType,
+  RedisHelper,
   type TPayPalResource,
   type TPayPalWebhookEvent,
   type TWebhookData,
 } from '@helper';
+import { createLogger, NotFoundError, PaymentError } from '@lib';
+import { OrderModel, PaymentModel, type TOrder } from '@model';
 import mongoose, { type HydratedDocument } from 'mongoose';
 // Import directly from sibling modules to avoid circular deps through services/index.ts
 import { logAudit } from '../audit';
@@ -186,7 +186,6 @@ export const processPaymentCaptureEvent = async (
       throw error;
     }
   });
-
 };
 
 /**

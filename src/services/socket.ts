@@ -1,5 +1,5 @@
-import { config, JwtAuthAccessTokenInstance, RedisHelper } from '@helper';
 import { EPaymentStatus } from '@generated/graphql';
+import { config, JwtAuthAccessTokenInstance, RedisHelper } from '@helper';
 import { createLogger } from '@lib';
 import http from 'http';
 import { Server } from 'socket.io';
@@ -52,10 +52,7 @@ export const initSocket = (httpServer: http.Server) => {
         return next(new Error('Invalid token'));
       }
 
-      const isRevoked = await RedisHelper.account.isUserAccessTokenRevoked(
-        decoded.payload.uuid,
-        decoded.payload.sid,
-      );
+      const isRevoked = await RedisHelper.account.isUserAccessTokenRevoked(decoded.payload.uuid, decoded.payload.sid);
       if (isRevoked) {
         return next(new Error('Unauthorized'));
       }
@@ -95,6 +92,21 @@ export const initSocket = (httpServer: http.Server) => {
       }
     } catch (err) {
       logger.warn({ err, userId }, 'Failed to replay payment status on reconnect');
+    }
+
+    // Replay any pending crypto payment status on reconnect
+    try {
+      const cryptoStatus = await RedisHelper.crypto.cryptoStatusGet(userId);
+      if (cryptoStatus && cryptoStatus.status !== EPaymentStatus.Processing) {
+        socket.emit('paymentStatus', {
+          orderId: cryptoStatus.orderId,
+          paymentId: cryptoStatus.paymentId,
+          status: cryptoStatus.status,
+        });
+        logger.debug({ userId, orderId: cryptoStatus.orderId }, 'Replayed cached crypto payment status on reconnect');
+      }
+    } catch (err) {
+      logger.warn({ err, userId }, 'Failed to replay crypto payment status on reconnect');
     }
 
     socket.on('disconnect', (reason) => {

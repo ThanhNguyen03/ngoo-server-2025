@@ -2,8 +2,6 @@ import type { OrderItemInput, TUserInfoSnapshot } from '@generated/graphql';
 import { config } from '@helper';
 import { createLogger } from '@lib';
 import type { TItem } from '@model';
-
-const logger = createLogger('PayPalService');
 import {
   CheckoutPaymentIntent,
   Client,
@@ -16,6 +14,8 @@ import {
   type Item,
   type OrderRequest,
 } from '@paypal/paypal-server-sdk';
+
+const logger = createLogger('PayPalService');
 
 type TPaypalCapture = {
   paypalCaptureId: string;

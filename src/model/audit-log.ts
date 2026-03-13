@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, model } from 'mongoose';
+import mongoose, { Document, model, Schema } from 'mongoose';
 
 export type TAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'PAYMENT' | 'OTHER';
 export type TTargetType = 'User' | 'Item' | 'Order' | 'Category' | 'Transaction' | 'System';

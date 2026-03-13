@@ -10,6 +10,7 @@ import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload, typ
 import { RedisHelperDerive, RedisInstance } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
+import type { ICryptoProofRedisData } from '../services/crypto/types';
 import { config } from './config';
 import type { RateLimitConfig, TokenBucket } from './rate-limit';
 
@@ -21,6 +22,9 @@ export const RedisHelperItem = RedisHelperDerive<
 >(RedisInstance);
 export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'orderLimit'>(RedisInstance);
 export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
+export const RedisHelperCrypto = RedisHelperDerive<
+  'cryptoProof' | 'cryptoHash' | 'bnbPrice' | 'cryptoBlock' | 'cryptoStatus'
+>(RedisInstance);
 
 export const RedisHelperRateLimit = RedisHelperDerive<'tokenBucket' | 'slidingWindow'>(RedisInstance);
 export const BEARER_LENGTH = 7; // 7 is length of `Bearer + space`
@@ -299,6 +303,88 @@ export const RedisHelper = {
       const result = await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashSet(value);
       await RedisHelperPaypal.paypalOrder(`status:${orderId}`).expire(config.CACHE_PAYPAL_STATUS_TTL_SEC);
       return result;
+    },
+  },
+
+  crypto: {
+    /**
+     * Get the stored crypto payment proof for an order.
+     */
+    proofGet: async (orderId: string): Promise<ICryptoProofRedisData | null> => {
+      return RedisHelperCrypto.cryptoProof(orderId).hashGetAll<ICryptoProofRedisData>();
+    },
+
+    /**
+     * Store a crypto payment proof with TTL.
+     */
+    proofSet: async (orderId: string, data: ICryptoProofRedisData): Promise<void> => {
+      await RedisHelperCrypto.cryptoProof(orderId).hashSet(data);
+      await RedisHelperCrypto.cryptoProof(orderId).expire(config.CACHE_CRYPTO_PROOF_TTL_SEC);
+    },
+
+    /**
+     * Delete a crypto payment proof (one-time use after event processing).
+     */
+    proofDel: async (orderId: string): Promise<void> => {
+      await RedisHelperCrypto.cryptoProof(orderId).delete();
+    },
+
+    /**
+     * Get the original UUID orderId from a keccak256 hash (reverse mapping).
+     */
+    hashToOrderIdGet: async (orderIdHash: string): Promise<string | null> => {
+      return RedisHelperCrypto.cryptoHash(orderIdHash).get();
+    },
+
+    /**
+     * Store the orderIdHash → orderId reverse mapping with TTL.
+     */
+    hashToOrderIdSet: async (orderIdHash: string, orderId: string): Promise<void> => {
+      await RedisHelperCrypto.cryptoHash(orderIdHash).set(orderId, config.CACHE_CRYPTO_PROOF_TTL_SEC);
+    },
+
+    /**
+     * Get the cached BNB/USD price (as decimal string, e.g. "620.5").
+     */
+    bnbPriceGet: async (): Promise<string | null> => {
+      return RedisHelperCrypto.bnbPrice('current').get();
+    },
+
+    /**
+     * Cache the BNB/USD price with TTL.
+     */
+    bnbPriceSet: async (price: string): Promise<void> => {
+      await RedisHelperCrypto.bnbPrice('current').set(price, config.CRYPTO_PRICE_CACHE_TTL_SEC);
+    },
+
+    /**
+     * Get the last processed block number for the event monitor.
+     */
+    lastProcessedBlockGet: async (): Promise<number | null> => {
+      const val = await RedisHelperCrypto.cryptoBlock('last').get();
+      return val !== null ? parseInt(val, 10) : null;
+    },
+
+    /**
+     * Store the last processed block number.
+     */
+    lastProcessedBlockSet: async (blockNumber: number): Promise<void> => {
+      await RedisHelperCrypto.cryptoBlock('last').set(String(blockNumber));
+    },
+
+    /**
+     * Get the cached crypto payment status for reconnect replay.
+     */
+    cryptoStatusGet: async (orderId: string): Promise<TWebhookData | null> => {
+      return RedisHelperCrypto.cryptoStatus(orderId).hashGetAll<TWebhookData>();
+    },
+
+    /**
+     * Cache the crypto payment status for reconnect replay.
+     */
+    cryptoStatusSet: async (orderId: string, data: TWebhookData): Promise<void> => {
+      await RedisHelperCrypto.cryptoStatus(orderId).hashSet(data);
+      await RedisHelperCrypto.cryptoStatus(orderId).expire(config.CACHE_PAYPAL_STATUS_TTL_SEC);
     },
   },
 

@@ -1,4 +1,5 @@
 export * from './audit';
+export * from './crypto';
 export * from './paypal';
 export * from './redis';
 export * from './socket';

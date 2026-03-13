@@ -1,8 +1,8 @@
-import type { GraphQLResolveInfo } from 'graphql';
 import { RateLimitError } from '@lib';
+import type { GraphQLResolveInfo } from 'graphql';
 import type { TAuthorizedContext, TGuestContext, THandler } from './common';
-import { RedisHelper } from './redis-helper';
 import { config } from './config';
+import { RedisHelper } from './redis-helper';
 
 export type TokenBucket = {
   tokens: number;
@@ -86,7 +86,10 @@ export function rateLimitWrapper<TArgs, TResult>(
   resolver: THandler<TArgs, TAuthorizedContext & TRateLimitContext, TResult>,
 ): THandler<TArgs, TAuthorizedContext, TResult> {
   return async (
-    root: unknown, args: TArgs, context: TAuthorizedContext, info: GraphQLResolveInfo,
+    root: unknown,
+    args: TArgs,
+    context: TAuthorizedContext,
+    info: GraphQLResolveInfo,
   ): Promise<TResult> => {
     const userId = context.user.userId;
 

@@ -50,11 +50,30 @@ const envSchema = Joi.object({
   PAYPAL_WEBHOOK_ID: Joi.string().required(),
   PAYPAL_MODE: Joi.string().valid('sandbox', 'live').required(),
 
-  // crypto
-  // NGOO_CONTRACT_ADDRESS: Joi.string().required(),
-  // NGOO_CHAIN_ID: Joi.string().required(),
-  // NGOO_SIGNER: Joi.string().required(),
-  // MONAD_RPC_URL: Joi.string().required(),
+  // --- Crypto Payment ---
+  CRYPTO_PAYMENT_ENABLED: Joi.boolean().default(false),
+  BNB_RPC_URL: Joi.string().when('CRYPTO_PAYMENT_ENABLED', {
+    is: true,
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  NGOO_CONTRACT_ADDRESS: Joi.string().when('CRYPTO_PAYMENT_ENABLED', {
+    is: true,
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  NGOO_CHAIN_ID: Joi.number().default(97),
+  NGOO_SIGNER: Joi.string().when('CRYPTO_PAYMENT_ENABLED', {
+    is: true,
+    then: Joi.required(),
+    otherwise: Joi.optional(),
+  }),
+  CRYPTO_PROOF_TTL_SEC: Joi.number().optional().default(900),
+  CRYPTO_BLOCK_CONFIRMATIONS: Joi.number().optional().default(5),
+  CRYPTO_PRICE_CACHE_TTL_SEC: Joi.number().optional().default(60),
+  CRYPTO_MONITOR_POLL_INTERVAL_MS: Joi.number().optional().default(15000),
+  CACHE_CRYPTO_PROOF_TTL_SEC: Joi.number().optional().default(900),
+  LOCK_CRYPTO_PAYMENT_TTL_MS: Joi.number().optional().default(30000),
 
   // --- Queue ---
   QUEUE_MAX_CONCURRENT: Joi.number().optional().default(10),
@@ -151,11 +170,18 @@ export const config = {
   PAYPAL_MODE: envVars.PAYPAL_MODE,
   PAYPAL_BASE_URL: envVars.PAYPAL_MODE === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com',
 
-  // crypto
-  // NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS,
-  // NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID,
-  // NGOO_SIGNER: envVars.NGOO_SIGNER,
-  // MONAD_RPC_URL: envVars.MONAD_RPC_URL,
+  // --- Crypto Payment ---
+  CRYPTO_PAYMENT_ENABLED: envVars.CRYPTO_PAYMENT_ENABLED as boolean,
+  BNB_RPC_URL: envVars.BNB_RPC_URL as string | undefined,
+  NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS as string | undefined,
+  NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID as number,
+  NGOO_SIGNER: envVars.NGOO_SIGNER as string | undefined,
+  CRYPTO_PROOF_TTL_SEC: envVars.CRYPTO_PROOF_TTL_SEC as number,
+  CRYPTO_BLOCK_CONFIRMATIONS: envVars.CRYPTO_BLOCK_CONFIRMATIONS as number,
+  CRYPTO_PRICE_CACHE_TTL_SEC: envVars.CRYPTO_PRICE_CACHE_TTL_SEC as number,
+  CRYPTO_MONITOR_POLL_INTERVAL_MS: envVars.CRYPTO_MONITOR_POLL_INTERVAL_MS as number,
+  CACHE_CRYPTO_PROOF_TTL_SEC: envVars.CACHE_CRYPTO_PROOF_TTL_SEC as number,
+  LOCK_CRYPTO_PAYMENT_TTL_MS: envVars.LOCK_CRYPTO_PAYMENT_TTL_MS as number,
 
   // --- Queue ---
   QUEUE_MAX_CONCURRENT: envVars.QUEUE_MAX_CONCURRENT as number,

@@ -1,5 +1,5 @@
-import SaferBuffer from 'safer-buffer';
 import { ethers } from 'ethers';
+import SaferBuffer from 'safer-buffer';
 import { THexString } from '.';
 
 export type TNumberLike = THexString | bigint | number;

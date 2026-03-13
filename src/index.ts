@@ -1,6 +1,6 @@
 import { config } from '@helper';
 import { createLogger } from '@lib';
-import { io, paypalQueueService, RedisInstance } from '@service';
+import { cryptoEventMonitor, io, paypalQueueService, RedisInstance } from '@service';
 import mongoose from 'mongoose';
 import { NGOO_API } from './app';
 import { initPaypalWebhookWorker } from './services/webhook';
@@ -9,6 +9,9 @@ const logger = createLogger('Main');
 
 const gracefulShutdown = async (signal: string) => {
   logger.info({ signal }, 'Shutdown signal received');
+  if (config.CRYPTO_PAYMENT_ENABLED) {
+    await cryptoEventMonitor.stop();
+  }
   await paypalQueueService.shutdown(10000);
   io.close();
   httpServer.close();
@@ -38,6 +41,10 @@ const connect = async () => {
     // start application
     httpServer = await NGOO_API.payload();
     initPaypalWebhookWorker();
+    if (config.CRYPTO_PAYMENT_ENABLED) {
+      await cryptoEventMonitor.start();
+      logger.info('Crypto event monitor started');
+    }
   } catch (err) {
     logger.error({ err }, 'Connection failed — exiting');
     if (RedisInstance.redis.isOpen) {

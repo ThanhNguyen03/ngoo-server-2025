@@ -58,10 +58,13 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
         const existingTimeout = this.cleanupTimeouts.get(jobKey);
         if (existingTimeout) clearTimeout(existingTimeout);
 
-        const timeout = setTimeout(() => {
-          this.processingJobs.delete(jobKey);
-          this.cleanupTimeouts.delete(jobKey);
-        }, 5 * 60 * 1000);
+        const timeout = setTimeout(
+          () => {
+            this.processingJobs.delete(jobKey);
+            this.cleanupTimeouts.delete(jobKey);
+          },
+          5 * 60 * 1000,
+        );
         this.cleanupTimeouts.set(jobKey, timeout);
 
         return super.add(event, orderId, captureId, priority);
@@ -77,10 +80,13 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
       const existingTimeout = this.cleanupTimeouts.get(jobKey);
       if (existingTimeout) clearTimeout(existingTimeout);
 
-      const timeout = setTimeout(() => {
-        this.processingJobs.delete(jobKey);
-        this.cleanupTimeouts.delete(jobKey);
-      }, 5 * 60 * 1000);
+      const timeout = setTimeout(
+        () => {
+          this.processingJobs.delete(jobKey);
+          this.cleanupTimeouts.delete(jobKey);
+        },
+        5 * 60 * 1000,
+      );
       this.cleanupTimeouts.set(jobKey, timeout);
 
       return super.add(event, orderId, captureId, priority);

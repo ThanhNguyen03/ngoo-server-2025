@@ -113,9 +113,7 @@ export const NGOO_API = {
       expressMiddleware(server, {
         context: async ({ req }): Promise<TAppContext> => {
           const ip =
-            (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-            ?? req.socket.remoteAddress
-            ?? 'unknown';
+            (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? 'unknown';
           const authHeader = req.headers.authorization;
           if (!authHeader) {
             return { ip, user: { kind: EUserAuthenticationStatus.Guest } };

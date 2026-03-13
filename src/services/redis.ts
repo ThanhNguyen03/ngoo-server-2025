@@ -2,10 +2,10 @@ import { config } from '@helper';
 import { createLogger } from '@lib';
 
 import { randomUUID } from 'node:crypto';
-
-const logger = createLogger('Redis');
 import EventEmitter from 'node:events';
 import { createClient, RedisArgument, RedisJSON, type RedisClientOptions, type RedisClientType } from 'redis';
+
+const logger = createLogger('Redis');
 
 const parseHash = <T>(raw: Record<string, string>): T => {
   const obj: any = {};

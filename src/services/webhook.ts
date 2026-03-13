@@ -1,8 +1,8 @@
 import { type TPayPalWebhookEvent } from '@helper';
 import { createLogger } from '@lib';
-import { processWebhookEvent } from './paypal/handler';
 import express, { type Request, type Response } from 'express';
 import { LIST_RETRYABLE_ERROR } from 'src/constant';
+import { processWebhookEvent } from './paypal/handler';
 import { paypalQueueService } from './paypal/queue';
 import { paypalWebhook } from './paypal/webhook';
 

@@ -15,6 +15,7 @@ import {
   adminWrapper,
   authorizedWrapper,
   calculateOrderItemPrice,
+  config,
   JOI_ID_SCHEMA,
   RedisHelper,
   schemaPagination,
@@ -23,7 +24,7 @@ import {
 } from '@helper';
 import { NotFoundError, PaymentError, RateLimitError, ValidationError } from '@lib';
 import { ItemModel, OrderModel, PaymentModel, TOrder } from '@model';
-import { getOrCacheUserInfo, paypalService } from '@service';
+import { cryptoPaymentService, getOrCacheUserInfo, paypalService, type ICryptoPaymentProof } from '@service';
 import { randomUUID } from 'crypto';
 import Joi from 'joi';
 import mongoose from 'mongoose';
@@ -158,11 +159,6 @@ export const resolverOrder: Resolvers = {
           await RedisHelper.order.limitAttemptIncrement(userId);
         }
 
-        if (input.paymentMethod === EPaymentMethod.Crypto) {
-          // TODO: implement crypto payment via smart contract
-          throw new ValidationError('Crypto payment is not available yet');
-        }
-
         const userInfoSnapshot: TUserInfoSnapshot = {
           name: input.userInfo.name,
           address: input.userInfo.address,
@@ -200,6 +196,7 @@ export const resolverOrder: Resolvers = {
 
         let paypalApproveUrl: string | undefined;
         let transactionId: string | undefined;
+        let cryptoPaymentProof: ICryptoPaymentProof | undefined;
 
         // Paypal
         if (input.paymentMethod === EPaymentMethod.Paypal) {
@@ -286,10 +283,87 @@ export const resolverOrder: Resolvers = {
           }
         }
 
+        if (input.paymentMethod === EPaymentMethod.Crypto) {
+          // Feature flag check
+          if (!config.CRYPTO_PAYMENT_ENABLED) {
+            throw new ValidationError('Crypto payment is not available');
+          }
+
+          // Verify user has a connected wallet
+          const userInfo = await getOrCacheUserInfo(userId);
+          if (!userInfo.walletAddress) {
+            throw new ValidationError('Please connect your crypto wallet first');
+          }
+
+          const paymentId = randomUUID();
+          transactionId = paymentId;
+
+          await RedisHelper.order.limitProcessingSet(userId, {
+            orderId,
+            paymentMethod: EPaymentMethod.Crypto,
+            cacheTime: new Date(),
+          });
+
+          try {
+            // Create order + payment in a transaction
+            const session = await mongoose.startSession();
+            try {
+              await session.withTransaction(async () => {
+                const [newOrder] = await OrderModel.create(
+                  [
+                    {
+                      orderId,
+                      userId,
+                      transactionId,
+                      userInfoSnapshot,
+                      items: orderItems,
+                      totalPrice,
+                      orderStatus: EOrderStatus.Created,
+                      paymentMethod: input.paymentMethod,
+                    },
+                  ],
+                  { session },
+                );
+
+                const proofExpiryMs = config.CRYPTO_PROOF_TTL_SEC * 1000;
+                await PaymentModel.create(
+                  [
+                    {
+                      paymentId,
+                      order: newOrder._id,
+                      orderId,
+                      userId,
+                      status: EPaymentStatus.Processing,
+                      expiredAt: new Date(Date.now() + proofExpiryMs),
+                    },
+                  ],
+                  { session },
+                );
+              });
+            } finally {
+              session.endSession();
+            }
+
+            // Generate the on-chain payment proof
+            cryptoPaymentProof = await cryptoPaymentService.generatePaymentProof({
+              orderId,
+              totalPriceUsd: totalPrice,
+              payerAddress: userInfo.walletAddress,
+            });
+          } catch (err) {
+            await RedisHelper.order.limitProcessingDel(userId);
+            throw err;
+          }
+        }
+
         return {
           orderId,
           paypalApproveUrl: input.paymentMethod === EPaymentMethod.Paypal ? paypalApproveUrl : undefined,
-          transactionId: input.paymentMethod === EPaymentMethod.Cod ? transactionId : undefined,
+          transactionId:
+            input.paymentMethod === EPaymentMethod.Cod || input.paymentMethod === EPaymentMethod.Crypto
+              ? transactionId
+              : undefined,
+          cryptoPaymentProof: input.paymentMethod === EPaymentMethod.Crypto ? cryptoPaymentProof : undefined,
           createdAt: new Date().getTime(),
           updatedAt: new Date().getTime(),
         };

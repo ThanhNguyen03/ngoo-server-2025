@@ -7,7 +7,7 @@ import {
   type Resolvers,
   type TAuditLog,
 } from '@generated/graphql';
-import { adminWrapper, rateLimitWrapper, RATE_LIMIT_CONFIGS } from '@helper';
+import { adminWrapper, RATE_LIMIT_CONFIGS, rateLimitWrapper } from '@helper';
 import { NotFoundError } from '@lib';
 import { AuditLogModel, type IAuditLog } from '@model';
 import Joi from 'joi';
