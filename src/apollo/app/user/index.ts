@@ -194,6 +194,9 @@ export const resolverUser: Resolvers = {
           role: ERole.User,
         });
 
+        // SEC-014: Register rid so it can be validated and consumed on next rotation.
+        await RedisHelper.account.userRefreshTokenAdd(newUser.uuid, rid);
+
         // cache userInfo
         const safeInfo: TUserInfoResponse = {
           uuid: newUser.uuid,
@@ -317,6 +320,9 @@ export const resolverUser: Resolvers = {
             role,
           });
 
+          // SEC-014: Register rid so it can be validated and consumed on next rotation.
+          await RedisHelper.account.userRefreshTokenAdd(user.uuid, rid);
+
           // Fire-and-forget audit log for Google login
           logAudit({
             userId: user.uuid,
@@ -360,6 +366,9 @@ export const resolverUser: Resolvers = {
             rid,
             role: existingUser.role,
           });
+
+          // SEC-014: Register rid so it can be validated and consumed on next rotation.
+          await RedisHelper.account.userRefreshTokenAdd(existingUser.uuid, rid);
 
           await RedisHelper.account.userInfoSet({
             uuid: existingUser.uuid,
@@ -410,13 +419,30 @@ export const resolverUser: Resolvers = {
           throw new AuthenticationError('Invalid refresh token');
         }
 
-        const { uuid, role } = payload;
+        const { uuid, role, rid } = payload;
 
-        // 4.4: Verify the user still exists in the DB before issuing new tokens.
+        // Verify the user still exists in the DB before issuing new tokens.
         // JWT signature alone doesn't guarantee the account hasn't been deleted.
         const userExists = await UserModel.exists({ uuid });
         if (!userExists) {
           throw new AuthenticationError('User account no longer exists');
+        }
+
+        // SEC-014: Refresh token rotation — validate that the rid is still active in Redis.
+        // If not, the token has already been rotated (or was never registered), which may
+        // indicate a stolen token being reused. Reject and force re-login.
+        if (rid) {
+          const isRevoked = await RedisHelper.account.isRefreshTokenRevoked(uuid, rid);
+          if (isRevoked) {
+            // Revoke all sessions — possible token theft via reuse of a rotated-out token
+            await Promise.allSettled([
+              RedisHelper.account.userAccessTokenRemoveAll(uuid),
+              RedisHelper.account.userRefreshTokenRemoveAll(uuid),
+            ]);
+            throw new AuthenticationError('Refresh token already used or revoked');
+          }
+          // Consume the old rid before issuing the new one (atomic rotation)
+          await RedisHelper.account.userRefreshTokenRemove(uuid, rid);
         }
 
         // Create new session IDs for the rotated tokens
@@ -435,8 +461,11 @@ export const resolverUser: Resolvers = {
           role,
         });
 
-        // Register the new session in Redis
-        await RedisHelper.account.userAccessTokenAdd(uuid, newSid);
+        // Register both new session IDs in Redis
+        await Promise.all([
+          RedisHelper.account.userAccessTokenAdd(uuid, newSid),
+          RedisHelper.account.userRefreshTokenAdd(uuid, newRid),
+        ]);
 
         return {
           accessToken: newAccessToken,
@@ -465,8 +494,13 @@ export const resolverUser: Resolvers = {
       });
 
       if (logoutEverywhere) {
-        // Revoke all sessions for this user
-        return isOk(() => RedisHelper.account.userAccessTokenRemoveAll(userId));
+        // Revoke all access tokens and all refresh tokens for this user (SEC-014)
+        return isOk(() =>
+          Promise.all([
+            RedisHelper.account.userAccessTokenRemoveAll(userId),
+            RedisHelper.account.userRefreshTokenRemoveAll(userId),
+          ]),
+        );
       }
 
       // FIX: `authenticateUser` (in common.ts) already decodes the JWT and sets
