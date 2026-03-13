@@ -2,6 +2,7 @@ import { ApolloServer, BaseContext } from '@apollo/server';
 import cors from 'cors';
 import express, { Application } from 'express';
 import { GraphQLFormattedError } from 'graphql';
+import depthLimit from 'graphql-depth-limit';
 import helmet from 'helmet';
 import http from 'http';
 import { ResolverApp, TypedefApp } from './apollo';
@@ -82,6 +83,8 @@ export const NGOO_API = {
         return formattedError;
       },
       introspection: config.NODE_ENV === 'local',
+      // SEC-011: Limit query depth to prevent nested DoS attacks.
+      validationRules: [depthLimit(7)],
       // SEC-015: Disable batched HTTP requests to prevent DoS via bulk query attacks.
       // A single HTTP request with hundreds of batched operations could bypass per-request
       // rate limiting and exhaust server resources.
