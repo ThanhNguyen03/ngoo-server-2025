@@ -1,4 +1,7 @@
 import EventEmitter from 'events';
+import { createLogger } from './logger';
+
+const logger = createLogger('QueueService');
 
 export type TQueuePriority = 'high' | 'normal' | 'low';
 export type TQueueJobData<TEvent = Record<string, unknown>> = {
@@ -39,6 +42,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
   protected activeWorkers = 0;
   protected isShuttingDown = false;
   protected pendingTimeouts = new Set<NodeJS.Timeout>();
+  protected cleanupInterval: NodeJS.Timeout | null = null;
 
   // Map timeout to jobId to prevent MEMORY LEAK
   protected timeoutMap = new Map<string, NodeJS.Timeout>();
@@ -97,7 +101,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
     });
 
     this.sortQueue();
-    console.log(`[QueueService] Added job ${jobId}, queue size: ${this.queue.length}`);
+    logger.debug({ jobId, queueSize: this.queue.length }, 'Job added');
 
     this.emit('jobAdded');
 
@@ -106,7 +110,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
 
   startWorker(processor: (job: TQueueJobData<TEvent>) => Promise<void>, concurrency?: number): void {
     const workerCount = concurrency || this.options.maxConcurrent;
-    console.log(`[QueueService] Starting ${workerCount} workers`);
+    logger.info({ workerCount }, 'Starting workers');
 
     for (let i = 0; i < workerCount; i++) {
       this.spawnWorker(processor, i);
@@ -123,22 +127,22 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
         const index = this.queue.findIndex((job) => job.id === jobId);
         if (index !== -1) {
           this.queue.splice(index, 1);
-          console.log(`[QueueService] Force removed job ${jobId}`);
+          logger.debug({ jobId }, 'Force removed job');
           return true;
         }
       } else {
         queuedJob.cancelled = true;
-        console.log(`[QueueService] Marked job ${jobId} as cancelled`);
+        logger.debug({ jobId }, 'Job marked as cancelled');
         return true;
       }
     }
 
     if (this.processing.has(jobId)) {
-      console.log(`[QueueService] Job ${jobId} is currently processing, cannot cancel immediately`);
+      logger.debug({ jobId }, 'Job is currently processing, cannot cancel immediately');
       return false;
     }
 
-    console.log(`[QueueService] Job ${jobId} not found`);
+    logger.debug({ jobId }, 'Job not found for cancellation');
     return false;
   }
 
@@ -159,7 +163,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
     const index = this.queue.findIndex((job) => job.id === jobId);
     if (index !== -1) {
       this.queue.splice(index, 1);
-      console.log(`[QueueService] Removed job ${jobId} from queue`);
+      logger.debug({ jobId }, 'Job removed from queue');
       return true;
     }
     return false;
@@ -193,12 +197,17 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
   }
 
   async shutdown(timeoutMs: number = 30000): Promise<void> {
-    console.log(`[QueueService] Shutting down, ${this.queue.length} jobs pending`);
+    logger.info({ pendingJobs: this.queue.length }, 'Queue shutting down');
     this.isShuttingDown = true;
     this.removeAllListeners();
 
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+
     // Clear all pending timeouts
-    for (const [jobId, timeout] of this.timeoutMap) {
+    for (const [, timeout] of this.timeoutMap) {
       clearTimeout(timeout);
       this.pendingTimeouts.delete(timeout);
     }
@@ -209,24 +218,24 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
     while (this.processing.size > 0) {
       const elapsed = Date.now() - startTime;
       if (elapsed > timeoutMs) {
-        console.warn(`[QueueService] Shutdown timeout, ${this.processing.size} jobs still processing`);
+        logger.warn({ processingJobs: this.processing.size }, 'Shutdown timeout reached, forcing exit');
         break;
       }
-      console.log(`[QueueService] Waiting for ${this.processing.size} jobs...`);
+      logger.debug({ processingJobs: this.processing.size }, 'Waiting for jobs to complete...');
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     if (this.queue.length > 0) {
-      console.warn(`[QueueService] ${this.queue.length} jobs abandoned`);
+      logger.warn({ abandonedJobs: this.queue.length }, 'Jobs abandoned during shutdown');
     }
 
-    console.log('[QueueService] Shutdown complete');
+    logger.info('Queue shutdown complete');
   }
 
   // PROTECTED METHODS
   protected spawnWorker(processor: (job: TQueueJobData<TEvent>) => Promise<void>, workerId: number): void {
     const worker = async () => {
-      console.log(`[QueueService-W${workerId}] Started`);
+      logger.debug({ workerId }, 'Worker started');
 
       while (!this.isShuttingDown) {
         try {
@@ -242,7 +251,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
 
           // Skip if job is cancelled
           if (job.cancelled) {
-            console.log(`[QueueService-W${workerId}] Skipping cancelled job ${job.id}`);
+            logger.debug({ workerId, jobId: job.id }, 'Skipping cancelled job');
             continue;
           }
 
@@ -260,7 +269,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
           });
 
           try {
-            console.log(`[QueueService-W${workerId}] Processing ${job.id}, attempt ${job.attempts + 1}`);
+            logger.debug({ workerId, jobId: job.id, attempt: job.attempts + 1 }, 'Processing job');
 
             // Add timeout to prevent stuck jobs
             await Promise.race([
@@ -274,9 +283,9 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
               new Promise((_, reject) => setTimeout(() => reject(new Error(`Job ${job.id} timeout after 30s`)), 30000)),
             ]);
 
-            console.log(`[QueueService-W${workerId}] Completed ${job.id}`);
+            logger.debug({ workerId, jobId: job.id }, 'Job completed');
           } catch (error) {
-            console.error(`[QueueService-W${workerId}] Failed ${job.id}:`, error);
+            logger.error({ workerId, jobId: job.id, err: error }, 'Job failed');
 
             // Handle timeout differently
             const isTimeout = error instanceof Error && error.message.includes('timeout');
@@ -290,9 +299,9 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
               const delay = Math.min(this.options.retryDelay * Math.pow(2, job.attempts), this.options.maxRetryDelay);
               this.scheduleRetry(job, delay);
 
-              console.log(`[QueueService] Scheduled retry for ${job.id} in ${delay}ms`);
+              logger.debug({ jobId: job.id, delayMs: delay }, 'Scheduled retry');
             } else {
-              console.error(`[QueueService] Max retries for ${job.id}`);
+              logger.error({ jobId: job.id, maxRetries: this.options.maxRetries }, 'Max retries reached');
               this.emit('jobFailed', { job, error });
             }
           } finally {
@@ -301,18 +310,18 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
             this.checkAndNotify();
           }
         } catch (error) {
-          console.error(`[QueueService-W${workerId}] Worker error:`, error);
+          logger.error({ workerId, err: error }, 'Worker error');
           if (!this.isShuttingDown) {
             await new Promise((resolve) => setTimeout(resolve, 1000));
           }
         }
       }
 
-      console.log(`[QueueService-W${workerId}] Stopped`);
+      logger.debug({ workerId }, 'Worker stopped');
     };
 
     worker().catch((error) => {
-      console.error(`[QueueService-W${workerId}] Fatal error:`, error);
+      logger.error({ workerId, err: error }, 'Worker fatal error');
     });
   }
 
@@ -348,7 +357,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
   protected scheduleRetry(job: TQueueJob<TEvent>, delay: number): void {
     // Don't schedule retry if job is cancelled
     if (job.cancelled) {
-      console.log(`[QueueService] Skipping retry for cancelled job ${job.id}`);
+      logger.debug({ jobId: job.id }, 'Skipping retry for cancelled job');
       return;
     }
 
@@ -367,7 +376,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
     this.pendingTimeouts.add(timeout);
     this.timeoutMap.set(job.id, timeout); // Set map timeout to jobId
 
-    console.log(`[QueueService] Scheduled retry for ${job.id} in ${delay}ms`);
+    logger.debug({ jobId: job.id, delayMs: delay }, 'Retry scheduled');
   }
 
   protected clearJobTimeout(jobId: string): void {
@@ -376,7 +385,7 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
       clearTimeout(timeout);
       this.pendingTimeouts.delete(timeout);
       this.timeoutMap.delete(jobId);
-      console.log(`[QueueService] Cleared timeout for job ${jobId}`);
+      logger.debug({ jobId }, 'Cleared job timeout');
     }
   }
 
@@ -405,11 +414,14 @@ export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter
     }
   }
 
-  private startCleanupInterval(): void {
-    setInterval(
+  protected startCleanupInterval(): void {
+    this.cleanupInterval = setInterval(
       () => {
         if (this.pendingTimeouts.size !== this.timeoutMap.size) {
-          console.log('[QueueService] Cleaning up orphaned timeouts');
+          logger.debug(
+            { pendingTimeouts: this.pendingTimeouts.size, timeoutMapSize: this.timeoutMap.size },
+            'Cleaning up orphaned timeouts',
+          );
           this.pendingTimeouts.clear();
           for (const [, timeout] of this.timeoutMap) {
             this.pendingTimeouts.add(timeout);

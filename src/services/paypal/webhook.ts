@@ -1,8 +1,11 @@
 /* eslint-disable camelcase */
 import { config } from '@helper';
+import { createLogger } from '@lib';
 import type { AxiosInstance } from 'axios';
 import axios from 'axios';
 import { type Request } from 'express';
+
+const logger = createLogger('PayPalWebhook');
 
 type TPayPalToken = {
   token: string;
@@ -16,7 +19,7 @@ export class PaypalWebhook {
     // Initialize axios for direct API calls (for webhook verification)
     this.axiosInstance = axios.create({
       baseURL: config.PAYPAL_BASE_URL,
-      timeout: 10000,
+      timeout: config.PAYPAL_WEBHOOK_TIMEOUT_MS,
       maxRedirects: 0,
     });
   }
@@ -45,13 +48,17 @@ export class PaypalWebhook {
 
       return this.accessToken.token;
     } catch (error) {
-      console.error('[PayPalWebhook] Failed to get access token:', error);
+      logger.error({ err: error }, 'Failed to get PayPal access token');
       throw new Error('Failed to authenticate with PayPal');
     }
   }
 
   async verifyWebhookSignature(req: Request, event: any) {
-    if (config.NODE_ENV !== 'production') {
+    // Skip verification ONLY in local dev (exposed via ngrok etc. is acceptable risk).
+    // In 'test' env we still verify — a test server exposed externally must not accept
+    // fake webhooks that could mark any payment as SUCCESS.
+    if (config.NODE_ENV === 'local') {
+      logger.warn('Skipping PayPal webhook signature verification in local env');
       return true;
     }
 
@@ -81,7 +88,7 @@ export class PaypalWebhook {
 
       return response.data.verification_status === 'SUCCESS';
     } catch (error) {
-      console.error('[PaypalWebhook] Webhook verification failed:', error);
+      logger.error({ err: error }, 'PayPal webhook signature verification failed');
       return false;
     }
   }

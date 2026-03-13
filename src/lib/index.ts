@@ -19,21 +19,28 @@ export const JOI_ERC55_ADDRESS = Joi.string()
     return value.toLowerCase();
   });
 
-export const isOk = (asyncFunction: (...args: any[]) => Promise<any>): Promise<boolean> => {
-  return new Promise((resolve) => {
-    asyncFunction()
-      .then(() => {
-        resolve(true);
-      })
-      .catch((error) => {
-        console.error('Found an error, when check if the function was successful or not: ', error);
-        resolve(false);
-      });
-  });
+/**
+ * Executes an async function and returns `true` on success or `false` on
+ * failure. Errors are intentionally swallowed — callers use the boolean
+ * result for control flow (e.g. logout success/failure).
+ *
+ * This is the fixed version of the original deferred anti-pattern which used
+ * `new Promise` wrapping a `.then()/.catch()` chain — mixing the callback and
+ * async styles unnecessarily.
+ */
+export const isOk = async (asyncFunction: () => Promise<unknown>): Promise<boolean> => {
+  try {
+    await asyncFunction();
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export default isOk;
 export * from './authen';
 export * from './byte-buffer';
+export * from './errors';
 export * from './fixed-float';
+export * from './logger';
 export * from './queue';

@@ -64,10 +64,16 @@ type TListItemResponse {
   records: [TItemResponse!]!
 }
 
+type TListItemCursorResponse {
+  records: [TItemResponse!]!
+  pageInfo: TCursorPageInfo!
+}
+
 type Query {
   listItem(offset: Int, limit: Int, query: [QueryByInput]): TListItemResponse!
   listItemByCategory(offset: Int, limit: Int, categoryName: String!): TListItemResponse!
   listItemByStatus(offset: Int, limit: Int, status: [EItemStatus]!): TListItemResponse!
+  listItemCursor(limit: Int, cursor: String, categoryName: String, status: [EItemStatus]): TListItemCursorResponse!
   itemById(itemId: String!): TItemResponse!
 }
 

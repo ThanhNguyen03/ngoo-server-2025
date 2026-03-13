@@ -25,7 +25,7 @@ export const schemaPagination = (queryList: string[]) => ({
       }),
     )
     .default([]),
-  limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
+  limit: Joi.number().integer().min(1).max(100).default(20),
 });
 
 export const sortQuery = (query: TQueryBy[]) => {
@@ -37,7 +37,12 @@ export const sortQuery = (query: TQueryBy[]) => {
     }
   }
 
-  sort.createdAt = -1;
+  // Only apply default descending sort on createdAt if the user hasn't
+  // explicitly requested a sort on that column, to avoid silently overriding
+  // user-specified sort directions (e.g. `createdAt: asc`).
+  if (!sort.createdAt) {
+    sort.createdAt = -1;
+  }
 
   return sort;
 };
@@ -87,5 +92,6 @@ export * from './config';
 export * from './file';
 export * from './jwt';
 export * from './paypal';
+export * from './rate-limit';
 export * from './redis-helper';
 export * from './sign-ecdsa-proof';

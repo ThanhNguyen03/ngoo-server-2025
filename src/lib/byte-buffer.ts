@@ -1,5 +1,5 @@
-import SaferBuffer from 'safer-buffer';
 import { ethers } from 'ethers';
+import SaferBuffer from 'safer-buffer';
 import { THexString } from '.';
 
 export type TNumberLike = THexString | bigint | number;
@@ -61,12 +61,17 @@ export class ByteBuffer {
     return this;
   }
 
-  /** Append bytes, padded/truncated to fixed length */
+  /** Append bytes, right-padded to fixed length (error if input exceeds byteLen) */
   writeFixedBytes(bytes: THexString, byteLen: number): this {
     const clean = bytes.startsWith('0x') ? bytes.slice(2) : bytes;
     const buf = Buffer.from(clean, 'hex');
+    // Guard against silent data corruption: truncating a hash or address changes
+    // the value without any indication — always throw so callers know immediately.
+    if (buf.length > byteLen) {
+      throw new Error(`ByteBuffer.writeFixedBytes: value is ${buf.length} bytes but fixed size is ${byteLen}`);
+    }
     const fixed = Buffer.alloc(byteLen);
-    buf.copy(fixed, 0, 0, Math.min(byteLen, buf.length));
+    buf.copy(fixed, 0, 0, buf.length);
     this.buf = Buffer.concat([this.buf, fixed]);
     return this;
   }

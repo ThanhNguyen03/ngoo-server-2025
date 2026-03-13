@@ -6,6 +6,7 @@ import {
   QueryItemByIdArgs,
   QueryListItemByCategoryArgs,
   QueryListItemByStatusArgs,
+  QueryListItemCursorArgs,
   Resolvers,
   TItemResponse,
 } from '@generated/graphql';
@@ -13,14 +14,69 @@ import {
   adminWrapper,
   JOI_ID_SCHEMA,
   publicWrapper,
+  RATE_LIMIT_CONFIGS,
+  rateLimitWrapper,
   RedisHelper,
   schemaPagination,
   sortQuery,
   TPagination,
 } from '@helper';
-import { CategoryModel, ItemModel, TCategory } from '@model';
+import { ConflictError, NotFoundError, ValidationError } from '@lib';
+import { CategoryModel, ItemModel, TCategory, TItem } from '@model';
+import { logAudit } from '@service';
 import Joi from 'joi';
 import { Types } from 'mongoose';
+
+/** Encode a cursor from a document's createdAt timestamp and _id. */
+const encodeCursor = (createdAt: Date, id: Types.ObjectId): string => {
+  return Buffer.from(JSON.stringify({ t: createdAt.getTime(), id: id.toHexString() })).toString('base64url');
+};
+
+/** Decode a cursor string into { t: timestamp_ms, id: hex_string }. Returns null on invalid input. */
+const decodeCursor = (cursor: string): { t: number; id: string } | null => {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    if (typeof parsed.t !== 'number' || typeof parsed.id !== 'string') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Minimum shape required by the mapper — compatible with both lean and
+ * hydrated Mongoose results. Using `Omit<TItem, 'category'>` removes the raw
+ * `ObjectId` ref field and replaces it with `{ name: string }`, which is a
+ * structural subset of `FlattenMaps<TCategory>` (lean) and `TCategory`
+ * (hydrated). This avoids the ObjectId vs FlattenMaps mismatch that
+ * TypeScript reports when using `.lean()` with `.populate()`.
+ */
+type TItemMappable = Omit<TItem, 'category'> & { category: Pick<TCategory, 'name'> };
+
+/**
+ * Map a Mongoose item document (with populated category) to the GraphQL
+ * `TItemResponse` type. Centralises the mapping to avoid repeating the same
+ * field assignments across every query and mutation resolver.
+ *
+ * Note: `createdAt` / `updatedAt` are converted from `Date` to Unix timestamps
+ * (milliseconds) so they match the GraphQL `Int` scalar type.
+ *
+ * @param item - Lean or hydrated item document with `category` populated.
+ */
+const toItemResponse = (item: TItemMappable): TItemResponse => ({
+  itemId: item.itemId,
+  name: item.name,
+  image: item.image,
+  price: item.price,
+  description: item.description,
+  discountPercent: item.discountPercent,
+  requireOption: item.requireOption,
+  additionalOption: item.additionalOption,
+  status: item.status,
+  categoryName: item.category.name,
+  createdAt: item.createdAt.getTime(),
+  updatedAt: item.updatedAt.getTime(),
+});
 
 enum EItemQuery {
   Status = 'status',
@@ -63,14 +119,14 @@ const JOI_ITEM_ID = Joi.object<MutationDeleteItemArgs>({
 const JOI_ITEM_BY_CATEGORY_ID = Joi.object<QueryListItemByCategoryArgs>({
   offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   categoryName: Joi.string().trim().min(5).max(30).required(),
-  limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
+  limit: Joi.number().integer().min(1).max(100).default(20),
 });
 const JOI_ITEM_BY_CATEGORY_STATUS = Joi.object<QueryListItemByStatusArgs>({
   offset: Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   status: Joi.array()
     .items(Joi.string().valid(...Object.values(EItemStatus)))
     .required(),
-  limit: Joi.number().integer().min(1).max(Number.MAX_SAFE_INTEGER).default(20),
+  limit: Joi.number().integer().min(1).max(100).default(20),
 });
 const JOI_ITEM_BY_ID = Joi.object<QueryItemByIdArgs>({
   itemId: JOI_ID_SCHEMA,
@@ -78,6 +134,15 @@ const JOI_ITEM_BY_ID = Joi.object<QueryItemByIdArgs>({
 
 const JOI_LIST_ITEM = Joi.object<Omit<TPagination, 'total'>>({
   ...schemaPagination(Object.values(EItemQuery)),
+});
+
+const JOI_LIST_ITEM_CURSOR = Joi.object<QueryListItemCursorArgs>({
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  cursor: Joi.string().allow(null, '').default(null),
+  categoryName: Joi.string().trim().min(5).max(30).allow(null),
+  status: Joi.array()
+    .items(Joi.string().valid(...Object.values(EItemStatus)))
+    .allow(null),
 });
 
 export const resolverItem: Resolvers = {
@@ -101,22 +166,7 @@ export const resolverItem: Resolvers = {
         limit,
         query,
         total,
-        records: listItem.map((item) => {
-          return {
-            itemId: item.itemId,
-            name: item.name,
-            image: item.image,
-            price: item.price,
-            description: item.description,
-            discountPercent: item.discountPercent,
-            requireOption: item.requireOption,
-            additionalOption: item.additionalOption,
-            status: item.status,
-            categoryName: item.category.name,
-            createdAt: item.createdAt.getTime(),
-            updatedAt: item.updatedAt.getTime(),
-          };
-        }),
+        records: listItem.map(toItemResponse),
       };
     }),
 
@@ -124,7 +174,7 @@ export const resolverItem: Resolvers = {
       const { offset = 0, limit = 20, categoryName } = _args;
       const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
       if (!category) {
-        throw new Error('Category not found');
+        throw new NotFoundError('Category not found');
       }
 
       const [listItem, total] = await Promise.all([
@@ -142,22 +192,7 @@ export const resolverItem: Resolvers = {
         limit: limit ?? 20,
         total,
         query: [],
-        records: listItem.map((item) => {
-          return {
-            itemId: item.itemId,
-            name: item.name,
-            image: item.image,
-            price: item.price,
-            description: item.description,
-            discountPercent: item.discountPercent,
-            requireOption: item.requireOption,
-            additionalOption: item.additionalOption,
-            status: item.status,
-            categoryName: item.category.name,
-            createdAt: item.createdAt.getTime(),
-            updatedAt: item.updatedAt.getTime(),
-          };
-        }),
+        records: listItem.map(toItemResponse),
       };
     }),
 
@@ -184,22 +219,56 @@ export const resolverItem: Resolvers = {
         limit: limit ?? 20,
         total,
         query: [],
-        records: listItem.map((item) => {
-          return {
-            itemId: item.itemId,
-            name: item.name,
-            image: item.image,
-            price: item.price,
-            description: item.description,
-            discountPercent: item.discountPercent,
-            requireOption: item.requireOption,
-            additionalOption: item.additionalOption,
-            status: item.status,
-            categoryName: item.category.name,
-            createdAt: item.createdAt.getTime(),
-            updatedAt: item.updatedAt.getTime(),
-          };
-        }),
+        records: listItem.map(toItemResponse),
+      };
+    }),
+
+    listItemCursor: publicWrapper(JOI_LIST_ITEM_CURSOR, async (_root, _args) => {
+      // Joi defaults ensure limit is always a number after validation
+      const limit = _args.limit ?? 20;
+      const { cursor, categoryName, status } = _args;
+      const filter: Record<string, unknown> = { isDeleted: false };
+
+      // Optional category filter
+      if (categoryName) {
+        const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
+        if (!category) throw new NotFoundError('Category not found');
+        filter.category = category._id;
+      }
+
+      // Optional status filter
+      if (status && status.length > 0) {
+        filter.status = { $in: status };
+      }
+
+      // Cursor condition: fetch documents older than the cursor position
+      if (cursor) {
+        const decoded = decodeCursor(cursor);
+        if (!decoded) throw new ValidationError('Invalid cursor format');
+
+        const cursorDate = new Date(decoded.t);
+        const cursorObjectId = new Types.ObjectId(decoded.id);
+        filter.$or = [{ createdAt: { $lt: cursorDate } }, { createdAt: cursorDate, _id: { $lt: cursorObjectId } }];
+      }
+
+      // Fetch limit + 1 to determine if there are more results
+      const items = await ItemModel.find(filter)
+        .populate<{ category: TCategory }>('category')
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(limit + 1)
+        .lean();
+
+      const hasMore = items.length > limit;
+      const pageItems = hasMore ? items.slice(0, limit) : items;
+
+      const nextCursor =
+        hasMore && pageItems.length > 0
+          ? encodeCursor(pageItems[pageItems.length - 1].createdAt, pageItems[pageItems.length - 1]._id)
+          : null;
+
+      return {
+        records: pageItems.map(toItemResponse),
+        pageInfo: { hasMore, nextCursor },
       };
     }),
 
@@ -226,7 +295,7 @@ export const resolverItem: Resolvers = {
         .populate<{ category: TCategory }>('category')
         .exec();
       if (!result) {
-        throw new Error('Item not found!');
+        throw new NotFoundError('Item not found');
       }
 
       const response = {
@@ -250,119 +319,129 @@ export const resolverItem: Resolvers = {
   },
 
   Mutation: {
-    createItem: adminWrapper(JOI_CREATE_ITEM_INPUT, async (_root, { input }) => {
-      const { categoryName, name, ...data } = input;
-      const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
-      if (!category) {
-        throw new Error('Category not found');
-      }
-
-      const existingItem = await ItemModel.findOne({
-        name,
-        isDeleted: false,
-      });
-
-      if (existingItem) {
-        throw new Error('Item already exist!');
-      }
-
-      const item = await ItemModel.findOneAndUpdate(
-        { name },
-        {
-          $setOnInsert: {
-            ...data,
-            name,
-            category: category._id,
-          }, // if donot have -> create new
-          $set: { isDeleted: false }, // if isDelete = true -> set false
-        },
-        { new: true, upsert: true },
-      )
-        .populate<{ category: TCategory }>('category')
-        .exec();
-
-      if (!item) {
-        throw new Error('Failed to create item');
-      }
-
-      const response = {
-        itemId: item.itemId,
-        name: item.name,
-        image: item.image,
-        price: item.price,
-        description: item.description,
-        discountPercent: item.discountPercent,
-        requireOption: item.requireOption,
-        additionalOption: item.additionalOption,
-        status: item.status,
-        categoryName: item.category.name,
-        createdAt: item.createdAt.getTime(),
-        updatedAt: item.updatedAt.getTime(),
-      };
-      await RedisHelper.item.itemByIdSet(response);
-
-      return response;
-    }),
-
-    updateItem: adminWrapper(JOI_UPDATE_ITEM_INPUT, async (_root, { input }) => {
-      const { categoryName, itemId, ...data } = input;
-
-      const existingItem = await ItemModel.findOne({ itemId, isDeleted: false })
-        .populate<{ category: TCategory }>('category')
-        .exec();
-      if (!existingItem) {
-        throw new Error('Item not found!');
-      }
-
-      let newCategoryId: Types.ObjectId | undefined;
-      if (categoryName) {
+    createItem: adminWrapper(
+      JOI_CREATE_ITEM_INPUT,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }, context) => {
+        const { categoryName, name, ...data } = input;
         const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
         if (!category) {
-          throw new Error('Category not found');
+          throw new NotFoundError('Category not found');
         }
-        newCategoryId = category._id;
-      }
 
-      const item = await ItemModel.findOneAndUpdate(
-        { itemId, isDeleted: false },
-        { ...data, ...(newCategoryId ? { category: newCategoryId } : {}) },
-        { new: true },
-      )
-        .populate<{ category: TCategory }>('category')
-        .exec();
+        const existingItem = await ItemModel.findOne({
+          name,
+          isDeleted: false,
+        });
 
-      if (!item) {
-        throw new Error('Failed to update item!');
-      }
+        if (existingItem) {
+          throw new ConflictError('Item already exists');
+        }
 
-      const response: TItemResponse = {
-        itemId: item.itemId,
-        name: item.name,
-        image: item.image,
-        price: item.price,
-        description: item.description,
-        discountPercent: item.discountPercent,
-        requireOption: item.requireOption,
-        additionalOption: item.additionalOption,
-        status: item.status,
-        categoryName: item.category.name,
-        createdAt: item.createdAt.getTime(),
-        updatedAt: item.updatedAt.getTime(),
-      };
+        const item = await ItemModel.findOneAndUpdate(
+          { name },
+          {
+            $setOnInsert: {
+              ...data,
+              name,
+              category: category._id,
+            }, // if donot have -> create new
+            $set: { isDeleted: false }, // if isDelete = true -> set false
+          },
+          { new: true, upsert: true },
+        )
+          .populate<{ category: TCategory }>('category')
+          .exec();
 
-      await RedisHelper.item.itemByIdSet(response);
+        if (!item) {
+          throw new NotFoundError('Failed to create item');
+        }
 
-      return response;
-    }),
+        const response = toItemResponse(item);
+        await RedisHelper.item.itemByIdSet(response);
 
-    deleteItem: adminWrapper(JOI_ITEM_ID, async (_root, _arg) => {
-      const { itemId } = _arg;
-      const item = await ItemModel.findOneAndUpdate({ itemId }, { isDeleted: true }, { new: true });
-      if (!item) {
-        throw new Error('Item not found');
-      }
-      await RedisHelper.item.itemByIdDel(itemId);
-      return true;
-    }),
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'CREATE',
+          targetType: 'Item',
+          targetId: item.itemId,
+          metadata: { name: item.name, categoryName: item.category.name },
+        });
+
+        return response;
+      }),
+    ),
+
+    updateItem: adminWrapper(
+      JOI_UPDATE_ITEM_INPUT,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { input }, context) => {
+        const { categoryName, itemId, ...data } = input;
+
+        const existingItem = await ItemModel.findOne({ itemId, isDeleted: false })
+          .populate<{ category: TCategory }>('category')
+          .exec();
+        if (!existingItem) {
+          throw new NotFoundError('Item not found');
+        }
+
+        let newCategoryId: Types.ObjectId | undefined;
+        if (categoryName) {
+          const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
+          if (!category) {
+            throw new NotFoundError('Category not found');
+          }
+          newCategoryId = category._id;
+        }
+
+        const item = await ItemModel.findOneAndUpdate(
+          { itemId, isDeleted: false },
+          { ...data, ...(newCategoryId ? { category: newCategoryId } : {}) },
+          { new: true },
+        )
+          .populate<{ category: TCategory }>('category')
+          .exec();
+
+        if (!item) {
+          throw new NotFoundError('Failed to update item');
+        }
+
+        const response = toItemResponse(item);
+        await RedisHelper.item.itemByIdSet(response);
+
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'UPDATE',
+          targetType: 'Item',
+          targetId: item.itemId,
+          metadata: { name: item.name },
+        });
+
+        return response;
+      }),
+    ),
+
+    deleteItem: adminWrapper(
+      JOI_ITEM_ID,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, _args, context) => {
+        const { itemId } = _args;
+        const item = await ItemModel.findOneAndUpdate({ itemId }, { isDeleted: true }, { new: true });
+        if (!item) {
+          throw new NotFoundError('Item not found');
+        }
+        await RedisHelper.item.itemByIdDel(itemId);
+
+        // Fire-and-forget: do not await to avoid blocking the response
+        logAudit({
+          userId: context.user.userId,
+          action: 'DELETE',
+          targetType: 'Item',
+          targetId: itemId,
+          metadata: { name: item.name },
+        });
+
+        return true;
+      }),
+    ),
   },
 };

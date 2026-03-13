@@ -1,4 +1,5 @@
 import { readFileSync } from '@helper';
+import { resolverAuditLog } from './app/audit-log';
 import { resolverCategory } from './app/category';
 import { resolverItem } from './app/item';
 import { resolverOrder } from './app/order';
@@ -30,6 +31,7 @@ export const TypedefApp = [
 ];
 
 export const ResolverApp = [
+  resolverAuditLog,
   resolverCategory,
   resolverItem,
   resolverOrder,

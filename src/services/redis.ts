@@ -1,8 +1,11 @@
 import { config } from '@helper';
+import { createLogger } from '@lib';
 
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'node:events';
 import { createClient, RedisArgument, RedisJSON, type RedisClientOptions, type RedisClientType } from 'redis';
+
+const logger = createLogger('Redis');
 
 const parseHash = <T>(raw: Record<string, string>): T => {
   const obj: any = {};
@@ -125,11 +128,11 @@ class RedisKey {
       );
     }
 
-    const flat: (string | number | Buffer)[] = [];
+    const flat: string[] = [];
     for (const [k, v] of Object.entries(keyOrObj as Record<string, any>)) {
-      flat.push(k, typeof v === 'object' ? JSON.stringify(v) : v);
+      flat.push(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
     }
-    return this.client.hSet(this.fullKey(), flat as any);
+    return this.client.hSet(this.fullKey(), flat as unknown as [string, string][]);
   }
   async hashGet<T>(field: RedisArgument) {
     const raw = await this.client.hGet(this.fullKey(), field);
@@ -191,7 +194,7 @@ export class RedisClient {
         ...options.socket,
         reconnectStrategy: (retries: number) => {
           if (retries > 10) {
-            console.error('[Redis] Max reconnection attempts reached');
+            logger.error('Max reconnection attempts reached');
             return new Error('Max reconnection attempts reached');
           }
           // Exponential backoff with maximum 30s
@@ -304,7 +307,7 @@ export class RedisClient {
     try {
       await this.eval(script, [lockKey], [value]);
     } catch (error) {
-      console.error(`[Redis] Failed to release lock ${key}:`, error);
+      logger.error({ err: error, lockKey: key }, 'Failed to release lock');
     }
   }
 
@@ -368,9 +371,9 @@ export const RedisInstance = RedisClient.getInstance(config.REDIS_KEY_PREFIX, {
 });
 
 // event log
-RedisInstance.event.on(ERedisEvent.Connect, () => console.log('✅ Redis connected'));
-RedisInstance.event.on(ERedisEvent.Error, (e) => console.error('Error something wrong with Redis: ', e));
-RedisInstance.event.on(ERedisEvent.Reconnect, () => console.warn('Redis reconnecting...'));
-RedisInstance.event.on(ERedisEvent.Quit, () => console.log('✅ Quit redis success...'));
+RedisInstance.event.on(ERedisEvent.Connect, () => logger.info('Redis connected'));
+RedisInstance.event.on(ERedisEvent.Error, (e: Error) => logger.error({ err: e }, 'Redis error'));
+RedisInstance.event.on(ERedisEvent.Reconnect, () => logger.warn('Redis reconnecting...'));
+RedisInstance.event.on(ERedisEvent.Quit, () => logger.info('Redis disconnected'));
 
 export default RedisInstance;

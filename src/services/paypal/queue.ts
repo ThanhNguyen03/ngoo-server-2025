@@ -1,8 +1,11 @@
-import { RedisHelper, type TPayPalWebhookEvent } from '@helper';
-import { QueueService, type TQueueJobData, type TQueueOptions, type TQueuePriority } from '@lib';
+import { config, RedisHelper, type TPayPalWebhookEvent } from '@helper';
+import { createLogger, QueueService, type TQueueJobData, type TQueueOptions, type TQueuePriority } from '@lib';
+
+const logger = createLogger('WebhookQueue');
 
 export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
   private processingJobs = new Set<string>();
+  private cleanupTimeouts = new Map<string, NodeJS.Timeout>();
 
   constructor(options: TQueueOptions = {}) {
     super({
@@ -32,9 +35,9 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
   ): Promise<string> {
     const jobKey = `${orderId}:${captureId}`;
 
-    // Check memory set trước
+    // Check in-memory set first — fast dedup before acquiring lock
     if (this.processingJobs.has(jobKey)) {
-      console.log(`[WebhookQueue] Duplicate webhook detected for ${orderId}`);
+      logger.debug({ orderId }, 'Duplicate webhook detected, skipping');
       return `duplicate-${orderId}`;
     }
 
@@ -51,29 +54,40 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
         // Mark as processing
         this.processingJobs.add(jobKey);
 
-        // Auto cleanup sau 5 phút
-        setTimeout(
+        // Auto cleanup after 5 minutes
+        const existingTimeout = this.cleanupTimeouts.get(jobKey);
+        if (existingTimeout) clearTimeout(existingTimeout);
+
+        const timeout = setTimeout(
           () => {
             this.processingJobs.delete(jobKey);
+            this.cleanupTimeouts.delete(jobKey);
           },
           5 * 60 * 1000,
         );
+        this.cleanupTimeouts.set(jobKey, timeout);
 
         return super.add(event, orderId, captureId, priority);
       });
       return result;
     } catch (error) {
-      // Lock failed
-      console.warn(`[WebhookQueue] Lock failed for ${orderId}, continuing without lock`);
+      // Lock failed — continue without lock, in-memory dedup still protects against duplicates
+      logger.warn({ orderId, err: error }, 'Webhook lock failed, continuing without lock');
 
       // Track job in memory
       this.processingJobs.add(jobKey);
-      setTimeout(
+
+      const existingTimeout = this.cleanupTimeouts.get(jobKey);
+      if (existingTimeout) clearTimeout(existingTimeout);
+
+      const timeout = setTimeout(
         () => {
           this.processingJobs.delete(jobKey);
+          this.cleanupTimeouts.delete(jobKey);
         },
         5 * 60 * 1000,
       );
+      this.cleanupTimeouts.set(jobKey, timeout);
 
       return super.add(event, orderId, captureId, priority);
     }
@@ -90,7 +104,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     // Cancel queued jobs
     this.queue.forEach((job) => {
       if (job.orderId === orderId && !job.cancelled) {
-        this['clearJobTimeout'](job.id);
+        this.clearJobTimeout(job.id);
         job.cancelled = true;
         cancelledCount++;
       }
@@ -99,8 +113,7 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     // Note: Processing jobs cannot be cancelled immediately
     const processingJobs = Array.from(this.processing.values()).filter((info) => info.job.orderId === orderId);
 
-    console.log(`[WebhookQueueService] Cancelled ${cancelledCount} jobs for order ${orderId}`);
-    console.log(`[WebhookQueueService] ${processingJobs.length} jobs still processing for order ${orderId}`);
+    logger.info({ orderId, cancelledCount, processingCount: processingJobs.length }, 'Jobs cancelled for order');
 
     return cancelledCount;
   }
@@ -116,13 +129,13 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     // Cancel queued jobs
     this.queue.forEach((job) => {
       if (job.captureId === captureId && !job.cancelled) {
-        this['clearJobTimeout'](job.id);
+        this.clearJobTimeout(job.id);
         job.cancelled = true;
         cancelledCount++;
       }
     });
 
-    console.log(`[WebhookQueueService] Cancelled ${cancelledCount} jobs for capture ${captureId}`);
+    logger.info({ captureId, cancelledCount }, 'Jobs cancelled for capture');
     return cancelledCount;
   }
 
@@ -159,10 +172,19 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
     const removedCount = initialLength - this.queue.length;
 
     if (removedCount > 0) {
-      console.log(`[WebhookQueueService] Cleaned up ${removedCount} cancelled jobs`);
+      logger.debug({ removedCount }, 'Cleaned up cancelled jobs');
     }
 
     return removedCount;
+  }
+
+  async shutdown(timeoutMs?: number): Promise<void> {
+    for (const [, timeout] of this.cleanupTimeouts) {
+      clearTimeout(timeout);
+    }
+    this.cleanupTimeouts.clear();
+    this.processingJobs.clear();
+    await super.shutdown(timeoutMs);
   }
 
   /**
@@ -180,9 +202,9 @@ export class WebhookQueueService extends QueueService<TPayPalWebhookEvent> {
 
 // Singleton for PayPal webhooks queue
 export const paypalQueueService = new WebhookQueueService({
-  maxConcurrent: 10,
-  maxRetries: 3,
-  retryDelay: 1000,
-  maxRetryDelay: 30 * 1000, // 30s
-  stalledTimeout: 60 * 1000, // 1 minute
+  maxConcurrent: config.QUEUE_MAX_CONCURRENT,
+  maxRetries: config.QUEUE_MAX_RETRIES,
+  retryDelay: config.QUEUE_RETRY_DELAY_MS,
+  maxRetryDelay: config.QUEUE_MAX_RETRY_DELAY_MS,
+  stalledTimeout: config.QUEUE_STALLED_TIMEOUT_MS,
 });

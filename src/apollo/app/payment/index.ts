@@ -10,15 +10,73 @@ import {
 import {
   adminWrapper,
   authorizedWrapper,
+  config,
   JOI_ID_SCHEMA,
+  RATE_LIMIT_CONFIGS,
+  rateLimitWrapper,
   RedisHelper,
   schemaPagination,
   sortQuery,
   TPagination,
 } from '@helper';
-import { OrderModel, PaymentModel, TOrder, TUserInfo, UserModel } from '@model';
-import { io } from '@service';
+import { NotFoundError, ValidationError } from '@lib';
+import { OrderModel, PaymentModel, TOrder, TPayment } from '@model';
+import { emitPaymentStatus, getOrCacheUserInfo } from '@service';
 import Joi from 'joi';
+import mongoose from 'mongoose';
+
+/**
+ * Minimum order shape required by the user-facing mapper — compatible with
+ * both lean (`FlattenMaps<IOrder>`) and hydrated Mongoose results.
+ * Using `Omit<TPayment, 'order'>` removes the raw ObjectId ref field to avoid
+ * the `ObjectId` vs `FlattenMaps<IOrder>` mismatch when `.lean()` is used.
+ */
+type TPaymentUserMappable = Omit<TPayment, 'order'> & {
+  order: Pick<TOrder, 'paymentMethod' | 'totalPrice' | 'userInfoSnapshot' | 'items' | 'transactionId'>;
+};
+
+/**
+ * Admin mapper needs all payment-method-specific fields from TPayment
+ * (txHash, paypalTransaction, codTransactionId) which are already included
+ * in `Omit<TPayment, 'order'>`.
+ */
+type TPaymentAdminMappable = TPaymentUserMappable;
+
+/**
+ * Map a payment + populated order to the user-facing `TUserPaymentResponse`.
+ * Used by per-user payment history queries.
+ */
+const toUserPaymentResponse = (history: TPaymentUserMappable): TUserPaymentResponse => ({
+  paymentId: history.paymentId,
+  orderId: history.orderId,
+  paymentMethod: history.order.paymentMethod,
+  totalPrice: history.order.totalPrice,
+  status: history.status,
+  userInfo: history.order.userInfoSnapshot,
+  items: history.order.items,
+  transactionId: history.order.transactionId,
+  createdAt: history.createdAt.getTime(),
+  updatedAt: history.updatedAt.getTime(),
+});
+
+/**
+ * Map a payment + populated order to the admin-facing `TPaymentResponse`.
+ * Includes payment-method-specific fields (txHash, paypalTransaction, codTransactionId).
+ */
+const toAdminPaymentResponse = (history: TPaymentAdminMappable): TPaymentResponse => ({
+  paymentId: history.paymentId,
+  orderId: history.orderId,
+  paymentMethod: history.order.paymentMethod,
+  totalPrice: history.order.totalPrice,
+  status: history.status,
+  userInfo: history.order.userInfoSnapshot,
+  items: history.order.items,
+  txHash: history.txHash,
+  paypalTransaction: history.paypalTransaction,
+  codTransactionId: history.codTransactionId,
+  createdAt: history.createdAt.getTime(),
+  updatedAt: history.updatedAt.getTime(),
+});
 
 enum EPaymentQuery {
   Status = 'status',
@@ -40,29 +98,12 @@ const JOI_APPROVE_COD_PAYMENT = Joi.object<MutationApproveCodPaymentArgs>({
   }),
 });
 
-const PAYMENT_LOCK_TTL = 10_000;
+const PAYMENT_LOCK_TTL = config.LOCK_PAYMENT_TTL_MS;
 export const resolverPayment: Resolvers = {
   Query: {
     paymentUserHistory: authorizedWrapper(JOI_PAYMENT_ID, async (_root, _args, context) => {
       const { userId } = context.user;
-
-      let userInfo = await RedisHelper.account.userInfoGet(userId);
-      if (!userInfo) {
-        const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
-        if (!user) {
-          throw new Error('Authorization Error!');
-        }
-        userInfo = {
-          uuid: user.uuid,
-          email: user.email,
-          name: user.userInfo.name,
-          walletAddress: user.userInfo.walletAddress,
-          authMethods: user.authMethods,
-          address: user.userInfo.address,
-          phoneNumber: user.userInfo.phoneNumber,
-        };
-        await RedisHelper.account.userInfoSet(userInfo);
-      }
+      await getOrCacheUserInfo(userId);
 
       const { paymentId } = _args;
       const paymentHistory = await PaymentModel.findOne({ paymentId, userId }).populate<{
@@ -70,43 +111,15 @@ export const resolverPayment: Resolvers = {
       }>('order');
 
       if (!paymentHistory || !paymentHistory.order) {
-        throw new Error('Payment not exist!');
+        throw new NotFoundError('Payment not found');
       }
 
-      return {
-        paymentId,
-        orderId: paymentHistory.orderId,
-        paymentMethod: paymentHistory.order.paymentMethod,
-        totalPrice: paymentHistory.order.totalPrice,
-        status: paymentHistory.status,
-        userInfo: paymentHistory.order.userInfoSnapshot,
-        items: paymentHistory.order.items,
-        transactionId: paymentHistory.order.transactionId,
-        createdAt: paymentHistory.createdAt.getTime(),
-        updatedAt: paymentHistory.updatedAt.getTime(),
-      };
+      return toUserPaymentResponse(paymentHistory);
     }),
 
     listUserPaymentHistory: authorizedWrapper(JOI_LIST_PAYMENT, async (_root, _args, context) => {
       const { userId } = context.user;
-
-      let userInfo = await RedisHelper.account.userInfoGet(userId);
-      if (!userInfo) {
-        const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
-        if (!user) {
-          throw new Error('Authorization Error!');
-        }
-        userInfo = {
-          uuid: user.uuid,
-          email: user.email,
-          name: user.userInfo.name,
-          walletAddress: user.userInfo.walletAddress,
-          authMethods: user.authMethods,
-          address: user.userInfo.address,
-          phoneNumber: user.userInfo.phoneNumber,
-        };
-        await RedisHelper.account.userInfoSet(userInfo);
-      }
+      await getOrCacheUserInfo(userId);
 
       const { offset, limit, query } = _args;
       const sort = sortQuery(query);
@@ -116,20 +129,7 @@ export const resolverPayment: Resolvers = {
         PaymentModel.countDocuments({ userId }),
       ]);
 
-      const records: TUserPaymentResponse[] = listPaymentHistory.map((history) => {
-        return {
-          paymentId: history.paymentId,
-          orderId: history.orderId,
-          paymentMethod: history.order.paymentMethod,
-          totalPrice: history.order.totalPrice,
-          status: history.status,
-          userInfo: history.order.userInfoSnapshot,
-          items: history.order.items,
-          transactionId: history.order.transactionId,
-          createdAt: history.createdAt.getTime(),
-          updatedAt: history.updatedAt.getTime(),
-        };
-      });
+      const records: TUserPaymentResponse[] = listPaymentHistory.map(toUserPaymentResponse);
 
       return {
         offset,
@@ -149,22 +149,7 @@ export const resolverPayment: Resolvers = {
         PaymentModel.countDocuments(),
       ]);
 
-      const records: TPaymentResponse[] = listPaymentHistory.map((history) => {
-        return {
-          paymentId: history.paymentId,
-          orderId: history.orderId,
-          paymentMethod: history.order.paymentMethod,
-          totalPrice: history.order.totalPrice,
-          status: history.status,
-          userInfo: history.order.userInfoSnapshot,
-          items: history.order.items,
-          txHash: history.txHash,
-          paypalTransaction: history.paypalTransaction,
-          codTransactionId: history.codTransactionId,
-          createdAt: history.createdAt.getTime(),
-          updatedAt: history.updatedAt.getTime(),
-        };
-      });
+      const records: TPaymentResponse[] = listPaymentHistory.map(toAdminPaymentResponse);
 
       return {
         offset,
@@ -177,58 +162,70 @@ export const resolverPayment: Resolvers = {
   },
 
   Mutation: {
-    approveCODPayment: adminWrapper(JOI_APPROVE_COD_PAYMENT, async (_root, { paymentInput }) => {
-      const { orderId } = paymentInput;
+    approveCODPayment: adminWrapper(
+      JOI_APPROVE_COD_PAYMENT,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.ADMIN_MUTATION, async (_root, { paymentInput }) => {
+        const { orderId } = paymentInput;
 
-      if (!orderId) {
-        throw new Error('Invalid order ID!');
-      }
-
-      return await RedisHelper.lock.withLock(orderId, PAYMENT_LOCK_TTL, async () => {
-        const order = await OrderModel.findOne({ orderId });
-        if (!order) {
-          throw new Error('Not exist order!');
+        if (!orderId) {
+          throw new ValidationError('Invalid order ID');
         }
 
-        // existed payment by transaction hash
-        const payment = await PaymentModel.findOne({
-          order: order._id,
-          status: { $in: [EPaymentStatus.Processing, EPaymentStatus.Success] },
-          $or: [{ codTransactionId: order.transactionId }],
-        });
+        return await RedisHelper.lock.withLock(orderId, PAYMENT_LOCK_TTL, async () => {
+          const order = await OrderModel.findOne({ orderId });
+          if (!order) {
+            throw new NotFoundError('Order not found');
+          }
 
-        if (!payment) {
-          throw new Error('Invalid COD payment');
-        }
-
-        if (payment.status === EPaymentStatus.Processing) {
-          // update order
-          order.orderStatus = EOrderStatus.Paid;
-          await order.save();
-
-          payment.status = EPaymentStatus.Success;
-          await payment.save();
-
-          io.to(payment.userId).emit('paymentStatus', {
-            orderId,
-            paymentId: payment.paymentId,
-            status: payment.status,
+          // existed payment by transaction hash
+          const payment = await PaymentModel.findOne({
+            order: order._id,
+            status: { $in: [EPaymentStatus.Processing, EPaymentStatus.Success] },
+            $or: [{ codTransactionId: order.transactionId }],
           });
-        }
 
-        return {
-          paymentId: payment.paymentId,
-          orderId: order.orderId,
-          paymentMethod: order.paymentMethod,
-          totalPrice: order.totalPrice,
-          status: payment.status,
-          userInfo: order.userInfoSnapshot,
-          items: order.items,
-          transactionId: order.transactionId,
-          createdAt: payment.createdAt.getTime(),
-          updatedAt: payment.updatedAt.getTime(),
-        };
-      });
-    }),
+          if (!payment) {
+            throw new NotFoundError('COD payment record not found');
+          }
+
+          if (payment.status === EPaymentStatus.Processing) {
+            // Wrap both saves in a transaction so Order and Payment are always
+            // updated atomically. The outer Redis lock prevents concurrent calls,
+            // but the transaction adds DB-level atomicity as a safety net.
+            const session = await mongoose.startSession();
+            try {
+              await session.withTransaction(async () => {
+                order.orderStatus = EOrderStatus.Paid;
+                await order.save({ session });
+
+                payment.status = EPaymentStatus.Success;
+                await payment.save({ session });
+              });
+            } finally {
+              session.endSession();
+            }
+
+            emitPaymentStatus(payment.userId, {
+              orderId,
+              paymentId: payment.paymentId,
+              status: payment.status,
+            });
+          }
+
+          return {
+            paymentId: payment.paymentId,
+            orderId: order.orderId,
+            paymentMethod: order.paymentMethod,
+            totalPrice: order.totalPrice,
+            status: payment.status,
+            userInfo: order.userInfoSnapshot,
+            items: order.items,
+            transactionId: order.transactionId,
+            createdAt: payment.createdAt.getTime(),
+            updatedAt: payment.updatedAt.getTime(),
+          };
+        });
+      }),
+    ),
   },
 };

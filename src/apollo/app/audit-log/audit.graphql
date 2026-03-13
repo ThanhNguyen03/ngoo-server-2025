@@ -30,32 +30,39 @@ type TAuditMetadata {
 
 type TAuditLog {
   id: String!
-  userId: String!
+  userId: String
   action: EAuditAction!
   targetType: ETargetType!
-  targetId: String!
+  targetId: String
   diff: TAuditDiff
   metadata: Object
   createdAt: Timestamp!
 }
 
+type TListAuditLogResponse {
+  offset: Int!
+  limit: Int!
+  total: Int!
+  records: [TAuditLog!]!
+}
+
 type Query {
   getAuditLog(id: String!): TAuditLog
   listAuditLog(
-    userId: String!
+    userId: String
     targetType: ETargetType
-    targetId: String!
+    targetId: String
     action: EAuditAction
     offset: Int
     limit: Int
-  ): [TAuditLog!]!
+  ): TListAuditLogResponse!
 }
 
 input CreateAuditLogInput {
-  userId: String!
+  userId: String
   action: EAuditAction!
   targetType: ETargetType!
-  targetId: String!
+  targetId: String
   diff: Object
   metadata: Object
 }

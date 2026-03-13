@@ -1,8 +1,12 @@
-import { processWebhookEvent, type TPayPalWebhookEvent } from '@helper';
+import { type TPayPalWebhookEvent } from '@helper';
+import { createLogger } from '@lib';
 import express, { type Request, type Response } from 'express';
 import { LIST_RETRYABLE_ERROR } from 'src/constant';
+import { processWebhookEvent } from './paypal/handler';
 import { paypalQueueService } from './paypal/queue';
 import { paypalWebhook } from './paypal/webhook';
+
+const logger = createLogger('Webhook');
 
 const verifyPaypalWebhook = async (req: Request, res: Response, next: Function) => {
   try {
@@ -23,7 +27,7 @@ const verifyPaypalWebhook = async (req: Request, res: Response, next: Function) 
 
     next();
   } catch (error) {
-    console.error('[Webhook] Verification error:', error);
+    logger.error({ err: error }, 'Webhook verification error');
     return res.status(400).send('Invalid webhook payload');
   }
 };
@@ -39,7 +43,7 @@ router.post('/', verifyPaypalWebhook, async (req: Request, res: Response) => {
     const systemOrderId = resource.custom_id || resource.purchase_units?.[0]?.custom_id;
 
     if (!systemOrderId) {
-      console.warn('[Webhook] No system orderId found in event:', event.event_type);
+      logger.warn({ eventType: event.event_type }, 'No system orderId found in webhook event');
       // Still return 200 to prevent PayPal retries
       return res.status(200).send('OK');
     }
@@ -68,9 +72,9 @@ router.post('/', verifyPaypalWebhook, async (req: Request, res: Response) => {
       'high', // Priority
     );
 
-    console.log(`[Webhook] Queued ${event.event_type} for order ${systemOrderId}`);
+    logger.info({ eventType: event.event_type, systemOrderId }, 'Webhook event queued');
   } catch (error) {
-    console.error('[Webhook] Route handler error:', error);
+    logger.error({ err: error }, 'Webhook route handler error');
     // Always return 200 to PayPal to prevent retries
     res.status(200).send('OK');
   }
@@ -92,7 +96,7 @@ const shouldRetry = (error: any): boolean => {
 
 export const initPaypalWebhookWorker = () => {
   if (workersInitialized) {
-    console.log('[Webhook] Workers already initialized');
+    logger.warn('PayPal webhook workers already initialized, skipping');
     return;
   }
 
@@ -103,23 +107,23 @@ export const initPaypalWebhookWorker = () => {
       try {
         await processWebhookEvent(event, orderId);
       } catch (error) {
-        console.error(`[Webhook Worker] Failed to process job for order ${orderId}:`, error);
+        logger.error({ err: error, orderId }, 'Webhook worker failed to process job');
 
         // Implement retry logic based on error type
         if (shouldRetry(error)) {
-          console.log(`[Webhook Worker] Will retry job for order ${orderId}`);
+          logger.info({ orderId }, 'Retryable error — requeueing job');
           throw error; // Let queue handle retry
         }
 
-        // For non-retryable errors, log and continue
-        console.error(`[Webhook Worker] Non-retryable error for order ${orderId}:`, error);
+        // For non-retryable errors, log and do not rethrow (prevents infinite retry)
+        logger.error({ err: error, orderId }, 'Non-retryable webhook error, discarding job');
       }
     },
     10, // Number of concurrent workers
   );
 
   workersInitialized = true;
-  console.log('[Webhook] PayPal queue workers started (10 concurrent workers)');
+  logger.info({ concurrency: 10 }, 'PayPal webhook workers started');
 };
 
 // ==================== HEALTH CHECK ====================

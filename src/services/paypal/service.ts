@@ -1,5 +1,6 @@
 import type { OrderItemInput, TUserInfoSnapshot } from '@generated/graphql';
 import { config } from '@helper';
+import { createLogger } from '@lib';
 import type { TItem } from '@model';
 import {
   CheckoutPaymentIntent,
@@ -13,6 +14,8 @@ import {
   type Item,
   type OrderRequest,
 } from '@paypal/paypal-server-sdk';
+
+const logger = createLogger('PayPalService');
 
 type TPaypalCapture = {
   paypalCaptureId: string;
@@ -41,8 +44,8 @@ export class PaypalService {
         oAuthClientId: config.PAYPAL_CLIENT_ID!,
         oAuthClientSecret: config.PAYPAL_CLIENT_SECRET!,
       },
-      timeout: 30000,
-      environment: Environment.Sandbox,
+      timeout: config.PAYPAL_CLIENT_TIMEOUT_MS,
+      environment: config.PAYPAL_MODE === 'live' ? Environment.Production : Environment.Sandbox,
       logging: {
         logLevel: config.NODE_ENV === 'production' ? LogLevel.Error : LogLevel.Info,
         logRequest: { logBody: config.NODE_ENV !== 'production' },
@@ -146,7 +149,7 @@ export class PaypalService {
         approvalUrl: approvalLink?.href,
       };
     } catch (error) {
-      console.error('[PayPalService] Create order failed:', error);
+      logger.error({ err: error }, 'PayPal order creation failed');
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       throw new Error(`PayPal order creation failed: ${errorMessage}`);
     }
@@ -174,7 +177,7 @@ export class PaypalService {
 
       return data;
     } catch (error) {
-      console.error(`[PaypalService] Capture failed for order ${paypalOrderId}:`, error);
+      logger.error({ err: error, paypalOrderId }, 'PayPal order capture failed');
       const errorMessage = error instanceof Error ? error.message : 'Unknown capture error';
       throw new Error(`PayPal capture failed: ${errorMessage}`);
     }

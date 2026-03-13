@@ -11,6 +11,8 @@ export enum EUserAuthenticationStatus {
 }
 
 export type TAppContext = {
+  /** Client IP address, used for IP-based rate limiting on public endpoints. */
+  ip?: string;
   /** Default user is a guest who can access public endpoints, then depends on
    * the requirement, middleware and resolver, it can be changed to
    * unauthenticated (e.g. due to invalid token) or authenticated user. */
@@ -55,7 +57,7 @@ export type TOptionalAuthContext = TAppContext & {
 };
 
 export type THandler<TArgs, Context, TResult> = (
-  _root: any,
+  _root: unknown,
   _args: TArgs,
   _context: Context,
   _info: GraphQLResolveInfo,
@@ -150,7 +152,7 @@ export function validationWrapper<TArgs, TValidatedArgs, TResult>(
   schemaOrResolver: Schema<TValidatedArgs> | THandler<TArgs, TAppContext, TResult>,
   resolverOrUndefined?: THandler<TValidatedArgs, TAppContext, TResult>,
 ): THandler<TArgs, TAppContext, TResult> {
-  return async (root: any, args, context, info) => {
+  return async (root: unknown, args, context, info) => {
     // No schema case
     if (!resolverOrUndefined) {
       return (schemaOrResolver as THandler<TArgs, TAppContext, TResult>)(root, args, context, info);
@@ -183,7 +185,7 @@ export function authorizedWrapper<TArgs, TValidatedArgs, TResult>(
   schemaOrResolver: Joi.ObjectSchema<TValidatedArgs> | THandler<TArgs, TAuthorizedContext, TResult>,
   resolverOrUndefined?: THandler<TValidatedArgs, TAuthorizedContext, TResult>,
 ): THandler<TArgs, TAppContext, TResult> {
-  return async (root: any, args, context, info) => {
+  return async (root: unknown, args, context, info) => {
     const ctx = await authenticateUser(context);
     let authContext: TAuthorizedContext;
 
@@ -232,13 +234,13 @@ export function optionalAuthWrapper<TArgs, TValidatedArgs, TResult>(
   schemaOrResolver: Joi.ObjectSchema<TValidatedArgs> | THandler<TArgs, TOptionalAuthContext, TResult>,
   resolverOrUndefined?: THandler<TValidatedArgs, TOptionalAuthContext, TResult>,
 ): THandler<TArgs, TAppContext, TResult> {
-  return async (root: any, args, context, info) => {
+  return async (root: unknown, args, context, info) => {
     let optionalAuthContext = context;
 
     try {
       optionalAuthContext = await authenticateUser(context);
-    } catch (error) {
-      // Ignore unauthenticated error
+    } catch {
+      // Ignore unauthenticated error — context stays as guest
     }
 
     // No schema case
@@ -275,7 +277,7 @@ export function publicWrapper<TArgs, TValidatedArgs, TResult>(
   schemaOrResolver: Joi.ObjectSchema<TValidatedArgs> | THandler<TArgs, TGuestContext, TResult>,
   resolverOrUndefined?: THandler<TValidatedArgs, TGuestContext, TResult>,
 ): THandler<TArgs, TAppContext, TResult> {
-  return async (root: any, args, context, info) => {
+  return async (root: unknown, args, context, info) => {
     // No schema case
     if (!resolverOrUndefined) {
       return (schemaOrResolver as THandler<TArgs, TGuestContext, TResult>)(root, args, context as TGuestContext, info);
@@ -306,7 +308,7 @@ export function adminWrapper<TArgs, TValidatedArgs, TResult>(
   schemaOrResolver: Joi.ObjectSchema<TValidatedArgs> | THandler<TArgs, TAuthorizedContext, TResult>,
   resolverOrUndefined?: THandler<TValidatedArgs, TAuthorizedContext, TResult>,
 ): THandler<TArgs, TAppContext, TResult> {
-  return async (root: any, args, context, info) => {
+  return async (root: unknown, args, context, info) => {
     const ctx = await authenticateUser(context);
     let authContext: TAuthorizedContext;
 

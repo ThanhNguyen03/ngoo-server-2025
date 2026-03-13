@@ -28,6 +28,7 @@ type TCreateOrderResponse {
   orderId: String!
   transactionId: String
   paypalApproveUrl: String
+  cryptoPaymentProof: TCryptoPaymentProof
   createdAt: Timestamp!
   updatedAt: Timestamp!
 }
@@ -37,7 +38,7 @@ type TOrderResponse {
   transactionId: String
   userInfoSnapshot: TUserInfoSnapshot!
   items: [TOrderItem!]!
-  totalPrice: Int!
+  totalPrice: Float!
   paymentMethod: EPaymentMethod!
   orderStatus: EOrderStatus!
   createdAt: Timestamp!
@@ -50,6 +51,23 @@ type TListOrderResponse {
   total: Int!
   query: [TQueryBy]!
   records: [TOrderResponse]!
+}
+
+"""
+Server-signed payment proof for on-chain crypto payment.
+Pass these fields to NgooPayment.payOrder() on the smart contract.
+"""
+type TCryptoPaymentProof {
+  orderId: String!
+  orderIdHash: String!
+  amount: String!
+  amountDisplay: String!
+  nonce: String!
+  deadline: Int!
+  signature: String!
+  contractAddress: String!
+  chainId: Int!
+  payerAddress: String!
 }
 
 """

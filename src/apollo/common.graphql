@@ -27,3 +27,8 @@ type TPaymentSocketResponse {
   paymentId: String!
   status: EPaymentStatus!
 }
+
+type TCursorPageInfo {
+  hasMore: Boolean!
+  nextCursor: String
+}

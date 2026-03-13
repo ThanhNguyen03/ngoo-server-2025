@@ -13,24 +13,26 @@ import {
   ApolloServerPluginLandingPageProductionDefault,
 } from '@apollo/server/plugin/landingPage/default';
 import { config, EUserAuthenticationStatus, JwtAuthAccessTokenInstance, TAppContext } from '@helper';
+import { createLogger } from '@lib';
 import { initSocket, RedisInstance } from '@service';
 import { RedisStore } from 'connect-redis';
 import { randomUUID } from 'crypto';
 import session from 'express-session';
 import router from './services/webhook';
 
+const logger = createLogger('App');
+
 const HSTS_HELMET_MAX_AGE_IN_SECONDS = 30 * 24 * 3600; // 30 days
-const COOKIE_SESSION_MAX_AGE_IN_SECONDS = 24 * 3600; // 1 day
 
 export const NGOO_API = {
   clusterName: 'ngoo-server-api',
-  payload: async () => {
+  payload: async (): Promise<http.Server> => {
     const app = express();
 
     // --- PayPal Webhook ---
-    app.use('/webhook/paypal', express.raw({ type: 'application/json' }), router);
+    app.use('/webhook/paypal', express.raw({ type: 'application/json', limit: config.REQUEST_BODY_LIMIT }), router);
     // --- Middleware ---
-    app.use(express.json());
+    app.use(express.json({ limit: config.REQUEST_BODY_LIMIT }));
     // protect
     app.use(
       helmet({
@@ -47,8 +49,9 @@ export const NGOO_API = {
           // removing the "includeSubDomains" option
           includeSubDomains: false,
         },
-        // not loading the noSniff() middleware
-        noSniff: false,
+        // Enable X-Content-Type-Options: nosniff to prevent MIME-type sniffing.
+        // Browsers that sniff MIME types can execute uploaded files as scripts.
+        noSniff: true,
       }),
     );
 
@@ -75,7 +78,7 @@ export const NGOO_API = {
       typeDefs: TypedefApp,
       resolvers: ResolverApp,
       formatError: (formattedError: GraphQLFormattedError, error: unknown): GraphQLFormattedError => {
-        console.error('Root cause:', error, 'formatted:', formattedError);
+        logger.error({ err: error, formattedError }, 'GraphQL error');
         return formattedError;
       },
       introspection: config.NODE_ENV === 'local',
@@ -98,8 +101,13 @@ export const NGOO_API = {
         secret: config.EXPRESS_SESSION_SECRET,
         cookie: {
           httpOnly: true,
+          // Secure flag: only send cookie over HTTPS in production.
+          // sameSite 'lax': allows cookie on top-level navigations (OAuth redirect)
+          // but blocks it on cross-origin sub-resource requests (CSRF mitigation).
+          secure: config.NODE_ENV === 'prod',
+          sameSite: 'lax',
           path: '/',
-          maxAge: COOKIE_SESSION_MAX_AGE_IN_SECONDS * 1000, // milliseconds
+          maxAge: config.SESSION_COOKIE_MAX_AGE_SEC * 1000, // milliseconds
         },
       }),
     );
@@ -110,9 +118,11 @@ export const NGOO_API = {
       '/graphql',
       expressMiddleware(server, {
         context: async ({ req }): Promise<TAppContext> => {
+          const ip =
+            (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? 'unknown';
           const authHeader = req.headers.authorization;
           if (!authHeader) {
-            return { user: { kind: EUserAuthenticationStatus.Guest } };
+            return { ip, user: { kind: EUserAuthenticationStatus.Guest } };
           }
 
           const token = authHeader.split(' ')[1];
@@ -125,6 +135,7 @@ export const NGOO_API = {
             }
 
             return {
+              ip,
               user: {
                 kind: EUserAuthenticationStatus.Authenticated,
                 token,
@@ -134,8 +145,8 @@ export const NGOO_API = {
               },
             };
           } catch (err) {
-            console.error('JWT verify failed:', err);
-            return { user: { kind: EUserAuthenticationStatus.Guest } };
+            logger.warn({ err }, 'JWT verification failed');
+            return { ip, user: { kind: EUserAuthenticationStatus.Guest } };
           }
         },
       }) as Application,
@@ -148,7 +159,8 @@ export const NGOO_API = {
       httpServer.listen({ port: config.PORT }, config.HOST, resolve);
     });
 
-    console.debug(`Server ready at ${config.APP_URL}:${config.PORT}/graphql`);
+    logger.info(`Server ready at ${config.APP_URL}:${config.PORT}/graphql`);
+    return httpServer;
   },
 };
 

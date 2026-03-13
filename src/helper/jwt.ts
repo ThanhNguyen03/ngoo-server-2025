@@ -3,8 +3,8 @@ import { jose, JWTAuthentication } from '@lib';
 import { TUser, TUserInfo } from '@model';
 import { config } from './config';
 
-export const ACCESS_TOKEN_EXP = '60m';
-export const REFRESH_TOKEN_EXP = '30d';
+export const ACCESS_TOKEN_EXP = config.JWT_ACCESS_TOKEN_EXP;
+export const REFRESH_TOKEN_EXP = config.JWT_REFRESH_TOKEN_EXP;
 export const JWT_EXPIRATION_TIME_SEC = 60 * 60 * 24 * 30; // 30 days
 
 export type TTokenPayload = jose.JWTPayload & Pick<TUserInfo & TUser, 'uuid' | 'name'>;

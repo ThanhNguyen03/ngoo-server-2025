@@ -1,4 +1,3 @@
-/* eslint-disable max-len */
 import {
   ERole,
   TCategory,
@@ -11,6 +10,8 @@ import { JWT_EXPIRATION_TIME_SEC, JwtAuthAccessTokenInstance, TTokenPayload, typ
 import { RedisHelperDerive, RedisInstance } from '@service';
 import assert from 'assert';
 import { randomUUID } from 'crypto';
+import type { ICryptoProofRedisData } from '../services/crypto/types';
+import { config } from './config';
 import type { RateLimitConfig, TokenBucket } from './rate-limit';
 
 // domain helpers
@@ -21,10 +22,11 @@ export const RedisHelperItem = RedisHelperDerive<
 >(RedisInstance);
 export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'orderLimit'>(RedisInstance);
 export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
+export const RedisHelperCrypto = RedisHelperDerive<
+  'cryptoProof' | 'cryptoHash' | 'bnbPrice' | 'cryptoBlock' | 'cryptoStatus'
+>(RedisInstance);
 
 export const RedisHelperRateLimit = RedisHelperDerive<'tokenBucket' | 'slidingWindow'>(RedisInstance);
-
-const ONE_HOUR_EXPIRATION_TIME_SEC = 60 * 60; // 1h
 export const BEARER_LENGTH = 7; // 7 is length of `Bearer + space`
 export const RedisHelper = {
   account: {
@@ -103,8 +105,27 @@ export const RedisHelper = {
       const safeData = Object.fromEntries(Object.entries(user).map(([k, v]) => [k, v ?? '']));
 
       const result = await RedisHelperUser.userInfo(user.uuid).hashSet(safeData);
-      await RedisHelperUser.userInfo(user.uuid).expire(ONE_HOUR_EXPIRATION_TIME_SEC);
+      await RedisHelperUser.userInfo(user.uuid).expire(config.CACHE_DEFAULT_TTL_SEC);
       return result;
+    },
+
+    userInfoDel: async (userId: string) => {
+      await RedisHelperUser.userInfo(userId).delete();
+    },
+
+    /** Get the wallet nonce message for a user (used during wallet connection flow). */
+    walletMessageGet: async (userId: string): Promise<string | null> => {
+      return RedisHelperUser.walletMessage(userId).get();
+    },
+
+    /** Store a wallet nonce message with 15-minute TTL. */
+    walletMessageSet: async (userId: string, message: string): Promise<void> => {
+      await RedisHelperUser.walletMessage(userId).set(message, 900);
+    },
+
+    /** Delete the wallet nonce message (one-time use after verification). */
+    walletMessageDel: async (userId: string): Promise<void> => {
+      await RedisHelperUser.walletMessage(userId).delete();
     },
   },
 
@@ -130,7 +151,7 @@ export const RedisHelper = {
       for (const category of listCategory) {
         pipe.hSet(fullKey, category.name, JSON.stringify(category));
       }
-      pipe.expire(fullKey, ONE_HOUR_EXPIRATION_TIME_SEC);
+      pipe.expire(fullKey, config.CACHE_DEFAULT_TTL_SEC);
       await pipe.exec();
     },
 
@@ -150,7 +171,7 @@ export const RedisHelper = {
      */
     categorySet: async (category: TCategory) => {
       await RedisHelperCategory.category('list').hashSet(category.name, category);
-      await RedisHelperCategory.category('list').expire(ONE_HOUR_EXPIRATION_TIME_SEC);
+      await RedisHelperCategory.category('list').expire(config.CACHE_DEFAULT_TTL_SEC);
     },
 
     /**
@@ -160,6 +181,13 @@ export const RedisHelper = {
      */
     categoryDel: async (categoryName: string) => {
       await RedisHelperCategory.category('list').hashDel(categoryName);
+    },
+
+    /**
+     * Deletes the entire category list cache from Redis.
+     */
+    categoryAllListDel: async () => {
+      await RedisHelperCategory.category('list').delete();
     },
   },
 
@@ -184,7 +212,7 @@ export const RedisHelper = {
       const safeData = Object.fromEntries(Object.entries(item).map(([k, v]) => [k, v ?? '']));
 
       const result = await RedisHelperItem.itemById(item.itemId).hashSet(safeData);
-      await RedisHelperItem.itemById(item.itemId).expire(ONE_HOUR_EXPIRATION_TIME_SEC);
+      await RedisHelperItem.itemById(item.itemId).expire(config.CACHE_DEFAULT_TTL_SEC);
       return result;
     },
 
@@ -220,7 +248,7 @@ export const RedisHelper = {
       },
     ) => {
       const result = await RedisHelperOrder.createOrder(`checkout-${orderId}`).hashSet(value);
-      await RedisHelperOrder.createOrder(`checkout-${orderId}`).expire(3 * 60); // 3 minutes
+      await RedisHelperOrder.createOrder(`checkout-${orderId}`).expire(config.CACHE_ORDER_CHECKOUT_TTL_SEC);
       return result;
     },
 
@@ -230,7 +258,7 @@ export const RedisHelper = {
 
     limitProcessingSet: async (userId: string, value: { orderId: string; paymentMethod: string; cacheTime: Date }) => {
       await RedisHelperOrder.orderLimit(userId).set(JSON.stringify(value));
-      await RedisHelperOrder.orderLimit(userId).expire(2 * 60); // 2 mins
+      await RedisHelperOrder.orderLimit(userId).expire(config.CACHE_ORDER_LIMIT_PROCESSING_TTL_SEC);
     },
 
     limitProcessingGet: async (
@@ -247,7 +275,7 @@ export const RedisHelper = {
     limitAttemptIncrement: async (userId: string) => {
       const attempts = await RedisHelperOrder.orderLimit(userId).incre();
       if (attempts === 1) {
-        await RedisHelperOrder.orderLimit(userId).expire(10 * 60); // Reset after 10 mins
+        await RedisHelperOrder.orderLimit(userId).expire(config.CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC);
       }
       return attempts;
     },
@@ -264,10 +292,7 @@ export const RedisHelper = {
     },
 
     webhookProcessKeySet: async (key: string, value: string) => {
-      return await RedisHelperPaypal.paypalWebhook(key).set(
-        value,
-        7 * 24 * 3600, // 7 days
-      );
+      return await RedisHelperPaypal.paypalWebhook(key).set(value, config.CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC);
     },
 
     paypalStatusGet: async (orderId: string): Promise<TWebhookData | null> => {
@@ -276,8 +301,108 @@ export const RedisHelper = {
 
     paypalStatusSet: async (orderId: string, value: TWebhookData) => {
       const result = await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashSet(value);
-      await RedisHelperPaypal.paypalOrder(`status:${orderId}`).expire(5 * 60); // 5 minutes
+      await RedisHelperPaypal.paypalOrder(`status:${orderId}`).expire(config.CACHE_PAYPAL_STATUS_TTL_SEC);
       return result;
+    },
+  },
+
+  crypto: {
+    /**
+     * Get the stored crypto payment proof for an order.
+     */
+    proofGet: async (orderId: string): Promise<ICryptoProofRedisData | null> => {
+      return RedisHelperCrypto.cryptoProof(orderId).hashGetAll<ICryptoProofRedisData>();
+    },
+
+    /**
+     * Store a crypto payment proof with TTL.
+     */
+    proofSet: async (orderId: string, data: ICryptoProofRedisData): Promise<void> => {
+      await RedisHelperCrypto.cryptoProof(orderId).hashSet(data);
+      await RedisHelperCrypto.cryptoProof(orderId).expire(config.CACHE_CRYPTO_PROOF_TTL_SEC);
+    },
+
+    /**
+     * Delete a crypto payment proof (one-time use after event processing).
+     */
+    proofDel: async (orderId: string): Promise<void> => {
+      await RedisHelperCrypto.cryptoProof(orderId).delete();
+    },
+
+    /**
+     * Get the original UUID orderId from a keccak256 hash (reverse mapping).
+     */
+    hashToOrderIdGet: async (orderIdHash: string): Promise<string | null> => {
+      return RedisHelperCrypto.cryptoHash(orderIdHash).get();
+    },
+
+    /**
+     * Store the orderIdHash → orderId reverse mapping with TTL.
+     */
+    hashToOrderIdSet: async (orderIdHash: string, orderId: string): Promise<void> => {
+      await RedisHelperCrypto.cryptoHash(orderIdHash).set(orderId, config.CACHE_CRYPTO_PROOF_TTL_SEC);
+    },
+
+    /**
+     * Get the cached BNB/USD price (as decimal string, e.g. "620.5").
+     */
+    bnbPriceGet: async (): Promise<string | null> => {
+      return RedisHelperCrypto.bnbPrice('current').get();
+    },
+
+    /**
+     * Cache the BNB/USD price with TTL.
+     */
+    bnbPriceSet: async (price: string): Promise<void> => {
+      await RedisHelperCrypto.bnbPrice('current').set(price, config.CRYPTO_PRICE_CACHE_TTL_SEC);
+    },
+
+    /**
+     * Get the last-known BNB/USD price (longer 5-min TTL, used as fallback when
+     * CoinGecko is unreachable and the primary cache has expired).
+     */
+    bnbPriceLastKnownGet: async (): Promise<string | null> => {
+      return RedisHelperCrypto.bnbPrice('last-known').get();
+    },
+
+    /**
+     * Store the last-known BNB/USD price with a 5-minute TTL.
+     * Updated every time a fresh price is successfully fetched from CoinGecko.
+     */
+    bnbPriceLastKnownSet: async (price: string): Promise<void> => {
+      // 300s = 5 min. Intentionally longer than the primary cache TTL (60s)
+      // so it can serve as a fallback during brief CoinGecko outages.
+      await RedisHelperCrypto.bnbPrice('last-known').set(price, 300);
+    },
+
+    /**
+     * Get the last processed block number for the event monitor.
+     */
+    lastProcessedBlockGet: async (): Promise<number | null> => {
+      const val = await RedisHelperCrypto.cryptoBlock('last').get();
+      return val !== null ? parseInt(val, 10) : null;
+    },
+
+    /**
+     * Store the last processed block number.
+     */
+    lastProcessedBlockSet: async (blockNumber: number): Promise<void> => {
+      await RedisHelperCrypto.cryptoBlock('last').set(String(blockNumber));
+    },
+
+    /**
+     * Get the cached crypto payment status for reconnect replay.
+     */
+    cryptoStatusGet: async (orderId: string): Promise<TWebhookData | null> => {
+      return RedisHelperCrypto.cryptoStatus(orderId).hashGetAll<TWebhookData>();
+    },
+
+    /**
+     * Cache the crypto payment status for reconnect replay.
+     */
+    cryptoStatusSet: async (orderId: string, data: TWebhookData): Promise<void> => {
+      await RedisHelperCrypto.cryptoStatus(orderId).hashSet(data);
+      await RedisHelperCrypto.cryptoStatus(orderId).expire(config.CACHE_PAYPAL_STATUS_TTL_SEC);
     },
   },
 
@@ -322,12 +447,12 @@ export const RedisHelper = {
     },
 
     async tokenBucketSet(key: string, bucket: TokenBucket): Promise<void> {
-      await RedisHelperRateLimit.tokenBucket(key).set(JSON.stringify(bucket), ONE_HOUR_EXPIRATION_TIME_SEC);
+      await RedisHelperRateLimit.tokenBucket(key).set(JSON.stringify(bucket), config.CACHE_DEFAULT_TTL_SEC);
     },
 
     async tokenBucketConsume(
       key: string,
-      config: RateLimitConfig,
+      rateLimitConfig: RateLimitConfig,
     ): Promise<{ allowed: boolean; remaining: number; resetIn: number }> {
       const now = Math.floor(Date.now() / 1000);
       const bucketKey = `token-bucket:${key}`;
@@ -391,7 +516,12 @@ export const RedisHelper = {
       const result = await RedisInstance.eval(
         script,
         [bucketKey], // keys
-        [now.toString(), config.bucketSize.toString(), config.refillRate.toString(), config.refillInterval.toString()], // args
+        [
+          now.toString(),
+          rateLimitConfig.bucketSize.toString(),
+          rateLimitConfig.refillRate.toString(),
+          rateLimitConfig.refillInterval.toString(),
+        ], // args
       );
 
       // Handle result

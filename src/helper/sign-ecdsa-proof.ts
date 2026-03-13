@@ -1,6 +1,14 @@
 import { ByteBuffer, FixedFloat, THexString } from '@lib';
 import { Contract, Signer } from 'ethers';
 
+/**
+ * @deprecated This helper is used only for the legacy off-chain claim flow
+ * (a separate contract, not NgooPayment). It is NOT part of the crypto payment
+ * flow introduced in Sprint 4.2 — that flow uses `CryptoPaymentService.generatePaymentProof()`
+ * with `AbiCoder.defaultAbiCoder().encode(...)` for on-chain signature verification.
+ *
+ * Do not use `SignEcdsaProof` for new payment features.
+ */
 export class SignEcdsaProof {
   static async buildSignedCalldata(params: {
     remoteWallet: Signer;
