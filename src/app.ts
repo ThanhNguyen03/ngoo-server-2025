@@ -82,6 +82,10 @@ export const NGOO_API = {
         return formattedError;
       },
       introspection: config.NODE_ENV === 'local',
+      // SEC-015: Disable batched HTTP requests to prevent DoS via bulk query attacks.
+      // A single HTTP request with hundreds of batched operations could bypass per-request
+      // rate limiting and exhaust server resources.
+      allowBatchedHttpRequests: false,
       plugins: [
         ApolloServerPluginDrainHttpServer({ httpServer }),
         config.NODE_ENV !== 'local'
@@ -101,10 +105,12 @@ export const NGOO_API = {
         secret: config.EXPRESS_SESSION_SECRET,
         cookie: {
           httpOnly: true,
-          // Secure flag: only send cookie over HTTPS in production.
+          // SEC-017: Secure flag enforced in all non-local environments so that
+          // test/staging deployments also require HTTPS. 'local' is excluded because
+          // localhost does not use HTTPS during development.
           // sameSite 'lax': allows cookie on top-level navigations (OAuth redirect)
           // but blocks it on cross-origin sub-resource requests (CSRF mitigation).
-          secure: config.NODE_ENV === 'prod',
+          secure: config.NODE_ENV !== 'local',
           sameSite: 'lax',
           path: '/',
           maxAge: config.SESSION_COOKIE_MAX_AGE_SEC * 1000, // milliseconds

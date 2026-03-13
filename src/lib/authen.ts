@@ -13,11 +13,21 @@ export class JWTAuthentication<T extends jose.JWTPayload> {
   private static instances = new Map<string, JWTAuthentication<any>>();
   private algorithm: TJWTAlgorithm;
   private expirationTime: number | string;
+  private issuer?: string;
+  private audience?: string | string[];
 
-  private constructor(secret: string, algorithm: TJWTAlgorithm, expirationTime?: string | number) {
+  private constructor(
+    secret: string,
+    algorithm: TJWTAlgorithm,
+    expirationTime?: string | number,
+    issuer?: string,
+    audience?: string | string[],
+  ) {
     this.algorithm = algorithm;
     this.expirationTime = expirationTime ?? '1h';
-    // With HS-based algorithm → serect
+    this.issuer = issuer;
+    this.audience = audience;
+    // With HS-based algorithm → secret
     if (algorithm.startsWith('HS')) {
       this.#secret = new TextEncoder().encode(secret);
     } else {
@@ -29,19 +39,17 @@ export class JWTAuthentication<T extends jose.JWTPayload> {
   /** Factory with singleton pattern */
   static getInstance<T extends jose.JWTPayload>(
     secret: string,
-    algorithm: TJWTAlgorithm,
+    algorithm?: TJWTAlgorithm,
     expirationTime?: string | number,
-  ): JWTAuthentication<T>;
-  static getInstance<T extends jose.JWTPayload>(secret: string): JWTAuthentication<T>;
-  static getInstance<T extends jose.JWTPayload>(secret: string, algorithm: TJWTAlgorithm): JWTAuthentication<T>;
-  static getInstance<T extends jose.JWTPayload>(
-    secret: string,
-    algorithm: TJWTAlgorithm = 'HS256',
-    expirationTime?: string,
+    issuer?: string,
+    audience?: string | string[],
   ): JWTAuthentication<T> {
-    const key = `${algorithm}:${secret}`;
+    const algorithm_ = algorithm ?? 'HS256';
+    // Include issuer and audience in cache key so instances with different claims are distinct
+    const audienceKey = Array.isArray(audience) ? audience.join(',') : (audience ?? '');
+    const key = `${algorithm_}:${secret}:${issuer ?? ''}:${audienceKey}`;
     if (!this.instances.has(key)) {
-      this.instances.set(key, new JWTAuthentication(secret, algorithm, expirationTime));
+      this.instances.set(key, new JWTAuthentication(secret, algorithm_, expirationTime, issuer, audience));
     }
     return this.instances.get(key) as JWTAuthentication<T>;
   }
@@ -54,20 +62,33 @@ export class JWTAuthentication<T extends jose.JWTPayload> {
   ): Promise<string> {
     const { expirationTime = this.expirationTime, ...jwtPayload } = options || {};
 
-    return await new jose.SignJWT({ ...payload, ...jwtPayload })
+    let builder = new jose.SignJWT({ ...payload, ...jwtPayload })
       .setProtectedHeader({ alg: this.algorithm, ...header })
       .setIssuedAt()
-      .setExpirationTime(expirationTime)
-      .sign(this.#secret);
+      .setExpirationTime(expirationTime);
+
+    // SEC-011: Bind tokens to issuer and audience to prevent cross-service/cross-type confusion
+    if (this.issuer) builder = builder.setIssuer(this.issuer);
+    if (this.audience) builder = builder.setAudience(this.audience);
+
+    return await builder.sign(this.#secret);
   }
 
-  /** Verify fromken */
+  /** Verify token */
   async verify(token: string): Promise<
     {
       payload: T;
     } & Pick<jose.JWTVerifyResult, 'protectedHeader'>
   > {
-    const { payload, protectedHeader } = await jose.jwtVerify(token, this.#secret);
+    // SEC-010: Restrict accepted algorithm to the one configured on this instance.
+    // Without this, jose accepts any HMAC variant — a refresh token (HS384) signed
+    // with the same secret could pass the access token verifier (HS256).
+    // SEC-011: Validate issuer and audience claims if configured.
+    const { payload, protectedHeader } = await jose.jwtVerify(token, this.#secret, {
+      algorithms: [this.algorithm],
+      ...(this.issuer && { issuer: this.issuer }),
+      ...(this.audience && { audience: this.audience }),
+    });
     return { payload: payload as T, protectedHeader };
   }
 

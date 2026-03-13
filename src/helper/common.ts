@@ -2,6 +2,7 @@ import { ERole } from '@generated/graphql';
 import { RedisHelper } from '@helper';
 import { GraphQLResolveInfo } from 'graphql';
 import Joi, { Schema } from 'joi';
+import { AuthorizationError } from '../lib/errors.js';
 import { JwtAuthAccessTokenInstance, TAccessTokenPayload } from './jwt.js';
 
 export enum EUserAuthenticationStatus {
@@ -328,7 +329,7 @@ export function adminWrapper<TArgs, TValidatedArgs, TResult>(
 
     // Check role from JWT
     if (authContext.user.role !== ERole.Admin) {
-      throw new Error('Forbidden: Admin privileges required');
+      throw new AuthorizationError('Admin privileges required');
     }
 
     // No schema case

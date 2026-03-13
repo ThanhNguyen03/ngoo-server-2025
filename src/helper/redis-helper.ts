@@ -15,7 +15,9 @@ import { config } from './config';
 import type { RateLimitConfig, TokenBucket } from './rate-limit';
 
 // domain helpers
-export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userInfo' | 'walletMessage'>(RedisInstance);
+export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userRefreshToken' | 'userInfo' | 'walletMessage'>(
+  RedisInstance,
+);
 export const RedisHelperCategory = RedisHelperDerive<'category'>(RedisInstance);
 export const RedisHelperItem = RedisHelperDerive<
   'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById'
@@ -111,6 +113,43 @@ export const RedisHelper = {
 
     userInfoDel: async (userId: string) => {
       await RedisHelperUser.userInfo(userId).delete();
+    },
+
+    // --- Refresh token rotation helpers (SEC-014) ---
+    // Tracks valid refresh token IDs (rid) in a Redis set, mirroring the access
+    // token (sid) tracking. Consumed on use and cleared on logoutEverywhere.
+
+    /**
+     * Register a new refresh token ID so it can be validated on next use.
+     * TTL is 30 days to match the refresh token JWT expiry.
+     */
+    userRefreshTokenAdd: async (userId: string, rid: string): Promise<void> => {
+      await RedisHelperUser.userRefreshToken(userId).setAdd(rid);
+      await RedisHelperUser.userRefreshToken(userId).expire(JWT_EXPIRATION_TIME_SEC);
+    },
+
+    /**
+     * Check whether a refresh token ID has already been consumed or never issued.
+     * Returns true when the rid is NOT in the set (i.e. revoked / unknown).
+     */
+    isRefreshTokenRevoked: async (userId: string, rid: string): Promise<boolean> => {
+      const exists = await RedisHelperUser.userRefreshToken(userId).setHas(rid);
+      return !exists;
+    },
+
+    /**
+     * Consume (invalidate) a specific refresh token ID after it has been rotated.
+     * The old rid must be removed before the new one is issued.
+     */
+    userRefreshTokenRemove: async (userId: string, rid: string): Promise<void> => {
+      await RedisHelperUser.userRefreshToken(userId).setRemove(rid);
+    },
+
+    /**
+     * Revoke all refresh tokens for a user — called on logoutEverywhere.
+     */
+    userRefreshTokenRemoveAll: async (userId: string): Promise<void> => {
+      await RedisHelperUser.userRefreshToken(userId).delete();
     },
 
     /** Get the wallet nonce message for a user (used during wallet connection flow). */
