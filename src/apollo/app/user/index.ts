@@ -87,13 +87,13 @@ const JOI_USER_UPDATE_INFO = Joi.object<MutationUserUpdateInfoArgs>({
     }),
     phoneNumber: Joi.string()
       .trim()
-      .pattern(/^[0-9]/)
+      .pattern(/^[0-9]{8,15}$/)
       .min(8)
       .max(15)
       .messages({
         'string.min': 'Phone number must be at least 8 characters',
         'string.max': 'Phone number must not exceed 15 characters',
-        'string.pattern.base': 'Phone number must contain only number',
+        'string.pattern.base': 'Phone number must contain only digits (8–15)',
       }),
     address: Joi.string().trim().min(8).messages({
       'string.min': 'Address must be at least 8 characters',
