@@ -255,10 +255,25 @@ export const processCheckoutOrderApproved = async (
     session.endSession();
   }
 
-  await RedisHelper.order.limitProcessingDel(orderData.userId);
-  await RedisHelper.order.orderDel(systemOrderId);
+  // 3.2: Wrap each cleanup call independently so one failure doesn't block the other.
+  // A failure here is non-critical — the worst outcome is the user briefly sees
+  // "previous payment in progress" on their next order attempt.
+  try {
+    await RedisHelper.order.limitProcessingDel(orderData.userId);
+  } catch (err) {
+    logger.warn({ err, userId: orderData.userId }, 'Failed to delete processing limit (non-critical)');
+  }
+  try {
+    await RedisHelper.order.orderDel(systemOrderId);
+  } catch (err) {
+    logger.warn({ err, systemOrderId }, 'Failed to delete cached order (non-critical)');
+  }
 
-  // Capture the PayPal order — this triggers the actual fund transfer
+  // Capture the PayPal order — this triggers the actual fund transfer.
+  // Note (3.4): PayPal may send PAYMENT.CAPTURE.COMPLETED before this call returns.
+  // That race is handled safely by the queue retry mechanism — the CAPTURE handler
+  // looks up Payment by orderId, and if the APPROVED transaction hasn't committed yet
+  // it throws NotFoundError, retries with backoff, and succeeds once APPROVED commits.
   await paypalService.capturePaypalOrder(paypalOrderId);
   logger.info({ paypalOrderId, systemOrderId }, 'PayPal order captured');
 };
@@ -289,11 +304,20 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
 
   // Build an idempotency key that is unique per webhook event + event type +
   // resource identifier to survive PayPal retries.
+  // Reject if the resource identifier is missing — using 'unknown' could cause
+  // unrelated events to share the same idempotency key and be silently skipped.
   let idempotencyKey: string;
   if (event_type === 'CHECKOUT.ORDER.APPROVED') {
-    idempotencyKey = `idempotency:${webhookId}:${event_type}:${paypalOrderId || 'unknown'}`;
+    if (!paypalOrderId) {
+      throw new PaymentError(`Missing PayPal order ID for ${event_type} idempotency key`);
+    }
+    idempotencyKey = `idempotency:${webhookId}:${event_type}:${paypalOrderId}`;
   } else {
-    idempotencyKey = `idempotency:${webhookId}:${event_type}:${captureId || paypalOrderId || 'unknown'}`;
+    const resourceId = captureId || paypalOrderId;
+    if (!resourceId) {
+      throw new PaymentError(`Missing capture/order ID for ${event_type} idempotency key`);
+    }
+    idempotencyKey = `idempotency:${webhookId}:${event_type}:${resourceId}`;
   }
 
   // Fast path: already processed

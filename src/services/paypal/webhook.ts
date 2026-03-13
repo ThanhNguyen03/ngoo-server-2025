@@ -54,7 +54,11 @@ export class PaypalWebhook {
   }
 
   async verifyWebhookSignature(req: Request, event: any) {
-    if (config.NODE_ENV !== 'prod') {
+    // Skip verification ONLY in local dev (exposed via ngrok etc. is acceptable risk).
+    // In 'test' env we still verify — a test server exposed externally must not accept
+    // fake webhooks that could mark any payment as SUCCESS.
+    if (config.NODE_ENV === 'local') {
+      logger.warn('Skipping PayPal webhook signature verification in local env');
       return true;
     }
 

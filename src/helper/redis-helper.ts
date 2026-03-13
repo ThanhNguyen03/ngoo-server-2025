@@ -358,6 +358,24 @@ export const RedisHelper = {
     },
 
     /**
+     * Get the last-known BNB/USD price (longer 5-min TTL, used as fallback when
+     * CoinGecko is unreachable and the primary cache has expired).
+     */
+    bnbPriceLastKnownGet: async (): Promise<string | null> => {
+      return RedisHelperCrypto.bnbPrice('last-known').get();
+    },
+
+    /**
+     * Store the last-known BNB/USD price with a 5-minute TTL.
+     * Updated every time a fresh price is successfully fetched from CoinGecko.
+     */
+    bnbPriceLastKnownSet: async (price: string): Promise<void> => {
+      // 300s = 5 min. Intentionally longer than the primary cache TTL (60s)
+      // so it can serve as a fallback during brief CoinGecko outages.
+      await RedisHelperCrypto.bnbPrice('last-known').set(price, 300);
+    },
+
+    /**
      * Get the last processed block number for the event monitor.
      */
     lastProcessedBlockGet: async (): Promise<number | null> => {

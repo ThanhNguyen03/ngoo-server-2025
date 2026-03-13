@@ -21,12 +21,21 @@ interface ICoinGeckoResponse {
   };
 }
 
+// Maximum allowed price deviation between consecutive CoinGecko fetches.
+// A >30% swing in one cache interval (60s) is almost certainly an API anomaly,
+// not a real market move, and accepting it could let users pay far too little.
+const MAX_PRICE_DEVIATION_RATIO = 0.3;
+
 /**
  * Fetch BNB/USD price from CoinGecko with Redis caching.
+ * - Primary cache: CRYPTO_PRICE_CACHE_TTL_SEC (default 60s)
+ * - Last-known fallback: 5-minute TTL — used when CoinGecko is unreachable
+ *   and the primary cache has expired. Prevents hard failures during brief outages.
+ * - Bounds check: rejects a new price that deviates >30% from the last known price.
  * @returns BNB price in USD as a number (e.g. 620.5)
  */
 export async function getBnbPriceUsd(): Promise<number> {
-  // 1. Try cache first
+  // 1. Try primary cache first (short TTL, CoinGecko-fresh)
   const cached = await RedisHelper.crypto.bnbPriceGet();
   if (cached !== null) {
     const price = parseFloat(cached);
@@ -47,19 +56,46 @@ export async function getBnbPriceUsd(): Promise<number> {
       throw new Error('Invalid price response from CoinGecko');
     }
 
-    // Cache the fresh price
+    // 4.1: Bounds check — reject anomalous price spikes/crashes.
+    // Compares against the last-known price to detect potential API bugs or
+    // cache poisoning. A >30% deviation in one cache interval is suspicious.
+    const lastKnown = await RedisHelper.crypto.bnbPriceLastKnownGet();
+    if (lastKnown !== null) {
+      const lastPrice = parseFloat(lastKnown);
+      if (lastPrice > 0) {
+        const deviation = Math.abs(price - lastPrice) / lastPrice;
+        if (deviation > MAX_PRICE_DEVIATION_RATIO) {
+          logger.error(
+            { newPrice: price, lastKnownPrice: lastPrice, deviation },
+            'BNB price deviates >30% from last known — rejecting to prevent underpayment',
+          );
+          throw new PaymentError('BNB price is unstable. Please try again shortly.');
+        }
+      }
+    }
+
+    // Cache the fresh price in both the primary (short TTL) and last-known (5 min) stores.
     await RedisHelper.crypto.bnbPriceSet(String(price));
+    await RedisHelper.crypto.bnbPriceLastKnownSet(String(price));
     logger.info({ price }, 'BNB price fetched from CoinGecko');
     return price;
   } catch (fetchErr) {
-    logger.warn({ err: fetchErr }, 'CoinGecko fetch failed, checking stale cache');
+    // Re-throw PaymentError from bounds check directly — don't try stale fallback.
+    if (fetchErr instanceof PaymentError) throw fetchErr;
 
-    // 3. Fallback: use stale cached price if < 5 min old
-    // Note: we stored the price; TTL is CRYPTO_PRICE_CACHE_TTL_SEC (60s).
-    // If the key still exists but we got here, that's a code path issue.
-    // For stale fallback, we'd need a separate "last_known" key.
-    // Simple approach: if we reach here, the cache has already expired.
-    // For now, throw PaymentError — frontend should retry.
+    logger.warn({ err: fetchErr }, 'CoinGecko fetch failed, checking last-known price');
+
+    // 4.2: Stale fallback — use the last-known price (up to 5 min old) when
+    // CoinGecko is temporarily unreachable. Avoids hard failures during brief outages.
+    const lastKnown = await RedisHelper.crypto.bnbPriceLastKnownGet();
+    if (lastKnown !== null) {
+      const price = parseFloat(lastKnown);
+      if (!isNaN(price) && price > 0) {
+        logger.warn({ price }, 'Using last-known BNB price as CoinGecko fallback');
+        return price;
+      }
+    }
+
     throw new PaymentError('BNB price unavailable. Please try again in a moment.');
   }
 }

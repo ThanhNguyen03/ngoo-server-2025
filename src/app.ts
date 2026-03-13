@@ -49,8 +49,9 @@ export const NGOO_API = {
           // removing the "includeSubDomains" option
           includeSubDomains: false,
         },
-        // not loading the noSniff() middleware
-        noSniff: false,
+        // Enable X-Content-Type-Options: nosniff to prevent MIME-type sniffing.
+        // Browsers that sniff MIME types can execute uploaded files as scripts.
+        noSniff: true,
       }),
     );
 
@@ -100,6 +101,11 @@ export const NGOO_API = {
         secret: config.EXPRESS_SESSION_SECRET,
         cookie: {
           httpOnly: true,
+          // Secure flag: only send cookie over HTTPS in production.
+          // sameSite 'lax': allows cookie on top-level navigations (OAuth redirect)
+          // but blocks it on cross-origin sub-resource requests (CSRF mitigation).
+          secure: config.NODE_ENV === 'prod',
+          sameSite: 'lax',
           path: '/',
           maxAge: config.SESSION_COOKIE_MAX_AGE_SEC * 1000, // milliseconds
         },

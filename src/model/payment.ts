@@ -67,6 +67,9 @@ PaymentSchema.index({ status: 1, createdAt: -1 });
 PaymentSchema.index({ orderId: 1, createdAt: -1 });
 PaymentSchema.index({ userId: 1, createdAt: -1 });
 PaymentSchema.index({ userId: 1, status: 1, createdAt: -1 });
+// Compound index for expired-payment cleanup sweep:
+// supports { status: PROCESSING, expiredAt: { $lt: now } } without a collection scan.
+PaymentSchema.index({ status: 1, expiredAt: 1 });
 
 PaymentSchema.index({ codTransactionId: 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ txHash: 1 }, { unique: true, sparse: true });

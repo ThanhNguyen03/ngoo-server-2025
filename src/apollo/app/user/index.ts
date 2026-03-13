@@ -205,6 +205,15 @@ export const resolverUser: Resolvers = {
         };
         await RedisHelper.account.userInfoSet(safeInfo);
 
+        // Fire-and-forget audit log for new account creation
+        logAudit({
+          userId: newUser.uuid,
+          action: 'CREATE',
+          targetType: 'User',
+          targetId: newUser.uuid,
+          metadata: { event: 'userRegister', email },
+        });
+
         return {
           userUuid: newUser.uuid,
           accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
@@ -308,6 +317,15 @@ export const resolverUser: Resolvers = {
             role,
           });
 
+          // Fire-and-forget audit log for Google login
+          logAudit({
+            userId: user.uuid,
+            action: 'LOGIN',
+            targetType: 'User',
+            targetId: user.uuid,
+            metadata: { event: 'userLogin', method: 'google' },
+          });
+
           return {
             userUuid: user.uuid,
             accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
@@ -352,6 +370,15 @@ export const resolverUser: Resolvers = {
             phoneNumber: existingUser.userInfo.phoneNumber,
           });
 
+          // Fire-and-forget audit log for credential login
+          logAudit({
+            userId: existingUser.uuid,
+            action: 'LOGIN',
+            targetType: 'User',
+            targetId: existingUser.uuid,
+            metadata: { event: 'userLogin', method: 'credential' },
+          });
+
           return {
             userUuid: existingUser.uuid,
             accessToken: await RedisHelper.account.userAccessTokenCreateAndAdd({
@@ -385,6 +412,13 @@ export const resolverUser: Resolvers = {
 
         const { uuid, role } = payload;
 
+        // 4.4: Verify the user still exists in the DB before issuing new tokens.
+        // JWT signature alone doesn't guarantee the account hasn't been deleted.
+        const userExists = await UserModel.exists({ uuid });
+        if (!userExists) {
+          throw new AuthenticationError('User account no longer exists');
+        }
+
         // Create new session IDs for the rotated tokens
         const newSid = randomUUID();
         const newRid = randomUUID();
@@ -414,22 +448,32 @@ export const resolverUser: Resolvers = {
 
     userLogout: authorizedWrapper(JOI_USER_LOGOUT, async (_root, _args, context) => {
       const { logoutEverywhere } = _args;
+      const { userId, sid } = context.user;
       const token = context.user.token;
 
       if (!token) {
         throw new AuthenticationError('Missing auth token');
       }
 
+      // Fire-and-forget audit log for logout
+      logAudit({
+        userId,
+        action: 'LOGOUT',
+        targetType: 'User',
+        targetId: userId,
+        metadata: { event: 'userLogout', logoutEverywhere: logoutEverywhere ?? false },
+      });
+
       if (logoutEverywhere) {
         // Revoke all sessions for this user
-        return isOk(() => RedisHelper.account.userAccessTokenRemoveAll(context.user.userId));
+        return isOk(() => RedisHelper.account.userAccessTokenRemoveAll(userId));
       }
 
       // FIX: `authenticateUser` (in common.ts) already decodes the JWT and sets
       // `context.user.sid`. Re-verifying the token here is redundant and wastes
       // an async round-trip. Use the sid from context directly.
       return isOk(async () => {
-        await RedisHelper.account.userAccessTokenRemove(context.user.userId, context.user.sid);
+        await RedisHelper.account.userAccessTokenRemove(userId, sid);
       });
     }),
 
@@ -461,6 +505,15 @@ export const resolverUser: Resolvers = {
 
       // 5. Invalidate user info cache
       await RedisHelper.account.userInfoDel(userId);
+
+      // Fire-and-forget audit log for wallet connection
+      logAudit({
+        userId,
+        action: 'UPDATE',
+        targetType: 'User',
+        targetId: userId,
+        metadata: { event: 'userConnectCryptoWallet', walletAddress: recoveredAddress.toLowerCase() },
+      });
 
       return {
         connectCompleted: true,

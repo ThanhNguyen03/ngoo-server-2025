@@ -22,7 +22,7 @@ import {
   sortQuery,
   TPagination,
 } from '@helper';
-import { NotFoundError, PaymentError, RateLimitError, ValidationError } from '@lib';
+import { createLogger, NotFoundError, PaymentError, RateLimitError, ValidationError } from '@lib';
 import { ItemModel, OrderModel, PaymentModel, TOrder } from '@model';
 import { cryptoPaymentService, getOrCacheUserInfo, paypalService, type ICryptoPaymentProof } from '@service';
 import { randomUUID } from 'crypto';
@@ -39,6 +39,8 @@ import { JOI_ITEM_OPTION } from '../item';
  *
  * @param order - Lean or hydrated order document.
  */
+const logger = createLogger('OrderResolver');
+
 const toOrderResponse = (order: TOrder): TOrderResponse => ({
   orderId: order.orderId,
   transactionId: order.transactionId,
@@ -351,6 +353,16 @@ export const resolverOrder: Resolvers = {
               payerAddress: userInfo.walletAddress,
             });
           } catch (err) {
+            // Proof generation failed (price oracle down, Redis unavailable, etc.).
+            // The Order + Payment records were already committed to the DB, so we
+            // must roll them back to FAILED status — otherwise the user is blocked
+            // by limitProcessingSet until it expires (2 min) and cannot retry.
+            try {
+              await OrderModel.updateOne({ orderId }, { orderStatus: EOrderStatus.Failed });
+              await PaymentModel.updateOne({ orderId }, { status: EPaymentStatus.Failed });
+            } catch (rollbackErr) {
+              logger.error({ err: rollbackErr, orderId }, 'Failed to rollback crypto order/payment to FAILED');
+            }
             await RedisHelper.order.limitProcessingDel(userId);
             throw err;
           }

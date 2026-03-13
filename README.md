@@ -12,7 +12,7 @@ GraphQL API server for the Ngoo food ordering platform. Built with **Apollo Serv
 | Real-time | Socket.IO (payment status push) |
 | Auth | JWT (jose) + Google OAuth + argon2 (Argon2id) |
 | Web3 | ethers v6 (wallet sign-to-verify, ECDSA) |
-| Payments | PayPal REST SDK, COD |
+| Payments | PayPal (webhooks), COD (admin approval), Crypto (BNB Testnet smart contract) |
 | Logging | pino (structured JSON, child loggers per module) |
 | Queue | In-memory priority queue with retry + graceful shutdown |
 | Runtime | Node.js + TypeScript (tsx dev, rollup prod) |
@@ -176,6 +176,14 @@ Endpoint: `POST /graphql` — Apollo Sandbox available in non-production environ
 2. Client signs with wallet (`personal_sign`)
 3. `userConnectCryptoWallet(signature, address)` → `ethers.verifyMessage` recovers signer → address stored on `UserInfoModel` → cache invalidated
 
+### Crypto (BNB Smart Contract) — `CRYPTO_PAYMENT_ENABLED=true`
+1. User must connect wallet first (see Wallet Connection above)
+2. `createOrder(paymentMethod: CRYPTO)` → Order+Payment created in DB → server signs ECDSA proof: `keccak256(abi.encode(orderId, payerAddress, amount_wei, nonce, deadline, chainId))`
+3. Client calls `payOrder(proof)` on `NgooPayment.sol` (BNB Testnet, chain 97)
+4. `cryptoEventMonitor` polls for `PaymentReceived` events every 15s → validates payer (wallet address) + amount (BigInt comparison) → updates Order+Payment atomically
+5. `cryptoPaymentCleanup` sweeps stuck PROCESSING payments every 5 min (marks FAILED if `expiredAt < now`)
+6. Companion project: [`ngoo-contract/`](../ngoo-contract) — Hardhat + Solidity 0.8.24 + OpenZeppelin 5.1 (Ownable, ReentrancyGuard, Pausable, ECDSA)
+
 ---
 
 ## Cursor Pagination
@@ -194,7 +202,7 @@ Endpoint: `POST /graphql` — Apollo Sandbox available in non-production environ
 
 `logAudit()` (`src/services/audit.ts`) writes to the `AuditLog` collection. Fire-and-forget — never throws, failures logged via pino.
 
-**Integrated into:** Category CRUD, Item CRUD, `userUpdateInfo`, payment capture webhook.
+**Integrated into:** Category CRUD, Item CRUD, `userUpdateInfo`, payment capture webhook, `userLogin`, `userRegister`, `userLogout`, `userConnectCryptoWallet`.
 
 **Schema:** `user` and `targetId` stored as UUID strings (not ObjectId refs) for self-contained records that survive collection migrations.
 
@@ -269,6 +277,12 @@ Each module creates a child logger: `const logger = createLogger('ModuleName')`.
 ## Changelog
 
 See [PLAN.md](./PLAN.md) for the full sprint-by-sprint change log.
+
+### Sprint 5 (2026-03-13)
+Security hardening: crypto monitor proof-null handling + BigInt amount comparison + block reorg clamp, `noSniff` header enabled, session cookie `secure`+`sameSite`, PayPal webhook verification in test env, crypto proof failure rollback, PayPal cleanup try/catch isolation, price oracle bounds check + stale fallback, `ByteBuffer` truncation error, `refreshToken` deleted-user check, `Payment.{ status, expiredAt }` index, new expired-payment cleanup sweep (`cryptoPaymentCleanup`), auth event audit logs.
+
+### Sprint 4.2 (2026-03-12)
+Crypto payment via BNB smart contract (`NgooPayment.sol`). `src/services/crypto/` (service, monitor, price-oracle). `RedisHelper.crypto` namespace. Crypto branch in `createOrder`. Socket.IO reconnect replay for crypto status. Feature flag `CRYPTO_PAYMENT_ENABLED`.
 
 ### Sprint 4.1 (2026-03-12)
 Database index tuning, cursor-based pagination, audit log resolvers with mutation integration, Web3 wallet connection, `userUpdateInfo` transaction safety.

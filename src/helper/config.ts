@@ -73,7 +73,8 @@ const envSchema = Joi.object({
   CRYPTO_PRICE_CACHE_TTL_SEC: Joi.number().optional().default(60),
   CRYPTO_MONITOR_POLL_INTERVAL_MS: Joi.number().optional().default(15000),
   CACHE_CRYPTO_PROOF_TTL_SEC: Joi.number().optional().default(900),
-  LOCK_CRYPTO_PAYMENT_TTL_MS: Joi.number().optional().default(30000),
+  // Increased to 60s for the same reason as LOCK_PAYMENT_TTL_MS above.
+  LOCK_CRYPTO_PAYMENT_TTL_MS: Joi.number().optional().default(60000),
 
   // --- Queue ---
   QUEUE_MAX_CONCURRENT: Joi.number().optional().default(10),
@@ -98,14 +99,19 @@ const envSchema = Joi.object({
 
   // --- Cache TTLs (seconds) ---
   CACHE_DEFAULT_TTL_SEC: Joi.number().optional().default(3600),
-  CACHE_ORDER_CHECKOUT_TTL_SEC: Joi.number().optional().default(180),
+  // Increased to 900s (15 min) to match PayPal's order approval window.
+  // Previously 180s (3 min) which caused cache-miss NotFoundErrors when users
+  // took >3 min to approve on PayPal's hosted page.
+  CACHE_ORDER_CHECKOUT_TTL_SEC: Joi.number().optional().default(900),
   CACHE_ORDER_LIMIT_PROCESSING_TTL_SEC: Joi.number().optional().default(120),
   CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC: Joi.number().optional().default(600),
   CACHE_PAYPAL_STATUS_TTL_SEC: Joi.number().optional().default(300),
   CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC: Joi.number().optional().default(604800),
 
   // --- Lock TTLs (milliseconds) ---
-  LOCK_PAYMENT_TTL_MS: Joi.number().optional().default(30000),
+  // Increased to 60s to cover: multiple DB queries + transaction (2-3 saves) +
+  // Redis ops + socket emit on slow DB. 30s was too tight.
+  LOCK_PAYMENT_TTL_MS: Joi.number().optional().default(60000),
   LOCK_WEBHOOK_PROCESSING_TTL_MS: Joi.number().optional().default(60000),
 
   // --- JWT ---

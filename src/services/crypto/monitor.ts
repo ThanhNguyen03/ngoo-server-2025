@@ -13,7 +13,7 @@ import { EOrderStatus, EPaymentStatus } from '@generated/graphql';
 import type { TWebhookData } from '@helper';
 import { config, RedisHelper } from '@helper';
 import { createLogger, NotFoundError } from '@lib';
-import { OrderModel, PaymentModel } from '@model';
+import { OrderModel, PaymentModel, UserModel } from '@model';
 import { ethers } from 'ethers';
 import mongoose from 'mongoose';
 // Import directly from siblings to avoid circular deps via services/index.ts
@@ -99,9 +99,11 @@ class CryptoEventMonitor {
       const safeBlock = currentBlock - this.monitorConfig.blockConfirmations;
       if (safeBlock < 0) return;
 
-      // Retrieve last processed block from Redis (replay on restart)
+      // Retrieve last processed block from Redis (replay on restart).
+      // Clamp: if RPC reported a lower block after a reorg, lastBlock + 1 could
+      // exceed safeBlock — Math.min prevents skipping into the unconfirmed zone.
       const lastBlock = await RedisHelper.crypto.lastProcessedBlockGet();
-      const fromBlock = lastBlock !== null ? lastBlock + 1 : safeBlock;
+      const fromBlock = lastBlock !== null ? Math.min(lastBlock + 1, safeBlock) : safeBlock;
 
       if (fromBlock > safeBlock) return;
 
@@ -154,14 +156,56 @@ class CryptoEventMonitor {
     const lockKey = `crypto:payment:${orderId}`;
 
     await RedisHelper.lock.withLock(lockKey, config.LOCK_CRYPTO_PAYMENT_TTL_MS, async () => {
-      // Verify the proof exists and matches
-      const proof = await RedisHelper.crypto.proofGet(orderId);
-      if (!proof) {
-        logger.warn({ orderId }, 'Proof not found in Redis — may have expired or already processed');
+      // Fetch payment first — needed for both the idempotency check and the
+      // null-proof fallback validation path below.
+      const payment = await PaymentModel.findOne({ orderId });
+      if (!payment) {
+        throw new NotFoundError(`Payment not found for order ${orderId}`);
       }
 
-      // Validate payer and amount match (defense in depth)
-      if (proof) {
+      if (payment.status !== EPaymentStatus.Processing) {
+        logger.info({ orderId, status: payment.status }, 'Payment already processed, skipping');
+        return;
+      }
+
+      // Verify the proof exists and matches (defense in depth).
+      const proof = await RedisHelper.crypto.proofGet(orderId);
+
+      if (!proof) {
+        // Proof TTL has expired from Redis. Two sub-cases:
+        // 1. Payment itself expired → mark FAILED (user missed the deadline).
+        // 2. Payment still valid → fall back to DB wallet validation.
+        if (payment.expiredAt < new Date()) {
+          logger.warn({ orderId }, 'Proof expired and payment past deadline — marking FAILED');
+          const failSession = await mongoose.startSession();
+          try {
+            await failSession.withTransaction(async () => {
+              const order = await OrderModel.findOne({ orderId }).session(failSession);
+              if (order) {
+                payment.status = EPaymentStatus.Failed;
+                order.orderStatus = EOrderStatus.Failed;
+                await payment.save({ session: failSession });
+                await order.save({ session: failSession });
+              }
+            });
+          } finally {
+            failSession.endSession();
+          }
+          return;
+        }
+
+        // Payment still valid — validate the on-chain payer against the user's
+        // registered wallet address. Never mark SUCCESS without at least one
+        // validation source.
+        const user = await UserModel.findOne({ uuid: payment.userId })
+          .populate<{ userInfo: { walletAddress?: string } }>('userInfo')
+          .lean();
+        if (!user?.userInfo?.walletAddress || user.userInfo.walletAddress.toLowerCase() !== payer.toLowerCase()) {
+          logger.error({ orderId }, 'Payer mismatch and proof unavailable — skipping event');
+          return;
+        }
+      } else {
+        // Proof found — validate payer and amount (primary validation path).
         const proofPayer = proof.payerAddress.toLowerCase();
         const eventPayer = payer.toLowerCase();
         if (proofPayer !== eventPayer) {
@@ -172,24 +216,15 @@ class CryptoEventMonitor {
           return;
         }
 
-        if (proof.amount !== amount.toString()) {
+        // 1.2: Use BigInt comparison — string equality is fragile under JSON
+        // serialisation normalisation (e.g. leading zeros, different formatting).
+        if (BigInt(proof.amount) !== amount) {
           logger.error(
             { orderId, proofAmount: proof.amount, eventAmount: amount.toString() },
             'Amount mismatch between proof and on-chain event — skipping',
           );
           return;
         }
-      }
-
-      // Fetch payment and verify it's still in PROCESSING state
-      const payment = await PaymentModel.findOne({ orderId });
-      if (!payment) {
-        throw new NotFoundError(`Payment not found for order ${orderId}`);
-      }
-
-      if (payment.status !== EPaymentStatus.Processing) {
-        logger.info({ orderId, status: payment.status }, 'Payment already processed, skipping');
-        return;
       }
 
       // Atomically update Order + Payment
@@ -241,9 +276,18 @@ class CryptoEventMonitor {
         metadata: { txHash, amount: amount.toString() },
       });
 
-      // Cleanup
-      await RedisHelper.crypto.proofDel(orderId);
-      await RedisHelper.order.limitProcessingDel(payment.userId);
+      // 3.6: Wrap each cleanup call independently so one failure doesn't block the other.
+      // If proofDel throws, limitProcessingDel must still run to unblock the user.
+      try {
+        await RedisHelper.crypto.proofDel(orderId);
+      } catch (e) {
+        logger.warn({ err: e, orderId }, 'proofDel failed (non-critical)');
+      }
+      try {
+        await RedisHelper.order.limitProcessingDel(payment.userId);
+      } catch (e) {
+        logger.warn({ err: e, userId: payment.userId }, 'limitProcessingDel failed (non-critical)');
+      }
 
       logger.info({ orderId, txHash, amount: amount.toString() }, 'Crypto payment processed successfully');
     });
