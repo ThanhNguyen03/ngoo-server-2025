@@ -151,6 +151,13 @@ export const resolverItem: Resolvers = {
       const { offset, limit, query } = _args;
       const sort = sortQuery(query);
 
+      // Short-TTL cache (30s) for item list — reduces DB load on high-traffic public endpoints.
+      const cacheKey = `all:${offset}:${limit}:${JSON.stringify(sort)}`;
+      const cached = await RedisHelper.item.itemListGet(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+
       const [listItem, total] = await Promise.all([
         ItemModel.find({ isDeleted: false })
           .populate<{ category: TCategory }>('category')
@@ -161,13 +168,17 @@ export const resolverItem: Resolvers = {
         ItemModel.countDocuments({ isDeleted: false }),
       ]);
 
-      return {
+      const result = {
         offset,
         limit,
         query,
         total,
         records: listItem.map(toItemResponse),
       };
+
+      await RedisHelper.item.itemListSet(cacheKey, JSON.stringify(result));
+
+      return result;
     }),
 
     listItemByCategory: publicWrapper(JOI_ITEM_BY_CATEGORY_ID, async (_root, _args) => {
@@ -358,6 +369,7 @@ export const resolverItem: Resolvers = {
 
         const response = toItemResponse(item);
         await RedisHelper.item.itemByIdSet(response);
+        await RedisHelper.item.itemListInvalidate();
 
         // Fire-and-forget: do not await to avoid blocking the response
         logAudit({
@@ -407,6 +419,7 @@ export const resolverItem: Resolvers = {
 
         const response = toItemResponse(item);
         await RedisHelper.item.itemByIdSet(response);
+        await RedisHelper.item.itemListInvalidate();
 
         // Fire-and-forget: do not await to avoid blocking the response
         logAudit({
@@ -430,6 +443,7 @@ export const resolverItem: Resolvers = {
           throw new NotFoundError('Item not found');
         }
         await RedisHelper.item.itemByIdDel(itemId);
+        await RedisHelper.item.itemListInvalidate();
 
         // Fire-and-forget: do not await to avoid blocking the response
         logAudit({

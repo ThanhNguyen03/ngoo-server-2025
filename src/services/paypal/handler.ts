@@ -159,6 +159,12 @@ export const processPaymentCaptureEvent = async (
           paymentId: payment.paymentId,
           status: payment.status,
         });
+
+        // Invalidate payment + order list caches after status change
+        await Promise.all([
+          RedisHelper.payment.paymentListInvalidate(),
+          RedisHelper.order.orderListInvalidate(),
+        ]);
       } catch (cacheErr) {
         logger.warn({ err: cacheErr, systemOrderId }, 'Failed to update cache/socket (non-critical)');
       }
@@ -200,7 +206,7 @@ export const processPaymentCaptureEvent = async (
  * @param paypalOrderId - The PayPal order ID from `resource.id`.
  * @param resource      - The full webhook resource payload.
  */
-export const processCheckoutOrderApproved = async (
+export const handleCheckoutOrderApproved = async (
   systemOrderId: string,
   paypalOrderId: string,
   resource: TPayPalResource,
@@ -361,7 +367,7 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
       }
 
       if (event_type === 'CHECKOUT.ORDER.APPROVED') {
-        await processCheckoutOrderApproved(systemOrderId, paypalOrderId!, resource);
+        await handleCheckoutOrderApproved(systemOrderId, paypalOrderId!, resource);
       }
 
       switch (event_type) {

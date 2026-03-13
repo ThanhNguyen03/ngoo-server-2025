@@ -27,6 +27,17 @@ export type TQueueOptions = {
   priorityLevels?: Record<TQueuePriority, number>;
 };
 
+/**
+ * In-memory priority queue with concurrency control and retry logic.
+ *
+ * **Recovery on restart:** This queue is intentionally in-memory — if the process
+ * crashes, pending jobs are lost. This is acceptable because:
+ * 1. PayPal retries unacknowledged webhooks (up to 3 times over 72 hours).
+ * 2. The Redis distributed lock + idempotency key prevents duplicate processing
+ *    when both the queue retry and PayPal retry fire for the same event.
+ * 3. For crypto payments, the block monitor re-scans from the last processed
+ *    block on restart, so no events are permanently lost.
+ */
 export class QueueService<TEvent = Record<string, unknown>> extends EventEmitter {
   protected queue: TQueueJob<TEvent>[] = [];
 

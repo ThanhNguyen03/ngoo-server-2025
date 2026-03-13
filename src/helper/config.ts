@@ -107,6 +107,11 @@ const envSchema = Joi.object({
   CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC: Joi.number().optional().default(600),
   CACHE_PAYPAL_STATUS_TTL_SEC: Joi.number().optional().default(300),
   CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC: Joi.number().optional().default(604800),
+  // Short-lived caches for list queries — keeps admin dashboards snappy without
+  // hitting MongoDB on every page refresh. Invalidated on write operations.
+  CACHE_ORDER_LIST_TTL_SEC: Joi.number().optional().default(30),
+  CACHE_PAYMENT_LIST_TTL_SEC: Joi.number().optional().default(60),
+  CACHE_ITEM_LIST_TTL_SEC: Joi.number().optional().default(30),
 
   // --- Lock TTLs (milliseconds) ---
   // Increased to 60s to cover: multiple DB queries + transaction (2-3 saves) +
@@ -217,6 +222,9 @@ export const config = {
   CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC: envVars.CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC as number,
   CACHE_PAYPAL_STATUS_TTL_SEC: envVars.CACHE_PAYPAL_STATUS_TTL_SEC as number,
   CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC: envVars.CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC as number,
+  CACHE_ORDER_LIST_TTL_SEC: envVars.CACHE_ORDER_LIST_TTL_SEC as number,
+  CACHE_PAYMENT_LIST_TTL_SEC: envVars.CACHE_PAYMENT_LIST_TTL_SEC as number,
+  CACHE_ITEM_LIST_TTL_SEC: envVars.CACHE_ITEM_LIST_TTL_SEC as number,
 
   // --- Lock TTLs (milliseconds) ---
   LOCK_PAYMENT_TTL_MS: envVars.LOCK_PAYMENT_TTL_MS as number,

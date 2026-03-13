@@ -116,6 +116,13 @@ export const resolverOrder: Resolvers = {
       const { offset, limit, query } = _args;
       const sort = sortQuery(query);
 
+      // Short-TTL cache (30s) for admin order list — avoids hitting MongoDB on every page refresh.
+      const cacheKey = `${offset}:${limit}:${JSON.stringify(sort)}`;
+      const cached = await RedisHelper.order.orderListGet(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+
       const [listOrder, total] = await Promise.all([
         OrderModel.find().skip(offset).limit(limit).sort(sort).lean(),
         OrderModel.countDocuments(),
@@ -123,13 +130,18 @@ export const resolverOrder: Resolvers = {
 
       const records: TOrderResponse[] = listOrder.map(toOrderResponse);
 
-      return {
+      const result = {
         offset,
         limit,
         query,
         total,
         records,
       };
+
+      // Cache the result (best-effort, do not block response)
+      await RedisHelper.order.orderListSet(cacheKey, JSON.stringify(result));
+
+      return result;
     }),
   },
 
@@ -367,6 +379,9 @@ export const resolverOrder: Resolvers = {
             throw err;
           }
         }
+
+        // Invalidate admin order list cache after successful creation
+        await RedisHelper.order.orderListInvalidate();
 
         return {
           orderId,

@@ -21,7 +21,7 @@ import {
 } from '@helper';
 import { NotFoundError, ValidationError } from '@lib';
 import { OrderModel, PaymentModel, TOrder, TPayment } from '@model';
-import { emitPaymentStatus, getOrCacheUserInfo } from '@service';
+import { emitPaymentStatus, getOrCacheUserInfo, logAudit } from '@service';
 import Joi from 'joi';
 import mongoose from 'mongoose';
 
@@ -124,6 +124,13 @@ export const resolverPayment: Resolvers = {
       const { offset, limit, query } = _args;
       const sort = sortQuery(query);
 
+      // Per-user payment history cache (60s TTL, version-based invalidation)
+      const cacheKey = `user:${userId}:${offset}:${limit}:${JSON.stringify(sort)}`;
+      const cached = await RedisHelper.payment.paymentListGet(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+
       const [listPaymentHistory, total] = await Promise.all([
         PaymentModel.find({ userId }).populate<{ order: TOrder }>('order').skip(offset).limit(limit).sort(sort).lean(),
         PaymentModel.countDocuments({ userId }),
@@ -131,18 +138,29 @@ export const resolverPayment: Resolvers = {
 
       const records: TUserPaymentResponse[] = listPaymentHistory.map(toUserPaymentResponse);
 
-      return {
+      const result = {
         offset,
         limit,
         query,
         total,
         records,
       };
+
+      await RedisHelper.payment.paymentListSet(cacheKey, JSON.stringify(result));
+
+      return result;
     }),
 
     listPaymentHistory: adminWrapper(JOI_LIST_PAYMENT, async (_root, _args) => {
       const { offset, limit, query } = _args;
       const sort = sortQuery(query);
+
+      // Admin payment history cache (60s TTL, version-based invalidation)
+      const cacheKey = `admin:${offset}:${limit}:${JSON.stringify(sort)}`;
+      const cached = await RedisHelper.payment.paymentListGet(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
 
       const [listPaymentHistory, total] = await Promise.all([
         PaymentModel.find().populate<{ order: TOrder }>('order').skip(offset).limit(limit).sort(sort).lean(),
@@ -151,13 +169,17 @@ export const resolverPayment: Resolvers = {
 
       const records: TPaymentResponse[] = listPaymentHistory.map(toAdminPaymentResponse);
 
-      return {
+      const result = {
         offset,
         limit,
         query,
         total,
         records,
       };
+
+      await RedisHelper.payment.paymentListSet(cacheKey, JSON.stringify(result));
+
+      return result;
     }),
   },
 
@@ -209,6 +231,21 @@ export const resolverPayment: Resolvers = {
               orderId,
               paymentId: payment.paymentId,
               status: payment.status,
+            });
+
+            // Invalidate payment + order list caches after status change
+            await Promise.all([
+              RedisHelper.payment.paymentListInvalidate(),
+              RedisHelper.order.orderListInvalidate(),
+            ]);
+
+            // Fire-and-forget audit log for COD payment approval
+            logAudit({
+              userId: payment.userId,
+              action: 'UPDATE',
+              targetType: 'Payment',
+              targetId: payment.paymentId,
+              metadata: { event: 'approveCODPayment', orderId, status: EPaymentStatus.Success },
             });
           }
 

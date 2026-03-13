@@ -123,6 +123,7 @@ export const resolverUser: Resolvers = {
         email: user.email,
         name: user.userInfo.name,
         authMethods: user.authMethods,
+        walletAddress: user.userInfo.walletAddress,
         address: user.userInfo.address,
         phoneNumber: user.userInfo.phoneNumber,
       };
@@ -375,6 +376,7 @@ export const resolverUser: Resolvers = {
             email: existingUser.email,
             name: existingUser.userInfo.name,
             authMethods: existingUser.authMethods,
+            walletAddress: existingUser.userInfo.walletAddress,
             address: existingUser.userInfo.address,
             phoneNumber: existingUser.userInfo.phoneNumber,
           });
@@ -589,6 +591,7 @@ export const resolverUser: Resolvers = {
             email: user.email,
             name: userInfo.name,
             authMethods: user.authMethods,
+            walletAddress: userInfo.walletAddress,
             address: userInfo.address,
             phoneNumber: userInfo.phoneNumber,
           } as TUserInfoResponse;

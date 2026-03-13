@@ -20,9 +20,10 @@ export const RedisHelperUser = RedisHelperDerive<'userAccessToken' | 'userRefres
 );
 export const RedisHelperCategory = RedisHelperDerive<'category'>(RedisInstance);
 export const RedisHelperItem = RedisHelperDerive<
-  'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById'
+  'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById' | 'itemList'
 >(RedisInstance);
-export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'orderLimit'>(RedisInstance);
+export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'orderLimit' | 'orderList'>(RedisInstance);
+export const RedisHelperPayment = RedisHelperDerive<'paymentList'>(RedisInstance);
 export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
 export const RedisHelperCrypto = RedisHelperDerive<
   'cryptoProof' | 'cryptoHash' | 'bnbPrice' | 'cryptoBlock' | 'cryptoStatus'
@@ -263,6 +264,33 @@ export const RedisHelper = {
     itemByIdDel: async (itemId: string) => {
       await RedisHelperItem.itemById(itemId).delete();
     },
+
+    /**
+     * Get a cached item list page by a composite cache key.
+     * The key includes a version number, so mutations that bump the version
+     * cause automatic cache misses without needing pattern-based deletion.
+     */
+    itemListGet: async (cacheKey: string): Promise<string | null> => {
+      const version = (await RedisHelperItem.itemList('version').get()) ?? '0';
+      return RedisHelperItem.itemList(`v${version}:${cacheKey}`).get();
+    },
+
+    /**
+     * Cache an item list page with short TTL (default 30s).
+     * The value is a JSON-stringified response object.
+     */
+    itemListSet: async (cacheKey: string, value: string): Promise<void> => {
+      const version = (await RedisHelperItem.itemList('version').get()) ?? '0';
+      await RedisHelperItem.itemList(`v${version}:${cacheKey}`).set(value, config.CACHE_ITEM_LIST_TTL_SEC);
+    },
+
+    /**
+     * Invalidate all item list caches by bumping the version counter.
+     * Old entries expire naturally via TTL (30s). Called after create/update/delete.
+     */
+    itemListInvalidate: async (): Promise<void> => {
+      await RedisHelperItem.itemList('version').incre();
+    },
   },
 
   order: {
@@ -322,6 +350,56 @@ export const RedisHelper = {
     limitAttemptGet: async (userId: string) => {
       const attempts = await RedisHelperOrder.orderLimit(userId).get();
       return parseInt(attempts || '0');
+    },
+
+    /**
+     * Get a cached admin order list page (version-based invalidation).
+     */
+    orderListGet: async (cacheKey: string): Promise<string | null> => {
+      const version = (await RedisHelperOrder.orderList('version').get()) ?? '0';
+      return RedisHelperOrder.orderList(`v${version}:${cacheKey}`).get();
+    },
+
+    /**
+     * Cache an admin order list page with short TTL (default 30s).
+     */
+    orderListSet: async (cacheKey: string, value: string): Promise<void> => {
+      const version = (await RedisHelperOrder.orderList('version').get()) ?? '0';
+      await RedisHelperOrder.orderList(`v${version}:${cacheKey}`).set(value, config.CACHE_ORDER_LIST_TTL_SEC);
+    },
+
+    /**
+     * Invalidate all order list caches by bumping the version counter.
+     */
+    orderListInvalidate: async (): Promise<void> => {
+      await RedisHelperOrder.orderList('version').incre();
+    },
+  },
+
+  payment: {
+    /**
+     * Get a cached payment history page (version-based invalidation).
+     * Works for both per-user and admin payment history queries.
+     */
+    paymentListGet: async (cacheKey: string): Promise<string | null> => {
+      const version = (await RedisHelperPayment.paymentList('version').get()) ?? '0';
+      return RedisHelperPayment.paymentList(`v${version}:${cacheKey}`).get();
+    },
+
+    /**
+     * Cache a payment history page with short TTL (default 60s).
+     */
+    paymentListSet: async (cacheKey: string, value: string): Promise<void> => {
+      const version = (await RedisHelperPayment.paymentList('version').get()) ?? '0';
+      await RedisHelperPayment.paymentList(`v${version}:${cacheKey}`).set(value, config.CACHE_PAYMENT_LIST_TTL_SEC);
+    },
+
+    /**
+     * Invalidate all payment list caches by bumping the version counter.
+     * Called after payment status changes (approve, capture, etc.).
+     */
+    paymentListInvalidate: async (): Promise<void> => {
+      await RedisHelperPayment.paymentList('version').incre();
     },
   },
 
