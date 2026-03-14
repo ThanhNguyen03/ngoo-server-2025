@@ -125,6 +125,7 @@ const envSchema = Joi.object({
   CACHE_ORDER_LIST_TTL_SEC: Joi.number().optional().default(30),
   CACHE_PAYMENT_LIST_TTL_SEC: Joi.number().optional().default(60),
   CACHE_ITEM_LIST_TTL_SEC: Joi.number().optional().default(30),
+  CACHE_SEARCH_RESULT_TTL_SEC: Joi.number().optional().default(15),
 
   // --- Lock TTLs (milliseconds) ---
   // Increased to 60s to cover: multiple DB queries + transaction (2-3 saves) +
@@ -252,6 +253,7 @@ export const config = {
   CACHE_ORDER_LIST_TTL_SEC: envVars.CACHE_ORDER_LIST_TTL_SEC as number,
   CACHE_PAYMENT_LIST_TTL_SEC: envVars.CACHE_PAYMENT_LIST_TTL_SEC as number,
   CACHE_ITEM_LIST_TTL_SEC: envVars.CACHE_ITEM_LIST_TTL_SEC as number,
+  CACHE_SEARCH_RESULT_TTL_SEC: envVars.CACHE_SEARCH_RESULT_TTL_SEC as number,
 
   // --- Lock TTLs (milliseconds) ---
   LOCK_PAYMENT_TTL_MS: envVars.LOCK_PAYMENT_TTL_MS as number,

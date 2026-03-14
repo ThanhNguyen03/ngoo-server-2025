@@ -137,6 +137,16 @@ const JOI_LIST_ITEM = Joi.object<Omit<TPagination, 'total'>>({
   ...schemaPagination(Object.values(EItemQuery)),
 });
 
+const JOI_SEARCH_ITEMS = Joi.object({
+  search: Joi.string().trim().min(1).max(100).required(),
+  limit: Joi.number().integer().min(1).max(50).default(10),
+  categoryName: Joi.string().trim().min(5).max(30).allow(null),
+});
+
+const JOI_HOT_SEARCH = Joi.object({
+  limit: Joi.number().integer().min(1).max(20).default(10),
+});
+
 const JOI_LIST_ITEM_CURSOR = Joi.object<QueryListItemCursorArgs>({
   limit: Joi.number().integer().min(1).max(100).default(20),
   cursor: Joi.string().allow(null, '').default(null),
@@ -338,6 +348,72 @@ export const resolverItem: Resolvers = {
       await RedisHelper.item.itemByIdSet(response);
       return response;
     }, 'ip:query')),
+
+    searchItems: publicWrapper(
+      JOI_SEARCH_ITEMS,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
+        const { search, limit = 10, categoryName } = _args as {
+          search: string;
+          limit?: number | null;
+          categoryName?: string | null;
+        };
+
+        const cacheKey = `search:${search.toLowerCase()}:${limit}:${categoryName ?? 'all'}`;
+        const cached = await RedisHelper.search.searchResultGet(cacheKey);
+        if (cached) {
+          return JSON.parse(cached);
+        }
+
+        const filter: Record<string, unknown> = { isDeleted: false };
+
+        if (categoryName) {
+          const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
+          if (!category) throw new NotFoundError('Category not found');
+          filter.category = category._id;
+        }
+
+        // Try MongoDB full-text search first (relevance-ranked)
+        let items = await ItemModel.find({ ...filter, $text: { $search: search } })
+          .select({ score: { $meta: 'textScore' } })
+          .populate<{ category: TCategory }>('category')
+          .sort({ score: { $meta: 'textScore' } })
+          .limit(limit ?? 10)
+          .lean();
+
+        // Fall back to regex for partial-word matches (e.g. "lat" → "Latte")
+        if (items.length === 0) {
+          const regex = { $regex: search, $options: 'i' };
+          items = await ItemModel.find({
+            ...filter,
+            $or: [{ name: regex }, { description: regex }],
+          })
+            .populate<{ category: TCategory }>('category')
+            .sort({ createdAt: -1 })
+            .limit(limit ?? 10)
+            .lean();
+        }
+
+        const result = {
+          records: items.map(toItemResponse),
+          total: items.length,
+        };
+
+        await RedisHelper.search.searchResultSet(cacheKey, JSON.stringify(result));
+
+        // Fire-and-forget: track hot search term — never awaited
+        RedisHelper.search.hotSearchIncrement(search.toLowerCase().trim()).catch(() => undefined);
+
+        return result;
+      }, 'ip:query'),
+    ),
+
+    hotSearchTerms: publicWrapper(
+      JOI_HOT_SEARCH,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
+        const { limit = 10 } = _args as { limit?: number | null };
+        return RedisHelper.search.hotSearchGetTop(limit ?? 10);
+      }, 'ip:query'),
+    ),
   },
 
   Mutation: {

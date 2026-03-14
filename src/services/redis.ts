@@ -118,6 +118,14 @@ class RedisKey {
     return await this.client.sIsMember(this.fullKey(), member);
   }
 
+  // SORTED SET
+  async zIncrBy(increment: number, member: string): Promise<number> {
+    return await this.client.zIncrBy(this.fullKey(), increment, member);
+  }
+  async zRevRangeWithScores(start: number, stop: number): Promise<Array<{ value: string; score: number }>> {
+    return await this.client.zRangeWithScores(this.fullKey(), start, stop, { REV: true });
+  }
+
   //  HASH
   async hashSet(keyOrObj: Record<string, any> | string, value?: any) {
     if (value !== undefined) {

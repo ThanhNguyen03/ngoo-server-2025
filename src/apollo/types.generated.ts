@@ -253,6 +253,8 @@ export type Query = {
   __typename?: 'Query';
   cryptoWalletWithNonce: Scalars['String']['output'];
   getAllOrder: TListOrderResponse;
+  hotSearchTerms: Array<THotSearchTerm>;
+  searchItems: TSearchItemResponse;
   getAuditLog?: Maybe<TAuditLog>;
   getUserOrder: TOrderResponse;
   itemById: TItemResponse;
@@ -271,6 +273,18 @@ export type Query = {
 
 export type QueryGetAllOrderArgs = {
   orderId: Scalars['String']['input'];
+};
+
+
+export type QueryHotSearchTermsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type QuerySearchItemsArgs = {
+  categoryName?: InputMaybe<Scalars['String']['input']>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  search: Scalars['String']['input'];
 };
 
 
@@ -428,6 +442,18 @@ export type TItemOption = {
   extraPrice?: Maybe<Scalars['Float']['output']>;
   group: Scalars['String']['output'];
   name: Scalars['String']['output'];
+};
+
+export type THotSearchTerm = {
+  __typename?: 'THotSearchTerm';
+  score: Scalars['Float']['output'];
+  term: Scalars['String']['output'];
+};
+
+export type TSearchItemResponse = {
+  __typename?: 'TSearchItemResponse';
+  records: Array<TItemResponse>;
+  total: Scalars['Int']['output'];
 };
 
 export type TItemResponse = {
@@ -730,8 +756,10 @@ export type ResolversTypes = {
   TCreateOrderResponse: ResolverTypeWrapper<TCreateOrderResponse>;
   TCryptoPaymentProof: ResolverTypeWrapper<TCryptoPaymentProof>;
   TCursorPageInfo: ResolverTypeWrapper<TCursorPageInfo>;
+  THotSearchTerm: ResolverTypeWrapper<THotSearchTerm>;
   TItemOption: ResolverTypeWrapper<TItemOption>;
   TItemResponse: ResolverTypeWrapper<TItemResponse>;
+  TSearchItemResponse: ResolverTypeWrapper<TSearchItemResponse>;
   TListAuditLogResponse: ResolverTypeWrapper<TListAuditLogResponse>;
   TListItemCursorResponse: ResolverTypeWrapper<TListItemCursorResponse>;
   TListItemResponse: ResolverTypeWrapper<TListItemResponse>;
@@ -780,8 +808,10 @@ export type ResolversParentTypes = {
   TCreateOrderResponse: TCreateOrderResponse;
   TCryptoPaymentProof: TCryptoPaymentProof;
   TCursorPageInfo: TCursorPageInfo;
+  THotSearchTerm: THotSearchTerm;
   TItemOption: TItemOption;
   TItemResponse: TItemResponse;
+  TSearchItemResponse: TSearchItemResponse;
   TListAuditLogResponse: TListAuditLogResponse;
   TListItemCursorResponse: TListItemCursorResponse;
   TListItemResponse: TListItemResponse;
@@ -831,6 +861,8 @@ export interface ObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTyp
 export type QueryResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
   cryptoWalletWithNonce?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   getAllOrder?: Resolver<ResolversTypes['TListOrderResponse'], ParentType, ContextType, RequireFields<QueryGetAllOrderArgs, 'orderId'>>;
+  hotSearchTerms?: Resolver<Array<ResolversTypes['THotSearchTerm']>, ParentType, ContextType, Partial<QueryHotSearchTermsArgs>>;
+  searchItems?: Resolver<ResolversTypes['TSearchItemResponse'], ParentType, ContextType, RequireFields<QuerySearchItemsArgs, 'search'>>;
   getAuditLog?: Resolver<Maybe<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryGetAuditLogArgs, 'id'>>;
   getUserOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<QueryGetUserOrderArgs, 'orderId'>>;
   itemById?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<QueryItemByIdArgs, 'itemId'>>;
@@ -904,6 +936,16 @@ export type TCryptoPaymentProofResolvers<ContextType = TAppContext, ParentType e
 export type TCursorPageInfoResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TCursorPageInfo'] = ResolversParentTypes['TCursorPageInfo']> = {
   hasMore?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   nextCursor?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type THotSearchTermResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['THotSearchTerm'] = ResolversParentTypes['THotSearchTerm']> = {
+  score?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  term?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+};
+
+export type TSearchItemResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TSearchItemResponse'] = ResolversParentTypes['TSearchItemResponse']> = {
+  records?: Resolver<Array<ResolversTypes['TItemResponse']>, ParentType, ContextType>;
+  total?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
 };
 
 export type TItemOptionResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItemOption'] = ResolversParentTypes['TItemOption']> = {
@@ -1078,8 +1120,10 @@ export type Resolvers<ContextType = TAppContext> = {
   TCreateOrderResponse?: TCreateOrderResponseResolvers<ContextType>;
   TCryptoPaymentProof?: TCryptoPaymentProofResolvers<ContextType>;
   TCursorPageInfo?: TCursorPageInfoResolvers<ContextType>;
+  THotSearchTerm?: THotSearchTermResolvers<ContextType>;
   TItemOption?: TItemOptionResolvers<ContextType>;
   TItemResponse?: TItemResponseResolvers<ContextType>;
+  TSearchItemResponse?: TSearchItemResponseResolvers<ContextType>;
   TListAuditLogResponse?: TListAuditLogResponseResolvers<ContextType>;
   TListItemCursorResponse?: TListItemCursorResponseResolvers<ContextType>;
   TListItemResponse?: TListItemResponseResolvers<ContextType>;
