@@ -4,7 +4,15 @@ import {
   MutationUpdateCategoryArgs,
   Resolvers,
 } from '@generated/graphql';
-import { adminWrapper, JOI_ID_SCHEMA, publicWrapper, RATE_LIMIT_CONFIGS, rateLimitWrapper, RedisHelper } from '@helper';
+import {
+  adminWrapper,
+  JOI_ID_SCHEMA,
+  publicRateLimitWrapper,
+  publicWrapper,
+  RATE_LIMIT_CONFIGS,
+  rateLimitWrapper,
+  RedisHelper,
+} from '@helper';
 import { ConflictError, NotFoundError } from '@lib';
 import { CategoryModel } from '@model';
 import { logAudit } from '@service';
@@ -25,17 +33,23 @@ const JOI_CATEGORY_ID = Joi.object<MutationDeleteCategoryArgs>({
 
 export const resolverCategory: Resolvers = {
   Query: {
-    listCategory: publicWrapper(async () => {
-      const cachedListCategory = await RedisHelper.category.categoryAllListGet();
-      if (cachedListCategory && cachedListCategory.length > 0) {
-        return cachedListCategory;
-      }
-      const listCategory = await CategoryModel.find({ isDeleted: false });
-      const response = listCategory.map((item) => ({ categoryId: item.categoryId, name: item.name }));
-      await RedisHelper.category.categoryAllListSet(response);
+    listCategory: publicWrapper(
+      publicRateLimitWrapper(
+        RATE_LIMIT_CONFIGS.PUBLIC_QUERY,
+        async () => {
+          const cachedListCategory = await RedisHelper.category.categoryAllListGet();
+          if (cachedListCategory && cachedListCategory.length > 0) {
+            return cachedListCategory;
+          }
+          const listCategory = await CategoryModel.find({ isDeleted: false });
+          const response = listCategory.map((item) => ({ categoryId: item.categoryId, name: item.name }));
+          await RedisHelper.category.categoryAllListSet(response);
 
-      return response;
-    }),
+          return response;
+        },
+        'ip:query',
+      ),
+    ),
   },
 
   Mutation: {

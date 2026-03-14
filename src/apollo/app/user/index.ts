@@ -137,9 +137,15 @@ export const resolverUser: Resolvers = {
     cryptoWalletWithNonce: authorizedWrapper(async (_root, _args, context) => {
       const { userId } = context.user;
       const nonce = randomUUID();
+      // Embed issuedAt in the signed payload so expiry is tamper-evident even if
+      // Redis TTL is somehow bypassed. The verification step rejects messages
+      // older than 15 minutes regardless of Redis state.
+      const issuedAt = new Date().toISOString();
       const message =
         `Welcome to Ngoo. Please sign this message to connect your wallet. ` +
-        `This will expire in 15 minutes. Nonce: ${nonce}`;
+        `This will expire in 15 minutes. ` +
+        `Nonce: ${nonce} ` +
+        `Issued: ${issuedAt}`;
       await RedisHelper.account.walletMessageSet(userId, message);
       return message;
     }),
@@ -226,7 +232,7 @@ export const resolverUser: Resolvers = {
           }),
           refreshToken,
         };
-      }),
+      }, 'ip:auth'),
     ),
 
     userLogin: publicWrapper(
@@ -401,7 +407,7 @@ export const resolverUser: Resolvers = {
         }
 
         throw new AuthenticationError('Invalid credentials');
-      }),
+      }, 'ip:auth'),
     ),
 
     // FIX: Was incorrectly wrapped with `authorizedWrapper` which requires a valid
@@ -474,7 +480,7 @@ export const resolverUser: Resolvers = {
           refreshToken: newRefreshToken,
           userUuid: uuid,
         };
-      }),
+      }, 'ip:auth'),
     ),
 
     userLogout: authorizedWrapper(JOI_USER_LOGOUT, async (_root, _args, context) => {
@@ -521,6 +527,20 @@ export const resolverUser: Resolvers = {
       const nonceMessage = await RedisHelper.account.walletMessageGet(userId);
       if (!nonceMessage) {
         throw new AuthenticationError('Nonce expired or not found. Please request a new nonce.');
+      }
+
+      // 1a. Validate the embedded issuedAt timestamp (defense-in-depth: protects
+      //     against replay even if Redis TTL is bypassed). Reject if >15 min old
+      //     or if the timestamp is in the future (clock skew attacks).
+      const issuedMatch = nonceMessage.match(/Issued: (.+)$/);
+      if (issuedMatch) {
+        const issuedAt = new Date(issuedMatch[1]);
+        const ageMs = Date.now() - issuedAt.getTime();
+        const MAX_NONCE_AGE_MS = 15 * 60 * 1000; // 15 minutes
+        if (ageMs > MAX_NONCE_AGE_MS || ageMs < 0) {
+          await RedisHelper.account.walletMessageDel(userId);
+          throw new AuthenticationError('Nonce expired. Please request a new nonce.');
+        }
       }
 
       // 2. Verify ECDSA signature — ethers recovers the signer address

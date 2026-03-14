@@ -33,7 +33,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
     },
     targetType: {
       type: String,
-      enum: ['User', 'Item', 'Order', 'Category', 'Transaction', 'System'],
+      enum: ['User', 'Item', 'Order', 'Category', 'Payment', 'Transaction', 'System'],
       required: true,
     },
     targetId: { type: String, required: false },
