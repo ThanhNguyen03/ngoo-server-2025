@@ -16,7 +16,6 @@ const gracefulShutdown = async (signal: string) => {
   await paypalQueueService.shutdown(10000);
   io.close();
   httpServer.close();
-  await RedisInstance.redis.flushAll();
   await RedisInstance.quit();
   await mongoose.disconnect();
   logger.info('Shutdown complete');

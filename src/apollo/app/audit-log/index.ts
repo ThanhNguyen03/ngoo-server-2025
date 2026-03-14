@@ -17,11 +17,11 @@ const JOI_GET_AUDIT_LOG = Joi.object<QueryGetAuditLogArgs>({
 });
 
 const JOI_LIST_AUDIT_LOG = Joi.object<QueryListAuditLogArgs>({
-  userId: Joi.string().allow(null),
+  userId: Joi.string().max(100).trim().allow(null),
   targetType: Joi.string()
     .valid(...Object.values(ETargetType))
     .allow(null),
-  targetId: Joi.string().allow(null),
+  targetId: Joi.string().max(100).trim().allow(null),
   action: Joi.string()
     .valid(...Object.values(EAuditAction))
     .allow(null),

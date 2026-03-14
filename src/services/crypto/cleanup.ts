@@ -114,6 +114,13 @@ class CryptoPaymentCleanup {
     } catch (err) {
       logger.warn({ err, userId, orderId }, 'Cleanup sweep: limitProcessingDel failed (non-critical)');
     }
+
+    // Invalidate payment + order list caches so dashboards reflect the FAILED status.
+    try {
+      await Promise.all([RedisHelper.payment.paymentListInvalidate(), RedisHelper.order.orderListInvalidate()]);
+    } catch (err) {
+      logger.warn({ err, orderId, paymentId }, 'Cleanup sweep: cache invalidation failed (non-critical)');
+    }
   }
 }
 

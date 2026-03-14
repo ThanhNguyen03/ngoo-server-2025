@@ -348,4 +348,4 @@ export function adminWrapper<TArgs, TValidatedArgs, TResult>(
   };
 }
 
-export const gql = (v: any) => v;
+export const gql = (v: unknown) => v;

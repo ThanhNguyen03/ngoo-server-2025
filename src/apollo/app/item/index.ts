@@ -13,6 +13,7 @@ import {
 import {
   adminWrapper,
   JOI_ID_SCHEMA,
+  publicRateLimitWrapper,
   publicWrapper,
   RATE_LIMIT_CONFIGS,
   rateLimitWrapper,
@@ -92,7 +93,7 @@ const JOI_ITEM_INPUT_BASE = Joi.object({
   name: Joi.string().trim().min(2).max(100).required(),
   image: Joi.string().uri().required(),
   price: Joi.number().min(0).required(),
-  description: Joi.string().allow('', null),
+  description: Joi.string().max(5000).allow('', null),
   discountPercent: Joi.number().min(0).max(100).allow(null),
   requireOption: Joi.array().items(JOI_ITEM_OPTION).default([]),
   additionalOption: Joi.array().items(JOI_ITEM_OPTION).default([]),
@@ -147,9 +148,18 @@ const JOI_LIST_ITEM_CURSOR = Joi.object<QueryListItemCursorArgs>({
 
 export const resolverItem: Resolvers = {
   Query: {
-    listItem: publicWrapper(JOI_LIST_ITEM, async (_root, _args) => {
+    listItem: publicWrapper(
+      JOI_LIST_ITEM,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
       const { offset, limit, query } = _args;
       const sort = sortQuery(query);
+
+      // Short-TTL cache (30s) for item list — reduces DB load on high-traffic public endpoints.
+      const cacheKey = `all:${offset}:${limit}:${JSON.stringify(sort)}`;
+      const cached = await RedisHelper.item.itemListGet(cacheKey);
+      if (cached) {
+        return JSON.parse(cached);
+      }
 
       const [listItem, total] = await Promise.all([
         ItemModel.find({ isDeleted: false })
@@ -161,16 +171,22 @@ export const resolverItem: Resolvers = {
         ItemModel.countDocuments({ isDeleted: false }),
       ]);
 
-      return {
+      const result = {
         offset,
         limit,
         query,
         total,
         records: listItem.map(toItemResponse),
       };
-    }),
 
-    listItemByCategory: publicWrapper(JOI_ITEM_BY_CATEGORY_ID, async (_root, _args) => {
+      await RedisHelper.item.itemListSet(cacheKey, JSON.stringify(result));
+
+      return result;
+    }, 'ip:query')),
+
+    listItemByCategory: publicWrapper(
+      JOI_ITEM_BY_CATEGORY_ID,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
       const { offset = 0, limit = 20, categoryName } = _args;
       const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
       if (!category) {
@@ -194,9 +210,11 @@ export const resolverItem: Resolvers = {
         query: [],
         records: listItem.map(toItemResponse),
       };
-    }),
+    }, 'ip:query')),
 
-    listItemByStatus: publicWrapper(JOI_ITEM_BY_CATEGORY_STATUS, async (_root, _args) => {
+    listItemByStatus: publicWrapper(
+      JOI_ITEM_BY_CATEGORY_STATUS,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
       const { offset = 0, limit = 20, status } = _args;
 
       const filter = {
@@ -221,9 +239,11 @@ export const resolverItem: Resolvers = {
         query: [],
         records: listItem.map(toItemResponse),
       };
-    }),
+    }, 'ip:query')),
 
-    listItemCursor: publicWrapper(JOI_LIST_ITEM_CURSOR, async (_root, _args) => {
+    listItemCursor: publicWrapper(
+      JOI_LIST_ITEM_CURSOR,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
       // Joi defaults ensure limit is always a number after validation
       const limit = _args.limit ?? 20;
       const { cursor, categoryName, status } = _args;
@@ -270,9 +290,11 @@ export const resolverItem: Resolvers = {
         records: pageItems.map(toItemResponse),
         pageInfo: { hasMore, nextCursor },
       };
-    }),
+    }, 'ip:query')),
 
-    itemById: publicWrapper(JOI_ITEM_BY_ID, async (_root, _args) => {
+    itemById: publicWrapper(
+      JOI_ITEM_BY_ID,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
       const { itemId } = _args;
       const cacheItemById = await RedisHelper.item.itemByIdGet(itemId);
       if (cacheItemById) {
@@ -315,7 +337,7 @@ export const resolverItem: Resolvers = {
 
       await RedisHelper.item.itemByIdSet(response);
       return response;
-    }),
+    }, 'ip:query')),
   },
 
   Mutation: {
@@ -358,6 +380,7 @@ export const resolverItem: Resolvers = {
 
         const response = toItemResponse(item);
         await RedisHelper.item.itemByIdSet(response);
+        await RedisHelper.item.itemListInvalidate();
 
         // Fire-and-forget: do not await to avoid blocking the response
         logAudit({
@@ -407,6 +430,7 @@ export const resolverItem: Resolvers = {
 
         const response = toItemResponse(item);
         await RedisHelper.item.itemByIdSet(response);
+        await RedisHelper.item.itemListInvalidate();
 
         // Fire-and-forget: do not await to avoid blocking the response
         logAudit({
@@ -430,6 +454,7 @@ export const resolverItem: Resolvers = {
           throw new NotFoundError('Item not found');
         }
         await RedisHelper.item.itemByIdDel(itemId);
+        await RedisHelper.item.itemListInvalidate();
 
         // Fire-and-forget: do not await to avoid blocking the response
         logAudit({

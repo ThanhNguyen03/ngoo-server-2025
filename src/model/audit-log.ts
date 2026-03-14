@@ -1,7 +1,7 @@
 import mongoose, { Document, model, Schema } from 'mongoose';
 
 export type TAuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'PAYMENT' | 'OTHER';
-export type TTargetType = 'User' | 'Item' | 'Order' | 'Category' | 'Transaction' | 'System';
+export type TTargetType = 'User' | 'Item' | 'Order' | 'Category' | 'Payment' | 'Transaction' | 'System';
 
 export type TAuditDiff = {
   oldValue?: Record<string, unknown>;
@@ -33,7 +33,7 @@ const AuditLogSchema = new Schema<IAuditLog>(
     },
     targetType: {
       type: String,
-      enum: ['User', 'Item', 'Order', 'Category', 'Transaction', 'System'],
+      enum: ['User', 'Item', 'Order', 'Category', 'Payment', 'Transaction', 'System'],
       required: true,
     },
     targetId: { type: String, required: false },

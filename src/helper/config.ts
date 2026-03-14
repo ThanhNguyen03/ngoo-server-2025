@@ -23,9 +23,9 @@ const envSchema = Joi.object({
   NODE_ENV: Joi.string().valid('local', 'test', 'prod').required(),
   FE_ALLOWED_URL: Joi.string().uri().required(),
 
-  // secret
-  JWT_SECRET_KEY: Joi.string().required(),
-  EXPRESS_SESSION_SECRET: Joi.string().required(),
+  // secret — HS256 requires at least 256 bits (32 bytes) for cryptographic security
+  JWT_SECRET_KEY: Joi.string().min(32).required(),
+  EXPRESS_SESSION_SECRET: Joi.string().min(32).required(),
 
   // authen
   GOOGLE_CLIENT_ID: Joi.string().required(),
@@ -52,22 +52,31 @@ const envSchema = Joi.object({
 
   // --- Crypto Payment ---
   CRYPTO_PAYMENT_ENABLED: Joi.boolean().default(false),
-  BNB_RPC_URL: Joi.string().when('CRYPTO_PAYMENT_ENABLED', {
-    is: true,
-    then: Joi.required(),
-    otherwise: Joi.optional(),
-  }),
-  NGOO_CONTRACT_ADDRESS: Joi.string().when('CRYPTO_PAYMENT_ENABLED', {
-    is: true,
-    then: Joi.required(),
-    otherwise: Joi.optional(),
-  }),
+  // Must use HTTPS or WSS to prevent RPC traffic interception
+  BNB_RPC_URL: Joi.string()
+    .uri({ scheme: ['https', 'wss'] })
+    .when('CRYPTO_PAYMENT_ENABLED', {
+      is: true,
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    }),
+  // Must be a valid ERC-55 address (0x + 40 hex chars)
+  NGOO_CONTRACT_ADDRESS: Joi.string()
+    .pattern(/^0x[0-9a-fA-F]{40}$/)
+    .when('CRYPTO_PAYMENT_ENABLED', {
+      is: true,
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    }),
   NGOO_CHAIN_ID: Joi.number().default(97),
-  NGOO_SIGNER: Joi.string().when('CRYPTO_PAYMENT_ENABLED', {
-    is: true,
-    then: Joi.required(),
-    otherwise: Joi.optional(),
-  }),
+  // Must be a valid 32-byte hex private key (0x + 64 hex chars)
+  NGOO_SIGNER: Joi.string()
+    .pattern(/^0x[0-9a-fA-F]{64}$/)
+    .when('CRYPTO_PAYMENT_ENABLED', {
+      is: true,
+      then: Joi.required(),
+      otherwise: Joi.optional(),
+    }),
   CRYPTO_PROOF_TTL_SEC: Joi.number().optional().default(900),
   CRYPTO_BLOCK_CONFIRMATIONS: Joi.number().optional().default(5),
   CRYPTO_PRICE_CACHE_TTL_SEC: Joi.number().optional().default(60),
@@ -96,6 +105,10 @@ const envSchema = Joi.object({
   RATE_LIMIT_ADMIN_BUCKET_SIZE: Joi.number().optional().default(30),
   RATE_LIMIT_ADMIN_REFILL_RATE: Joi.number().optional().default(5),
   RATE_LIMIT_ADMIN_INTERVAL_SEC: Joi.number().optional().default(60),
+  // Public read queries (unauthenticated): 60 req/min per IP
+  RATE_LIMIT_PUBLIC_QUERY_BUCKET_SIZE: Joi.number().optional().default(60),
+  RATE_LIMIT_PUBLIC_QUERY_REFILL_RATE: Joi.number().optional().default(1),
+  RATE_LIMIT_PUBLIC_QUERY_INTERVAL_SEC: Joi.number().optional().default(60),
 
   // --- Cache TTLs (seconds) ---
   CACHE_DEFAULT_TTL_SEC: Joi.number().optional().default(3600),
@@ -107,6 +120,11 @@ const envSchema = Joi.object({
   CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC: Joi.number().optional().default(600),
   CACHE_PAYPAL_STATUS_TTL_SEC: Joi.number().optional().default(300),
   CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC: Joi.number().optional().default(604800),
+  // Short-lived caches for list queries — keeps admin dashboards snappy without
+  // hitting MongoDB on every page refresh. Invalidated on write operations.
+  CACHE_ORDER_LIST_TTL_SEC: Joi.number().optional().default(30),
+  CACHE_PAYMENT_LIST_TTL_SEC: Joi.number().optional().default(60),
+  CACHE_ITEM_LIST_TTL_SEC: Joi.number().optional().default(30),
 
   // --- Lock TTLs (milliseconds) ---
   // Increased to 60s to cover: multiple DB queries + transaction (2-3 saves) +
@@ -142,6 +160,17 @@ const { value: envVars, error } = envSchema.validate(process.env, {
 
 if (error) {
   throw new Error(`[Config validation error] ${error.details.map((d) => d.message).join(', ')}`);
+}
+
+// Warn about undeclared env vars that look like app config (possible typos in var names).
+// Filters out common OS/shell vars (lowercase or known system names) to reduce noise.
+const _knownEnvKeys = new Set(Object.keys((envSchema.describe() as { keys?: Record<string, unknown> }).keys ?? {}));
+const _unknownAppKeys = Object.keys(process.env).filter(
+  (k) => !_knownEnvKeys.has(k) && /^[A-Z][A-Z0-9_]{2,}_[A-Z0-9_]+$/.test(k),
+);
+if (_unknownAppKeys.length > 0) {
+  // Logger is not yet initialized at config load time — console.warn is intentional here
+  console.warn(`[Config] Unrecognized env vars (possible typos): ${_unknownAppKeys.join(', ')}`);
 }
 
 export const config = {
@@ -209,6 +238,9 @@ export const config = {
   RATE_LIMIT_ADMIN_BUCKET_SIZE: envVars.RATE_LIMIT_ADMIN_BUCKET_SIZE as number,
   RATE_LIMIT_ADMIN_REFILL_RATE: envVars.RATE_LIMIT_ADMIN_REFILL_RATE as number,
   RATE_LIMIT_ADMIN_INTERVAL_SEC: envVars.RATE_LIMIT_ADMIN_INTERVAL_SEC as number,
+  RATE_LIMIT_PUBLIC_QUERY_BUCKET_SIZE: envVars.RATE_LIMIT_PUBLIC_QUERY_BUCKET_SIZE as number,
+  RATE_LIMIT_PUBLIC_QUERY_REFILL_RATE: envVars.RATE_LIMIT_PUBLIC_QUERY_REFILL_RATE as number,
+  RATE_LIMIT_PUBLIC_QUERY_INTERVAL_SEC: envVars.RATE_LIMIT_PUBLIC_QUERY_INTERVAL_SEC as number,
 
   // --- Cache TTLs (seconds) ---
   CACHE_DEFAULT_TTL_SEC: envVars.CACHE_DEFAULT_TTL_SEC as number,
@@ -217,6 +249,9 @@ export const config = {
   CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC: envVars.CACHE_ORDER_LIMIT_ATTEMPT_TTL_SEC as number,
   CACHE_PAYPAL_STATUS_TTL_SEC: envVars.CACHE_PAYPAL_STATUS_TTL_SEC as number,
   CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC: envVars.CACHE_PAYPAL_WEBHOOK_IDEMPOTENCY_TTL_SEC as number,
+  CACHE_ORDER_LIST_TTL_SEC: envVars.CACHE_ORDER_LIST_TTL_SEC as number,
+  CACHE_PAYMENT_LIST_TTL_SEC: envVars.CACHE_PAYMENT_LIST_TTL_SEC as number,
+  CACHE_ITEM_LIST_TTL_SEC: envVars.CACHE_ITEM_LIST_TTL_SEC as number,
 
   // --- Lock TTLs (milliseconds) ---
   LOCK_PAYMENT_TTL_MS: envVars.LOCK_PAYMENT_TTL_MS as number,

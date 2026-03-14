@@ -43,6 +43,11 @@ export const RATE_LIMIT_CONFIGS = {
     refillRate: config.RATE_LIMIT_ADMIN_REFILL_RATE,
     refillInterval: config.RATE_LIMIT_ADMIN_INTERVAL_SEC,
   },
+  PUBLIC_QUERY: {
+    bucketSize: config.RATE_LIMIT_PUBLIC_QUERY_BUCKET_SIZE,
+    refillRate: config.RATE_LIMIT_PUBLIC_QUERY_REFILL_RATE,
+    refillInterval: config.RATE_LIMIT_PUBLIC_QUERY_INTERVAL_SEC,
+  },
 };
 
 /**
@@ -119,14 +124,21 @@ export function rateLimitWrapper<TArgs, TResult>(
  * IP-based rate limit wrapper for public (unauthenticated) resolvers.
  * Must be used inside a `publicWrapper` as the resolver argument.
  * The context must have `ip` set (done in the Apollo context factory).
+ *
+ * @param rateLimitConfig - Token bucket configuration
+ * @param resolver - The resolver to rate-limit
+ * @param keyPrefix - Redis key namespace (default: 'ip:public'). Use distinct
+ *   prefixes to keep separate buckets per endpoint category (e.g. 'ip:auth',
+ *   'ip:query') so one category's traffic cannot exhaust another's allowance.
  */
 export function publicRateLimitWrapper<TArgs, TResult>(
   rateLimitConfig: RateLimitConfig,
   resolver: THandler<TArgs, TGuestContext, TResult>,
+  keyPrefix = 'ip:public',
 ): THandler<TArgs, TGuestContext, TResult> {
   return async (root: unknown, args: TArgs, context: TGuestContext, info: GraphQLResolveInfo): Promise<TResult> => {
     const ip = context.ip ?? 'unknown';
-    const result = await RedisHelper.rateLimit.tokenBucketConsume(`ip:auth:${ip}`, rateLimitConfig);
+    const result = await RedisHelper.rateLimit.tokenBucketConsume(`${keyPrefix}:${ip}`, rateLimitConfig);
 
     if (!result.allowed) {
       const minutes = Math.ceil(result.resetIn / 60);
