@@ -48,5 +48,8 @@ type Mutation {
   userConnectCryptoWallet(signature: String!, address: String!): TConnectCryptoWalletResponse!
   userLogout(logoutEverywhere: Boolean): Boolean!
 
+  userLinkCredential(password: String!): TUserInfoResponse!
+  userLinkGoogle(token: String!): TUserInfoResponse!
+
   userUpdateInfo(userInfo: TUserInfoInput!): TUserInfoResponse!
 }
