@@ -24,7 +24,7 @@ import {
 } from '@helper';
 import { createLogger, NotFoundError, PaymentError, RateLimitError, ValidationError } from '@lib';
 import { EBehaviorEvent, ItemModel, OrderModel, PaymentModel, TOrder, UserBehaviorModel } from '@model';
-import { cryptoPaymentService, getOrCacheUserInfo, paypalService, type ICryptoPaymentProof } from '@service';
+import { cryptoPaymentService, getOrCacheUserInfo, logAudit, paypalService, type ICryptoPaymentProof } from '@service';
 import { randomUUID } from 'crypto';
 import Joi from 'joi';
 import mongoose from 'mongoose';
@@ -382,6 +382,15 @@ export const resolverOrder: Resolvers = {
 
         // Invalidate admin order list cache after successful creation
         await RedisHelper.order.orderListInvalidate();
+
+        // Fire-and-forget: audit log for order creation
+        logAudit({
+          userId,
+          action: 'CREATE',
+          targetType: 'Order',
+          targetId: orderId,
+          metadata: { paymentMethod: input.paymentMethod, totalPrice },
+        });
 
         // Fire-and-forget: track PURCHASE events for the recommendation engine.
         // Runs after the order is committed — never blocks the response.

@@ -121,6 +121,7 @@ export enum ETargetType {
   Category = 'Category',
   Item = 'Item',
   Order = 'Order',
+  Payment = 'Payment',
   System = 'System',
   Transaction = 'Transaction',
   User = 'User'
