@@ -58,6 +58,12 @@ export type CreateOrderInput = {
   userInfo: UserInfoSnapshotInput;
 };
 
+export enum EBehaviorEvent {
+  AddToCart = 'ADD_TO_CART',
+  Purchase = 'PURCHASE',
+  View = 'VIEW'
+}
+
 export enum EAuditAction {
   Create = 'CREATE',
   Delete = 'DELETE',
@@ -126,6 +132,17 @@ export type ItemOptionInput = {
   name: Scalars['String']['input'];
 };
 
+export type TrackBehaviorInput = {
+  event: EBehaviorEvent;
+  itemId: Scalars['String']['input'];
+};
+
+export type TRecommendationResponse = {
+  __typename?: 'TRecommendationResponse';
+  records: Array<TItemResponse>;
+  source: Scalars['String']['output'];
+};
+
 export type Mutation = {
   __typename?: 'Mutation';
   approveCODPayment: TPaymentResponse;
@@ -138,6 +155,7 @@ export type Mutation = {
   refreshToken: TUserAuth;
   updateCategory: TCategory;
   updateItem: TItemResponse;
+  trackBehavior: Scalars['Boolean']['output'];
   userConnectCryptoWallet: TConnectCryptoWalletResponse;
   userLinkCredential: TUserInfoResponse;
   userLinkGoogle: TUserInfoResponse;
@@ -145,6 +163,11 @@ export type Mutation = {
   userLogout: Scalars['Boolean']['output'];
   userRegister: TUserAuth;
   userUpdateInfo: TUserInfoResponse;
+};
+
+
+export type MutationTrackBehaviorArgs = {
+  input: TrackBehaviorInput;
 };
 
 
@@ -253,6 +276,7 @@ export type Query = {
   __typename?: 'Query';
   cryptoWalletWithNonce: Scalars['String']['output'];
   getAllOrder: TListOrderResponse;
+  recommendations: TRecommendationResponse;
   hotSearchTerms: Array<THotSearchTerm>;
   searchItems: TSearchItemResponse;
   getAuditLog?: Maybe<TAuditLog>;
@@ -268,6 +292,11 @@ export type Query = {
   listUserPaymentHistory: TListPaymentUserResponse;
   paymentUserHistory: TUserPaymentResponse;
   userInfo: TUserInfoResponse;
+};
+
+
+export type QueryRecommendationsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -731,6 +760,7 @@ export type ResolversTypes = {
   CreateOrderInput: CreateOrderInput;
   EAuditAction: EAuditAction;
   EAuthMethod: EAuthMethod;
+  EBehaviorEvent: EBehaviorEvent;
   EItemStatus: EItemStatus;
   EOrderStatus: EOrderStatus;
   EPaymentMethod: EPaymentMethod;
@@ -767,6 +797,8 @@ export type ResolversTypes = {
   TListPaymentResponse: ResolverTypeWrapper<TListPaymentResponse>;
   TListPaymentUserResponse: ResolverTypeWrapper<TListPaymentUserResponse>;
   TOrderItem: ResolverTypeWrapper<TOrderItem>;
+  TRecommendationResponse: ResolverTypeWrapper<TRecommendationResponse>;
+  TrackBehaviorInput: TrackBehaviorInput;
   TOrderResponse: ResolverTypeWrapper<TOrderResponse>;
   TPaymentResponse: ResolverTypeWrapper<TPaymentResponse>;
   TPaymentSocketResponse: ResolverTypeWrapper<TPaymentSocketResponse>;
@@ -819,6 +851,8 @@ export type ResolversParentTypes = {
   TListPaymentResponse: TListPaymentResponse;
   TListPaymentUserResponse: TListPaymentUserResponse;
   TOrderItem: TOrderItem;
+  TRecommendationResponse: TRecommendationResponse;
+  TrackBehaviorInput: TrackBehaviorInput;
   TOrderResponse: TOrderResponse;
   TPaymentResponse: TPaymentResponse;
   TPaymentSocketResponse: TPaymentSocketResponse;
@@ -836,6 +870,7 @@ export type ResolversParentTypes = {
 
 export type MutationResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Mutation'] = ResolversParentTypes['Mutation']> = {
   approveCODPayment?: Resolver<ResolversTypes['TPaymentResponse'], ParentType, ContextType, RequireFields<MutationApproveCodPaymentArgs, 'paymentInput'>>;
+  trackBehavior?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationTrackBehaviorArgs, 'input'>>;
   createAuditLog?: Resolver<ResolversTypes['TAuditLog'], ParentType, ContextType, RequireFields<MutationCreateAuditLogArgs, 'input'>>;
   createCategory?: Resolver<ResolversTypes['TCategory'], ParentType, ContextType, RequireFields<MutationCreateCategoryArgs, 'name'>>;
   createItem?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<MutationCreateItemArgs, 'input'>>;
@@ -860,6 +895,7 @@ export interface ObjectScalarConfig extends GraphQLScalarTypeConfig<ResolversTyp
 
 export type QueryResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['Query'] = ResolversParentTypes['Query']> = {
   cryptoWalletWithNonce?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+  recommendations?: Resolver<ResolversTypes['TRecommendationResponse'], ParentType, ContextType, Partial<QueryRecommendationsArgs>>;
   getAllOrder?: Resolver<ResolversTypes['TListOrderResponse'], ParentType, ContextType, RequireFields<QueryGetAllOrderArgs, 'orderId'>>;
   hotSearchTerms?: Resolver<Array<ResolversTypes['THotSearchTerm']>, ParentType, ContextType, Partial<QueryHotSearchTermsArgs>>;
   searchItems?: Resolver<ResolversTypes['TSearchItemResponse'], ParentType, ContextType, RequireFields<QuerySearchItemsArgs, 'search'>>;
@@ -1068,6 +1104,11 @@ export type TQueryByResolvers<ContextType = TAppContext, ParentType extends Reso
   sort?: Resolver<Maybe<ResolversTypes['ESort']>, ParentType, ContextType>;
 };
 
+export type TRecommendationResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TRecommendationResponse'] = ResolversParentTypes['TRecommendationResponse']> = {
+  records?: Resolver<Array<ResolversTypes['TItemResponse']>, ParentType, ContextType>;
+  source?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
+};
+
 export type TUserAuthResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserAuth'] = ResolversParentTypes['TUserAuth']> = {
   accessToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   refreshToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -1136,6 +1177,7 @@ export type Resolvers<ContextType = TAppContext> = {
   TPaymentSocketResponse?: TPaymentSocketResponseResolvers<ContextType>;
   TPaypalPayment?: TPaypalPaymentResolvers<ContextType>;
   TQueryBy?: TQueryByResolvers<ContextType>;
+  TRecommendationResponse?: TRecommendationResponseResolvers<ContextType>;
   TUserAuth?: TUserAuthResolvers<ContextType>;
   TUserInfoResponse?: TUserInfoResponseResolvers<ContextType>;
   TUserInfoSnapshot?: TUserInfoSnapshotResolvers<ContextType>;

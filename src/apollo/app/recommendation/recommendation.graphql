@@ -1,0 +1,24 @@
+enum EBehaviorEvent {
+  VIEW
+  ADD_TO_CART
+  PURCHASE
+}
+
+input TrackBehaviorInput {
+  itemId: String!
+  event: EBehaviorEvent!
+}
+
+type TRecommendationResponse {
+  records: [TItemResponse!]!
+  # "personalized" | "hot_search" | "best_seller"
+  source: String!
+}
+
+type Query {
+  recommendations(limit: Int): TRecommendationResponse!
+}
+
+type Mutation {
+  trackBehavior(input: TrackBehaviorInput!): Boolean!
+}

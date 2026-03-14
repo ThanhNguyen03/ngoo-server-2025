@@ -4,4 +4,5 @@ export * from './item';
 export * from './order';
 export * from './payment';
 export * from './user';
+export * from './user-behavior';
 export * from './user-info';

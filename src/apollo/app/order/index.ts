@@ -23,7 +23,7 @@ import {
   TPagination,
 } from '@helper';
 import { createLogger, NotFoundError, PaymentError, RateLimitError, ValidationError } from '@lib';
-import { ItemModel, OrderModel, PaymentModel, TOrder } from '@model';
+import { EBehaviorEvent, ItemModel, OrderModel, PaymentModel, TOrder, UserBehaviorModel } from '@model';
 import { cryptoPaymentService, getOrCacheUserInfo, paypalService, type ICryptoPaymentProof } from '@service';
 import { randomUUID } from 'crypto';
 import Joi from 'joi';
@@ -382,6 +382,29 @@ export const resolverOrder: Resolvers = {
 
         // Invalidate admin order list cache after successful creation
         await RedisHelper.order.orderListInvalidate();
+
+        // Fire-and-forget: track PURCHASE events for the recommendation engine.
+        // Runs after the order is committed — never blocks the response.
+        // Uses a separate populate query to get categoryName without touching the main flow.
+        ItemModel.find({ itemId: { $in: itemIds } })
+          .populate<{ category: { name: string } }>('category', 'name')
+          .lean()
+          .then((populatedItems) => {
+            const behaviors = populatedItems
+              .filter((p) => (p as unknown as { category?: { name: string } }).category?.name)
+              .map((p) => ({
+                userId,
+                itemId: p.itemId,
+                categoryName: (p as unknown as { category: { name: string } }).category.name,
+                event: EBehaviorEvent.PURCHASE,
+              }));
+            return Promise.all([
+              UserBehaviorModel.insertMany(behaviors),
+              // Invalidate the user's recommendation cache so next visit reflects the purchase
+              RedisHelper.recommendation.userRecsDel(userId),
+            ]);
+          })
+          .catch(() => undefined);
 
         return {
           orderId,

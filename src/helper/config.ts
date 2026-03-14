@@ -109,6 +109,10 @@ const envSchema = Joi.object({
   RATE_LIMIT_PUBLIC_QUERY_BUCKET_SIZE: Joi.number().optional().default(60),
   RATE_LIMIT_PUBLIC_QUERY_REFILL_RATE: Joi.number().optional().default(1),
   RATE_LIMIT_PUBLIC_QUERY_INTERVAL_SEC: Joi.number().optional().default(60),
+  // Behavior tracking (authenticated): 30 events/min, refill 5/min
+  RATE_LIMIT_BEHAVIOR_BUCKET_SIZE: Joi.number().optional().default(30),
+  RATE_LIMIT_BEHAVIOR_REFILL_RATE: Joi.number().optional().default(5),
+  RATE_LIMIT_BEHAVIOR_INTERVAL_SEC: Joi.number().optional().default(60),
 
   // --- Cache TTLs (seconds) ---
   CACHE_DEFAULT_TTL_SEC: Joi.number().optional().default(3600),
@@ -126,6 +130,8 @@ const envSchema = Joi.object({
   CACHE_PAYMENT_LIST_TTL_SEC: Joi.number().optional().default(60),
   CACHE_ITEM_LIST_TTL_SEC: Joi.number().optional().default(30),
   CACHE_SEARCH_RESULT_TTL_SEC: Joi.number().optional().default(15),
+  // Recommendation cache — 5 min per user; same TTL for anonymous fallback
+  CACHE_RECOMMENDATION_TTL_SEC: Joi.number().optional().default(300),
 
   // --- Lock TTLs (milliseconds) ---
   // Increased to 60s to cover: multiple DB queries + transaction (2-3 saves) +
@@ -242,6 +248,9 @@ export const config = {
   RATE_LIMIT_PUBLIC_QUERY_BUCKET_SIZE: envVars.RATE_LIMIT_PUBLIC_QUERY_BUCKET_SIZE as number,
   RATE_LIMIT_PUBLIC_QUERY_REFILL_RATE: envVars.RATE_LIMIT_PUBLIC_QUERY_REFILL_RATE as number,
   RATE_LIMIT_PUBLIC_QUERY_INTERVAL_SEC: envVars.RATE_LIMIT_PUBLIC_QUERY_INTERVAL_SEC as number,
+  RATE_LIMIT_BEHAVIOR_BUCKET_SIZE: envVars.RATE_LIMIT_BEHAVIOR_BUCKET_SIZE as number,
+  RATE_LIMIT_BEHAVIOR_REFILL_RATE: envVars.RATE_LIMIT_BEHAVIOR_REFILL_RATE as number,
+  RATE_LIMIT_BEHAVIOR_INTERVAL_SEC: envVars.RATE_LIMIT_BEHAVIOR_INTERVAL_SEC as number,
 
   // --- Cache TTLs (seconds) ---
   CACHE_DEFAULT_TTL_SEC: envVars.CACHE_DEFAULT_TTL_SEC as number,
@@ -254,6 +263,7 @@ export const config = {
   CACHE_PAYMENT_LIST_TTL_SEC: envVars.CACHE_PAYMENT_LIST_TTL_SEC as number,
   CACHE_ITEM_LIST_TTL_SEC: envVars.CACHE_ITEM_LIST_TTL_SEC as number,
   CACHE_SEARCH_RESULT_TTL_SEC: envVars.CACHE_SEARCH_RESULT_TTL_SEC as number,
+  CACHE_RECOMMENDATION_TTL_SEC: envVars.CACHE_RECOMMENDATION_TTL_SEC as number,
 
   // --- Lock TTLs (milliseconds) ---
   LOCK_PAYMENT_TTL_MS: envVars.LOCK_PAYMENT_TTL_MS as number,

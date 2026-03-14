@@ -23,6 +23,7 @@ export const RedisHelperItem = RedisHelperDerive<
   'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById' | 'itemList'
 >(RedisInstance);
 export const RedisHelperSearch = RedisHelperDerive<'searchResult' | 'hotSearch'>(RedisInstance);
+export const RedisHelperRecommendation = RedisHelperDerive<'userRecs' | 'anonRecs' | 'viewDedup'>(RedisInstance);
 export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'orderLimit' | 'orderList'>(RedisInstance);
 export const RedisHelperPayment = RedisHelperDerive<'paymentList'>(RedisInstance);
 export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
@@ -319,6 +320,46 @@ export const RedisHelper = {
     hotSearchGetTop: async (limit: number): Promise<Array<{ term: string; score: number }>> => {
       const results = await RedisHelperSearch.hotSearch('terms').zRevRangeWithScores(0, limit - 1);
       return results.map(({ value, score }) => ({ term: value, score }));
+    },
+  },
+
+  recommendation: {
+    /** Get cached personalized recommendations for an authenticated user. */
+    userRecsGet: async (userId: string): Promise<string | null> => {
+      return RedisHelperRecommendation.userRecs(userId).get();
+    },
+
+    /** Cache personalized recommendations for a user with 5-min TTL. */
+    userRecsSet: async (userId: string, value: string): Promise<void> => {
+      await RedisHelperRecommendation.userRecs(userId).set(value, config.CACHE_RECOMMENDATION_TTL_SEC);
+    },
+
+    /** Invalidate a user's recommendation cache (called after PURCHASE). */
+    userRecsDel: async (userId: string): Promise<void> => {
+      await RedisHelperRecommendation.userRecs(userId).delete();
+    },
+
+    /** Get cached anonymous/fallback recommendations (same for all unauthenticated users). */
+    anonRecsGet: async (): Promise<string | null> => {
+      return RedisHelperRecommendation.anonRecs('global').get();
+    },
+
+    /** Cache anonymous recommendations with 5-min TTL. */
+    anonRecsSet: async (value: string): Promise<void> => {
+      await RedisHelperRecommendation.anonRecs('global').set(value, config.CACHE_RECOMMENDATION_TTL_SEC);
+    },
+
+    /**
+     * Check VIEW dedup key — prevents recording more than 1 VIEW per user per item per 30s.
+     * Returns true if this VIEW should be skipped (already tracked recently).
+     */
+    viewDedupCheck: async (userId: string, itemId: string): Promise<boolean> => {
+      const key = RedisHelperRecommendation.viewDedup(`${userId}:${itemId}`);
+      const exists = await key.get();
+      if (exists) return true;
+      // Not found — record this VIEW, expire after 30s
+      await key.set('1', 30);
+      return false;
     },
   },
 
