@@ -3,6 +3,8 @@ import {
   ERole,
   MutationRefreshTokenArgs,
   MutationUserConnectCryptoWalletArgs,
+  MutationUserLinkCredentialArgs,
+  MutationUserLinkGoogleArgs,
   MutationUserLoginArgs,
   MutationUserLogoutArgs,
   MutationUserRegisterArgs,
@@ -18,6 +20,7 @@ import {
   publicRateLimitWrapper,
   publicWrapper,
   RATE_LIMIT_CONFIGS,
+  rateLimitWrapper,
   RedisHelper,
   TGoogleTokenPayload,
   TRefreshTokenPayload,
@@ -77,6 +80,14 @@ const JOI_USER_CONNECT_CRYPTO_WALLET = Joi.object<MutationUserConnectCryptoWalle
       throw new Error('Signature invalid');
     }),
   address: JOI_ERC55_ADDRESS.required(),
+});
+
+const JOI_USER_LINK_CREDENTIAL = Joi.object<MutationUserLinkCredentialArgs>({
+  password: JOI_PASSWORD.required(),
+});
+
+const JOI_USER_LINK_GOOGLE = Joi.object<MutationUserLinkGoogleArgs>({
+  token: Joi.string().required(),
 });
 
 const JOI_USER_UPDATE_INFO = Joi.object<MutationUserUpdateInfoArgs>({
@@ -577,6 +588,113 @@ export const resolverUser: Resolvers = {
         walletAddress: recoveredAddress.toLowerCase(),
       };
     }),
+
+    /**
+     * Link a password (credential auth) to an existing account.
+     * Only allowed if the user does not already have CREDENTIAL in authMethods.
+     * Typical use: a Google-only user wants to also log in via email/password.
+     */
+    userLinkCredential: authorizedWrapper(
+      JOI_USER_LINK_CREDENTIAL,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.AUTH, async (_root, args, context) => {
+        const { userId } = context.user;
+        const { password } = args;
+
+        const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+        if (!user) {
+          throw new NotFoundError('User not found');
+        }
+
+        if (user.authMethods.includes(EAuthMethod.Credential)) {
+          throw new ConflictError('Credential auth method is already linked');
+        }
+
+        const hashedPassword = await hash(password, { type: 2, salt: randomBytes(16) });
+
+        user.password = hashedPassword;
+        user.authMethods.push(EAuthMethod.Credential);
+        await user.save();
+
+        // Invalidate user info cache so authMethods reflect the new method
+        await RedisHelper.account.userInfoDel(userId);
+
+        logAudit({
+          userId,
+          action: 'UPDATE',
+          targetType: 'User',
+          targetId: userId,
+          metadata: { event: 'userLinkCredential' },
+        });
+
+        return {
+          uuid: user.uuid,
+          email: user.email,
+          name: user.userInfo.name,
+          authMethods: user.authMethods,
+          walletAddress: user.userInfo.walletAddress,
+          address: user.userInfo.address,
+          phoneNumber: user.userInfo.phoneNumber,
+        };
+      }),
+    ),
+
+    /**
+     * Link a Google account to an existing credential-only account.
+     * Verifies the Google token and checks that the Google email matches the
+     * account email — prevents linking a Google account you don't own.
+     */
+    userLinkGoogle: authorizedWrapper(
+      JOI_USER_LINK_GOOGLE,
+      rateLimitWrapper(RATE_LIMIT_CONFIGS.AUTH, async (_root, args, context) => {
+        const { userId } = context.user;
+        const { token } = args;
+
+        const user = await UserModel.findOne({ uuid: userId }).populate<{ userInfo: TUserInfo }>('userInfo').exec();
+        if (!user) {
+          throw new NotFoundError('User not found');
+        }
+
+        if (user.authMethods.includes(EAuthMethod.Google)) {
+          throw new ConflictError('Google auth method is already linked');
+        }
+
+        // Verify Google ID token and extract email
+        const { payload } = await JWTAuthentication.verifyGoogleId<TGoogleTokenPayload>(token, config.GOOGLE_CLIENT_ID);
+        if (!payload || !payload.email || !payload.email_verified) {
+          throw new AuthenticationError('Invalid Google token');
+        }
+
+        // The Google email must match the account email to prevent cross-account linking.
+        // A user with email@example.com cannot link someone-else@example.com's Google account.
+        if (payload.email.toLowerCase() !== user.email.toLowerCase()) {
+          throw new AuthenticationError('Google account email does not match your account email');
+        }
+
+        user.authMethods.push(EAuthMethod.Google);
+        await user.save();
+
+        // Invalidate user info cache so authMethods reflect the new method
+        await RedisHelper.account.userInfoDel(userId);
+
+        logAudit({
+          userId,
+          action: 'UPDATE',
+          targetType: 'User',
+          targetId: userId,
+          metadata: { event: 'userLinkGoogle', googleEmail: payload.email },
+        });
+
+        return {
+          uuid: user.uuid,
+          email: user.email,
+          name: user.userInfo.name,
+          authMethods: user.authMethods,
+          walletAddress: user.userInfo.walletAddress,
+          address: user.userInfo.address,
+          phoneNumber: user.userInfo.phoneNumber,
+        };
+      }),
+    ),
 
     userUpdateInfo: authorizedWrapper(JOI_USER_UPDATE_INFO, async (_root, _args, context) => {
       const { userId, role } = context.user;
