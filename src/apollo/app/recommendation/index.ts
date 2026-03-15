@@ -21,6 +21,7 @@
  */
 import {
   EItemStatus,
+  ERecommendationSource,
   MutationTrackBehaviorArgs,
   QueryRecommendationsArgs,
   Resolvers,
@@ -35,9 +36,12 @@ import {
   rateLimitWrapper,
   RedisHelper,
 } from '@helper';
-import { NotFoundError, RateLimitError } from '@lib';
-import { EBehaviorEvent, ItemModel, UserBehaviorModel } from '@model';
+import { createLogger, NotFoundError, RateLimitError } from '@lib';
+import { CategoryModel, EBehaviorEvent, ItemModel, UserBehaviorModel } from '@model';
 import Joi from 'joi';
+import { toItemResponse, type TItemMappable } from '../item';
+
+const logger = createLogger('RecommendationResolver');
 
 // ─── Joi Schemas ──────────────────────────────────────────────────────────────
 
@@ -62,72 +66,44 @@ const BEHAVIOR_WEIGHTS: Record<EBehaviorEvent, number> = {
   [EBehaviorEvent.VIEW]: 1,
 };
 
-/**
- * Map a Mongoose item document (with populated category) to the GraphQL TItemResponse type.
- * Mirrors the mapper in src/apollo/app/item/index.ts — inline here to avoid circular imports.
- */
-const toItemResponse = (item: {
-  itemId: string;
-  name: string;
-  image: string;
-  price: number;
-  description: string;
-  discountPercent?: number;
-  requireOption: { group: string; name: string; extraPrice?: number }[];
-  additionalOption?: { group: string; name: string; extraPrice?: number }[];
-  status?: string[];
-  category: { name: string };
-  createdAt: Date;
-  updatedAt: Date;
-}): TItemResponse => ({
-  itemId: item.itemId,
-  name: item.name,
-  image: item.image,
-  price: item.price,
-  description: item.description,
-  discountPercent: item.discountPercent,
-  requireOption: item.requireOption,
-  additionalOption: item.additionalOption,
-  // Lean query returns string[] — EItemStatus values are strings so this cast is safe
-  status: item.status as EItemStatus[] | undefined,
-  categoryName: item.category.name,
-  createdAt: item.createdAt.getTime(),
-  updatedAt: item.updatedAt.getTime(),
-});
+/** Escape regex special characters to prevent ReDoS when building $regex from hot search terms. */
+const escapeRegex = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // ─── Anonymous / cold-start fallback recommendations ──────────────────────────
 /**
  * Returns hot-search–driven or best-seller items for anonymous/new users.
- * Cached globally for 5 min — all unauthenticated users share the same response.
+ * Cached globally (per limit) for 5 min — all unauthenticated users share the same response.
  */
 async function getAnonRecommendations(limit: number): Promise<TRecommendationResponse> {
-  // Check global anonymous cache first
-  const cached = await RedisHelper.recommendation.anonRecsGet();
+  // Check global anonymous cache first (keyed by limit to avoid cross-limit collisions)
+  const cached = await RedisHelper.recommendation.anonRecsGet(limit);
   if (cached) {
     return JSON.parse(cached) as TRecommendationResponse;
   }
 
   const itemMap = new Map<string, ReturnType<typeof toItemResponse>>();
 
-  // Phase 1: items matching hot search terms (from Phase 4A hot-search service)
+  // Phase 1: items matching hot search terms — batched into a single $or query
+  // to avoid sequential DB round-trips per term.
   const hotTerms = await RedisHelper.search.hotSearchGetTop(5);
   if (hotTerms.length > 0) {
-    for (const { term } of hotTerms) {
-      if (itemMap.size >= limit) break;
-      const items = await ItemModel.find({
-        name: { $regex: term, $options: 'i' },
-        isDeleted: false,
-      })
-        .populate<{ category: { name: string } }>('category', 'name')
-        .lean()
-        .limit(limit);
+    const regexConditions = hotTerms.map(({ term }) => ({
+      name: { $regex: escapeRegex(term), $options: 'i' },
+    }));
 
-      for (const item of items) {
-        if (!itemMap.has(item.itemId)) {
-          itemMap.set(item.itemId, toItemResponse(item as Parameters<typeof toItemResponse>[0]));
-        }
-        if (itemMap.size >= limit) break;
+    const items = await ItemModel.find({
+      $or: regexConditions,
+      isDeleted: false,
+    })
+      .populate<{ category: { name: string } }>('category', 'name')
+      .lean()
+      .limit(limit);
+
+    for (const item of items) {
+      if (!itemMap.has(item.itemId)) {
+        itemMap.set(item.itemId, toItemResponse(item as TItemMappable));
       }
+      if (itemMap.size >= limit) break;
     }
   }
 
@@ -143,17 +119,17 @@ async function getAnonRecommendations(limit: number): Promise<TRecommendationRes
 
     for (const item of sellers) {
       if (!itemMap.has(item.itemId)) {
-        itemMap.set(item.itemId, toItemResponse(item as Parameters<typeof toItemResponse>[0]));
+        itemMap.set(item.itemId, toItemResponse(item as TItemMappable));
       }
     }
   }
 
   const records = Array.from(itemMap.values()).slice(0, limit);
-  const source = hotTerms.length > 0 ? 'hot_search' : 'best_seller';
+  const source = hotTerms.length > 0 ? ERecommendationSource.HotSearch : ERecommendationSource.BestSeller;
   const result: TRecommendationResponse = { records, source };
 
-  // Cache the anonymous response globally for 5 min
-  await RedisHelper.recommendation.anonRecsSet(JSON.stringify(result));
+  // Cache the anonymous response globally for 5 min (keyed by limit)
+  await RedisHelper.recommendation.anonRecsSet(limit, JSON.stringify(result));
   return result;
 }
 
@@ -207,26 +183,35 @@ async function getPersonalizedRecommendations(userId: string, limit: number): Pr
   const topCategories = categoryScores.map((c) => c._id);
   const itemMap = new Map<string, ReturnType<typeof toItemResponse>>();
 
-  // Step 3: Fetch items from preferred categories (newest first, exclude purchased)
+  // Step 3: Fetch items from preferred categories (newest first, exclude purchased).
+  // Uses a DB-level category filter to avoid over-fetching items from irrelevant categories.
   if (topCategories.length > 0) {
-    // We over-fetch slightly to account for duplicates before dedup
-    const personalizedItems = await ItemModel.find({
+    // Resolve category names → ObjectIds for efficient DB filtering
+    const categories = await CategoryModel.find({
+      name: { $in: topCategories },
       isDeleted: false,
-      itemId: { $nin: purchasedItemIds },
     })
-      .populate<{ category: { name: string } }>('category', 'name')
-      .lean()
-      .sort({ createdAt: -1 })
-      .limit(limit * 2);
+      .select('_id')
+      .lean();
+    const categoryIds = categories.map((c) => c._id);
 
-    // Filter client-side to items in preferred categories (preserves sort order)
-    const topCategorySet = new Set(topCategories);
-    for (const item of personalizedItems) {
-      const populated = item as Parameters<typeof toItemResponse>[0];
-      if (topCategorySet.has(populated.category.name) && !itemMap.has(item.itemId)) {
-        itemMap.set(item.itemId, toItemResponse(populated));
+    if (categoryIds.length > 0) {
+      const personalizedItems = await ItemModel.find({
+        isDeleted: false,
+        category: { $in: categoryIds },
+        itemId: { $nin: purchasedItemIds },
+      })
+        .populate<{ category: { name: string } }>('category', 'name')
+        .lean()
+        .sort({ createdAt: -1 })
+        .limit(limit);
+
+      for (const item of personalizedItems) {
+        if (!itemMap.has(item.itemId)) {
+          itemMap.set(item.itemId, toItemResponse(item as TItemMappable));
+        }
+        if (itemMap.size >= limit) break;
       }
-      if (itemMap.size >= limit) break;
     }
   }
 
@@ -244,7 +229,7 @@ async function getPersonalizedRecommendations(userId: string, limit: number): Pr
   const records = Array.from(itemMap.values()).slice(0, limit);
   const result: TRecommendationResponse = {
     records,
-    source: topCategories.length > 0 ? 'personalized' : 'hot_search',
+    source: topCategories.length > 0 ? ERecommendationSource.Personalized : ERecommendationSource.HotSearch,
   };
 
   // Cache per user for 5 min
@@ -300,7 +285,7 @@ export const resolverRecommendation: Resolvers = {
      * Security:
      *  - `authorizedWrapper` requires valid JWT
      *  - `rateLimitWrapper` caps at 30 events/min per user
-     *  - VIEW events are deduped via Redis (30s TTL per user+item)
+     *  - VIEW events are deduped via Redis (30s TTL per user+item, atomic SET NX)
      *  - `itemId` must exist and not be deleted — prevents tracking phantom items
      */
     trackBehavior: authorizedWrapper(
@@ -325,7 +310,7 @@ export const resolverRecommendation: Resolvers = {
           if (isDuplicate) return true;
         }
 
-        const populated = item as Parameters<typeof toItemResponse>[0];
+        const populated = item as TItemMappable;
 
         // Fire-and-forget: never block the response for a tracking write.
         // Cast through unknown to bridge the two EBehaviorEvent enum types — they share identical string values.
@@ -334,7 +319,9 @@ export const resolverRecommendation: Resolvers = {
           itemId,
           categoryName: populated.category.name,
           event: (event as unknown) as EBehaviorEvent,
-        }).catch(() => undefined);
+        }).catch((err) => {
+          logger.error({ err, userId, itemId }, 'Failed to track behavior event');
+        });
 
         return true;
       }),

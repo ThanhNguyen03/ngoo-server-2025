@@ -25,8 +25,12 @@ import {
 import { ConflictError, NotFoundError, ValidationError } from '@lib';
 import { CategoryModel, ItemModel, TCategory, TItem } from '@model';
 import { logAudit } from '@service';
+import { createHash } from 'crypto';
 import Joi from 'joi';
 import { Types } from 'mongoose';
+
+/** Escape regex special characters to prevent ReDoS when building $regex queries from user input. */
+const escapeRegex = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Encode a cursor from a document's createdAt timestamp and _id. */
 const encodeCursor = (createdAt: Date, id: Types.ObjectId): string => {
@@ -52,7 +56,7 @@ const decodeCursor = (cursor: string): { t: number; id: string } | null => {
  * (hydrated). This avoids the ObjectId vs FlattenMaps mismatch that
  * TypeScript reports when using `.lean()` with `.populate()`.
  */
-type TItemMappable = Omit<TItem, 'category'> & { category: Pick<TCategory, 'name'> };
+export type TItemMappable = Omit<TItem, 'category'> & { category: Pick<TCategory, 'name'> };
 
 /**
  * Map a Mongoose item document (with populated category) to the GraphQL
@@ -64,7 +68,7 @@ type TItemMappable = Omit<TItem, 'category'> & { category: Pick<TCategory, 'name
  *
  * @param item - Lean or hydrated item document with `category` populated.
  */
-const toItemResponse = (item: TItemMappable): TItemResponse => ({
+export const toItemResponse = (item: TItemMappable): TItemResponse => ({
   itemId: item.itemId,
   name: item.name,
   image: item.image,
@@ -140,7 +144,7 @@ const JOI_LIST_ITEM = Joi.object<Omit<TPagination, 'total'>>({
 const JOI_SEARCH_ITEMS = Joi.object({
   search: Joi.string().trim().min(1).max(100).required(),
   limit: Joi.number().integer().min(1).max(50).default(10),
-  categoryName: Joi.string().trim().min(5).max(30).allow(null),
+  categoryName: Joi.string().trim().min(1).max(30).allow(null),
 });
 
 const JOI_HOT_SEARCH = Joi.object({
@@ -358,7 +362,10 @@ export const resolverItem: Resolvers = {
           categoryName?: string | null;
         };
 
-        const cacheKey = `search:${search.toLowerCase()}:${limit}:${categoryName ?? 'all'}`;
+        // Hash the cache key to avoid collisions from special characters (e.g. ":" in search terms)
+        const cacheKey = createHash('sha256')
+          .update(`search:${search.toLowerCase()}:${limit}:${categoryName ?? 'all'}`)
+          .digest('base64url');
         const cached = await RedisHelper.search.searchResultGet(cacheKey);
         if (cached) {
           return JSON.parse(cached);
@@ -380,9 +387,11 @@ export const resolverItem: Resolvers = {
           .limit(limit ?? 10)
           .lean();
 
-        // Fall back to regex for partial-word matches (e.g. "lat" → "Latte")
+        // Fall back to regex for partial-word matches (e.g. "lat" → "Latte").
+        // User input is escaped to prevent ReDoS from crafted patterns.
         if (items.length === 0) {
-          const regex = { $regex: search, $options: 'i' };
+          const safePattern = escapeRegex(search);
+          const regex = { $regex: safePattern, $options: 'i' };
           items = await ItemModel.find({
             ...filter,
             $or: [{ name: regex }, { description: regex }],

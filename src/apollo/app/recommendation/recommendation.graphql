@@ -4,6 +4,12 @@ enum EBehaviorEvent {
   PURCHASE
 }
 
+enum ERecommendationSource {
+  PERSONALIZED
+  HOT_SEARCH
+  BEST_SELLER
+}
+
 input TrackBehaviorInput {
   itemId: String!
   event: EBehaviorEvent!
@@ -11,8 +17,7 @@ input TrackBehaviorInput {
 
 type TRecommendationResponse {
   records: [TItemResponse!]!
-  # "personalized" | "hot_search" | "best_seller"
-  source: String!
+  source: ERecommendationSource!
 }
 
 type Query {

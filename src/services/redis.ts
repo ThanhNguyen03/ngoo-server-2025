@@ -72,6 +72,18 @@ class RedisKey {
       await this.client.set(this.fullKey(), value);
     }
   }
+
+  /**
+   * Atomic SET-if-not-exists with optional TTL.
+   * Returns true if the key was set (did not exist), false if it already existed.
+   */
+  async setNX(value: string, expireSeconds?: number): Promise<boolean> {
+    const result = await this.client.set(this.fullKey(), value, {
+      NX: true,
+      ...(expireSeconds ? { EX: expireSeconds } : {}),
+    });
+    return result === 'OK';
+  }
   async expire(exp: number) {
     await this.client.expire(this.fullKey(), exp);
   }

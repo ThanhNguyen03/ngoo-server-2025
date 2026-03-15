@@ -400,11 +400,11 @@ export const resolverOrder: Resolvers = {
           .lean()
           .then((populatedItems) => {
             const behaviors = populatedItems
-              .filter((p) => (p as unknown as { category?: { name: string } }).category?.name)
+              .filter((p) => p.category?.name)
               .map((p) => ({
                 userId,
                 itemId: p.itemId,
-                categoryName: (p as unknown as { category: { name: string } }).category.name,
+                categoryName: p.category.name,
                 event: EBehaviorEvent.PURCHASE,
               }));
             return Promise.all([
@@ -413,7 +413,9 @@ export const resolverOrder: Resolvers = {
               RedisHelper.recommendation.userRecsDel(userId),
             ]);
           })
-          .catch(() => undefined);
+          .catch((err) => {
+            logger.error({ err, userId }, 'Failed to track PURCHASE behavior events');
+          });
 
         return {
           orderId,

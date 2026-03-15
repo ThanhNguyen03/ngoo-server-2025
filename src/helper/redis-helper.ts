@@ -339,27 +339,27 @@ export const RedisHelper = {
       await RedisHelperRecommendation.userRecs(userId).delete();
     },
 
-    /** Get cached anonymous/fallback recommendations (same for all unauthenticated users). */
-    anonRecsGet: async (): Promise<string | null> => {
-      return RedisHelperRecommendation.anonRecs('global').get();
+    /** Get cached anonymous/fallback recommendations (keyed by limit to avoid cross-limit collisions). */
+    anonRecsGet: async (limit: number): Promise<string | null> => {
+      return RedisHelperRecommendation.anonRecs(`global:${limit}`).get();
     },
 
-    /** Cache anonymous recommendations with 5-min TTL. */
-    anonRecsSet: async (value: string): Promise<void> => {
-      await RedisHelperRecommendation.anonRecs('global').set(value, config.CACHE_RECOMMENDATION_TTL_SEC);
+    /** Cache anonymous recommendations with 5-min TTL (keyed by limit). */
+    anonRecsSet: async (limit: number, value: string): Promise<void> => {
+      await RedisHelperRecommendation.anonRecs(`global:${limit}`).set(value, config.CACHE_RECOMMENDATION_TTL_SEC);
     },
 
     /**
-     * Check VIEW dedup key — prevents recording more than 1 VIEW per user per item per 30s.
+     * Atomic VIEW dedup — prevents recording more than 1 VIEW per user per item per 30s.
+     * Uses SET NX (set-if-not-exists) to avoid TOCTOU race conditions where two
+     * concurrent requests could both pass a GET-then-SET check.
      * Returns true if this VIEW should be skipped (already tracked recently).
      */
     viewDedupCheck: async (userId: string, itemId: string): Promise<boolean> => {
       const key = RedisHelperRecommendation.viewDedup(`${userId}:${itemId}`);
-      const exists = await key.get();
-      if (exists) return true;
-      // Not found — record this VIEW, expire after 30s
-      await key.set('1', 30);
-      return false;
+      // setNX returns true if key was set (first VIEW), false if already existed (duplicate)
+      const wasSet = await key.setNX('1', 30);
+      return !wasSet;
     },
   },
 
