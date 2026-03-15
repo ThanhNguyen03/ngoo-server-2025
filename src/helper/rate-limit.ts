@@ -48,6 +48,11 @@ export const RATE_LIMIT_CONFIGS = {
     refillRate: config.RATE_LIMIT_PUBLIC_QUERY_REFILL_RATE,
     refillInterval: config.RATE_LIMIT_PUBLIC_QUERY_INTERVAL_SEC,
   },
+  BEHAVIOR_TRACKING: {
+    bucketSize: config.RATE_LIMIT_BEHAVIOR_BUCKET_SIZE,
+    refillRate: config.RATE_LIMIT_BEHAVIOR_REFILL_RATE,
+    refillInterval: config.RATE_LIMIT_BEHAVIOR_INTERVAL_SEC,
+  },
 };
 
 /**

@@ -41,7 +41,7 @@ export const resolverCategory: Resolvers = {
           if (cachedListCategory && cachedListCategory.length > 0) {
             return cachedListCategory;
           }
-          const listCategory = await CategoryModel.find({ isDeleted: false });
+          const listCategory = await CategoryModel.find({ isDeleted: false }).lean();
           const response = listCategory.map((item) => ({ categoryId: item.categoryId, name: item.name }));
           await RedisHelper.category.categoryAllListSet(response);
 

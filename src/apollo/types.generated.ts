@@ -73,6 +73,12 @@ export enum EAuthMethod {
   Google = 'GOOGLE'
 }
 
+export enum EBehaviorEvent {
+  AddToCart = 'ADD_TO_CART',
+  Purchase = 'PURCHASE',
+  View = 'VIEW'
+}
+
 export enum EItemStatus {
   Empty = 'EMPTY',
   New = 'NEW',
@@ -101,6 +107,12 @@ export enum EPaymentStatus {
   Success = 'SUCCESS'
 }
 
+export enum ERecommendationSource {
+  BestSeller = 'BEST_SELLER',
+  HotSearch = 'HOT_SEARCH',
+  Personalized = 'PERSONALIZED'
+}
+
 export enum ERole {
   Admin = 'ADMIN',
   User = 'USER'
@@ -115,6 +127,7 @@ export enum ETargetType {
   Category = 'Category',
   Item = 'Item',
   Order = 'Order',
+  Payment = 'Payment',
   System = 'System',
   Transaction = 'Transaction',
   User = 'User'
@@ -136,6 +149,7 @@ export type Mutation = {
   deleteCategory?: Maybe<Scalars['Boolean']['output']>;
   deleteItem: Scalars['Boolean']['output'];
   refreshToken: TUserAuth;
+  trackBehavior: Scalars['Boolean']['output'];
   updateCategory: TCategory;
   updateItem: TItemResponse;
   userConnectCryptoWallet: TConnectCryptoWalletResponse;
@@ -185,6 +199,11 @@ export type MutationDeleteItemArgs = {
 
 export type MutationRefreshTokenArgs = {
   refreshToken: Scalars['String']['input'];
+};
+
+
+export type MutationTrackBehaviorArgs = {
+  input: TrackBehaviorInput;
 };
 
 
@@ -255,6 +274,7 @@ export type Query = {
   getAllOrder: TListOrderResponse;
   getAuditLog?: Maybe<TAuditLog>;
   getUserOrder: TOrderResponse;
+  hotSearchTerms: Array<THotSearchTerm>;
   itemById: TItemResponse;
   listAuditLog: TListAuditLogResponse;
   listCategory: Array<TCategory>;
@@ -265,6 +285,8 @@ export type Query = {
   listPaymentHistory: TListPaymentResponse;
   listUserPaymentHistory: TListPaymentUserResponse;
   paymentUserHistory: TUserPaymentResponse;
+  recommendations: TRecommendationResponse;
+  searchItems: TSearchItemResponse;
   userInfo: TUserInfoResponse;
 };
 
@@ -281,6 +303,11 @@ export type QueryGetAuditLogArgs = {
 
 export type QueryGetUserOrderArgs = {
   orderId: Scalars['String']['input'];
+};
+
+
+export type QueryHotSearchTermsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -344,6 +371,18 @@ export type QueryListUserPaymentHistoryArgs = {
 
 export type QueryPaymentUserHistoryArgs = {
   paymentId: Scalars['String']['input'];
+};
+
+
+export type QueryRecommendationsArgs = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
+export type QuerySearchItemsArgs = {
+  categoryName?: InputMaybe<Scalars['String']['input']>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  search: Scalars['String']['input'];
 };
 
 export type QueryByInput = {
@@ -421,6 +460,12 @@ export type TCursorPageInfo = {
   __typename?: 'TCursorPageInfo';
   hasMore: Scalars['Boolean']['output'];
   nextCursor?: Maybe<Scalars['String']['output']>;
+};
+
+export type THotSearchTerm = {
+  __typename?: 'THotSearchTerm';
+  score: Scalars['Float']['output'];
+  term: Scalars['String']['output'];
 };
 
 export type TItemOption = {
@@ -557,6 +602,18 @@ export type TQueryBy = {
   sort?: Maybe<ESort>;
 };
 
+export type TRecommendationResponse = {
+  __typename?: 'TRecommendationResponse';
+  records: Array<TItemResponse>;
+  source: ERecommendationSource;
+};
+
+export type TSearchItemResponse = {
+  __typename?: 'TSearchItemResponse';
+  records: Array<TItemResponse>;
+  total: Scalars['Int']['output'];
+};
+
 export type TUserAuth = {
   __typename?: 'TUserAuth';
   accessToken: Scalars['String']['output'];
@@ -601,6 +658,11 @@ export type TUserPaymentResponse = {
   transactionId?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['Timestamp']['output'];
   userInfo: TUserInfoSnapshot;
+};
+
+export type TrackBehaviorInput = {
+  event: EBehaviorEvent;
+  itemId: Scalars['String']['input'];
 };
 
 export type UpdateItemInput = {
@@ -705,10 +767,12 @@ export type ResolversTypes = {
   CreateOrderInput: CreateOrderInput;
   EAuditAction: EAuditAction;
   EAuthMethod: EAuthMethod;
+  EBehaviorEvent: EBehaviorEvent;
   EItemStatus: EItemStatus;
   EOrderStatus: EOrderStatus;
   EPaymentMethod: EPaymentMethod;
   EPaymentStatus: EPaymentStatus;
+  ERecommendationSource: ERecommendationSource;
   ERole: ERole;
   ESort: ESort;
   ETargetType: ETargetType;
@@ -730,6 +794,7 @@ export type ResolversTypes = {
   TCreateOrderResponse: ResolverTypeWrapper<TCreateOrderResponse>;
   TCryptoPaymentProof: ResolverTypeWrapper<TCryptoPaymentProof>;
   TCursorPageInfo: ResolverTypeWrapper<TCursorPageInfo>;
+  THotSearchTerm: ResolverTypeWrapper<THotSearchTerm>;
   TItemOption: ResolverTypeWrapper<TItemOption>;
   TItemResponse: ResolverTypeWrapper<TItemResponse>;
   TListAuditLogResponse: ResolverTypeWrapper<TListAuditLogResponse>;
@@ -744,12 +809,15 @@ export type ResolversTypes = {
   TPaymentSocketResponse: ResolverTypeWrapper<TPaymentSocketResponse>;
   TPaypalPayment: ResolverTypeWrapper<TPaypalPayment>;
   TQueryBy: ResolverTypeWrapper<TQueryBy>;
+  TRecommendationResponse: ResolverTypeWrapper<TRecommendationResponse>;
+  TSearchItemResponse: ResolverTypeWrapper<TSearchItemResponse>;
   TUserAuth: ResolverTypeWrapper<TUserAuth>;
   TUserInfoInput: TUserInfoInput;
   TUserInfoResponse: ResolverTypeWrapper<TUserInfoResponse>;
   TUserInfoSnapshot: ResolverTypeWrapper<TUserInfoSnapshot>;
   TUserPaymentResponse: ResolverTypeWrapper<TUserPaymentResponse>;
   Timestamp: ResolverTypeWrapper<Scalars['Timestamp']['output']>;
+  TrackBehaviorInput: TrackBehaviorInput;
   UpdateItemInput: UpdateItemInput;
   UserInfoSnapshotInput: UserInfoSnapshotInput;
 };
@@ -780,6 +848,7 @@ export type ResolversParentTypes = {
   TCreateOrderResponse: TCreateOrderResponse;
   TCryptoPaymentProof: TCryptoPaymentProof;
   TCursorPageInfo: TCursorPageInfo;
+  THotSearchTerm: THotSearchTerm;
   TItemOption: TItemOption;
   TItemResponse: TItemResponse;
   TListAuditLogResponse: TListAuditLogResponse;
@@ -794,12 +863,15 @@ export type ResolversParentTypes = {
   TPaymentSocketResponse: TPaymentSocketResponse;
   TPaypalPayment: TPaypalPayment;
   TQueryBy: TQueryBy;
+  TRecommendationResponse: TRecommendationResponse;
+  TSearchItemResponse: TSearchItemResponse;
   TUserAuth: TUserAuth;
   TUserInfoInput: TUserInfoInput;
   TUserInfoResponse: TUserInfoResponse;
   TUserInfoSnapshot: TUserInfoSnapshot;
   TUserPaymentResponse: TUserPaymentResponse;
   Timestamp: Scalars['Timestamp']['output'];
+  TrackBehaviorInput: TrackBehaviorInput;
   UpdateItemInput: UpdateItemInput;
   UserInfoSnapshotInput: UserInfoSnapshotInput;
 };
@@ -813,6 +885,7 @@ export type MutationResolvers<ContextType = TAppContext, ParentType extends Reso
   deleteCategory?: Resolver<Maybe<ResolversTypes['Boolean']>, ParentType, ContextType, RequireFields<MutationDeleteCategoryArgs, 'categoryId'>>;
   deleteItem?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationDeleteItemArgs, 'itemId'>>;
   refreshToken?: Resolver<ResolversTypes['TUserAuth'], ParentType, ContextType, RequireFields<MutationRefreshTokenArgs, 'refreshToken'>>;
+  trackBehavior?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType, RequireFields<MutationTrackBehaviorArgs, 'input'>>;
   updateCategory?: Resolver<ResolversTypes['TCategory'], ParentType, ContextType, RequireFields<MutationUpdateCategoryArgs, 'category'>>;
   updateItem?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<MutationUpdateItemArgs, 'input'>>;
   userConnectCryptoWallet?: Resolver<ResolversTypes['TConnectCryptoWalletResponse'], ParentType, ContextType, RequireFields<MutationUserConnectCryptoWalletArgs, 'address' | 'signature'>>;
@@ -833,6 +906,7 @@ export type QueryResolvers<ContextType = TAppContext, ParentType extends Resolve
   getAllOrder?: Resolver<ResolversTypes['TListOrderResponse'], ParentType, ContextType, RequireFields<QueryGetAllOrderArgs, 'orderId'>>;
   getAuditLog?: Resolver<Maybe<ResolversTypes['TAuditLog']>, ParentType, ContextType, RequireFields<QueryGetAuditLogArgs, 'id'>>;
   getUserOrder?: Resolver<ResolversTypes['TOrderResponse'], ParentType, ContextType, RequireFields<QueryGetUserOrderArgs, 'orderId'>>;
+  hotSearchTerms?: Resolver<Array<ResolversTypes['THotSearchTerm']>, ParentType, ContextType, Partial<QueryHotSearchTermsArgs>>;
   itemById?: Resolver<ResolversTypes['TItemResponse'], ParentType, ContextType, RequireFields<QueryItemByIdArgs, 'itemId'>>;
   listAuditLog?: Resolver<ResolversTypes['TListAuditLogResponse'], ParentType, ContextType, Partial<QueryListAuditLogArgs>>;
   listCategory?: Resolver<Array<ResolversTypes['TCategory']>, ParentType, ContextType>;
@@ -843,6 +917,8 @@ export type QueryResolvers<ContextType = TAppContext, ParentType extends Resolve
   listPaymentHistory?: Resolver<ResolversTypes['TListPaymentResponse'], ParentType, ContextType, Partial<QueryListPaymentHistoryArgs>>;
   listUserPaymentHistory?: Resolver<ResolversTypes['TListPaymentUserResponse'], ParentType, ContextType, Partial<QueryListUserPaymentHistoryArgs>>;
   paymentUserHistory?: Resolver<ResolversTypes['TUserPaymentResponse'], ParentType, ContextType, RequireFields<QueryPaymentUserHistoryArgs, 'paymentId'>>;
+  recommendations?: Resolver<ResolversTypes['TRecommendationResponse'], ParentType, ContextType, Partial<QueryRecommendationsArgs>>;
+  searchItems?: Resolver<ResolversTypes['TSearchItemResponse'], ParentType, ContextType, RequireFields<QuerySearchItemsArgs, 'search'>>;
   userInfo?: Resolver<ResolversTypes['TUserInfoResponse'], ParentType, ContextType>;
 };
 
@@ -904,6 +980,11 @@ export type TCryptoPaymentProofResolvers<ContextType = TAppContext, ParentType e
 export type TCursorPageInfoResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TCursorPageInfo'] = ResolversParentTypes['TCursorPageInfo']> = {
   hasMore?: Resolver<ResolversTypes['Boolean'], ParentType, ContextType>;
   nextCursor?: Resolver<Maybe<ResolversTypes['String']>, ParentType, ContextType>;
+};
+
+export type THotSearchTermResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['THotSearchTerm'] = ResolversParentTypes['THotSearchTerm']> = {
+  score?: Resolver<ResolversTypes['Float'], ParentType, ContextType>;
+  term?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
 };
 
 export type TItemOptionResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TItemOption'] = ResolversParentTypes['TItemOption']> = {
@@ -1026,6 +1107,16 @@ export type TQueryByResolvers<ContextType = TAppContext, ParentType extends Reso
   sort?: Resolver<Maybe<ResolversTypes['ESort']>, ParentType, ContextType>;
 };
 
+export type TRecommendationResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TRecommendationResponse'] = ResolversParentTypes['TRecommendationResponse']> = {
+  records?: Resolver<Array<ResolversTypes['TItemResponse']>, ParentType, ContextType>;
+  source?: Resolver<ResolversTypes['ERecommendationSource'], ParentType, ContextType>;
+};
+
+export type TSearchItemResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TSearchItemResponse'] = ResolversParentTypes['TSearchItemResponse']> = {
+  records?: Resolver<Array<ResolversTypes['TItemResponse']>, ParentType, ContextType>;
+  total?: Resolver<ResolversTypes['Int'], ParentType, ContextType>;
+};
+
 export type TUserAuthResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TUserAuth'] = ResolversParentTypes['TUserAuth']> = {
   accessToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
   refreshToken?: Resolver<ResolversTypes['String'], ParentType, ContextType>;
@@ -1078,6 +1169,7 @@ export type Resolvers<ContextType = TAppContext> = {
   TCreateOrderResponse?: TCreateOrderResponseResolvers<ContextType>;
   TCryptoPaymentProof?: TCryptoPaymentProofResolvers<ContextType>;
   TCursorPageInfo?: TCursorPageInfoResolvers<ContextType>;
+  THotSearchTerm?: THotSearchTermResolvers<ContextType>;
   TItemOption?: TItemOptionResolvers<ContextType>;
   TItemResponse?: TItemResponseResolvers<ContextType>;
   TListAuditLogResponse?: TListAuditLogResponseResolvers<ContextType>;
@@ -1092,6 +1184,8 @@ export type Resolvers<ContextType = TAppContext> = {
   TPaymentSocketResponse?: TPaymentSocketResponseResolvers<ContextType>;
   TPaypalPayment?: TPaypalPaymentResolvers<ContextType>;
   TQueryBy?: TQueryByResolvers<ContextType>;
+  TRecommendationResponse?: TRecommendationResponseResolvers<ContextType>;
+  TSearchItemResponse?: TSearchItemResponseResolvers<ContextType>;
   TUserAuth?: TUserAuthResolvers<ContextType>;
   TUserInfoResponse?: TUserInfoResponseResolvers<ContextType>;
   TUserInfoSnapshot?: TUserInfoSnapshotResolvers<ContextType>;

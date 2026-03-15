@@ -22,6 +22,8 @@ export const RedisHelperCategory = RedisHelperDerive<'category'>(RedisInstance);
 export const RedisHelperItem = RedisHelperDerive<
   'itemBestSeller' | 'itemNewCollection' | 'itemByCategory' | 'itemById' | 'itemList'
 >(RedisInstance);
+export const RedisHelperSearch = RedisHelperDerive<'searchResult' | 'hotSearch'>(RedisInstance);
+export const RedisHelperRecommendation = RedisHelperDerive<'userRecs' | 'anonRecs' | 'viewDedup'>(RedisInstance);
 export const RedisHelperOrder = RedisHelperDerive<'createOrder' | 'orderLimit' | 'orderList'>(RedisInstance);
 export const RedisHelperPayment = RedisHelperDerive<'paymentList'>(RedisInstance);
 export const RedisHelperPaypal = RedisHelperDerive<'paypalOrder' | 'paypalWebhook'>(RedisInstance);
@@ -290,6 +292,74 @@ export const RedisHelper = {
      */
     itemListInvalidate: async (): Promise<void> => {
       await RedisHelperItem.itemList('version').incre();
+    },
+  },
+
+  search: {
+    /** Get cached search results by composite key. */
+    searchResultGet: async (cacheKey: string): Promise<string | null> => {
+      return RedisHelperSearch.searchResult(cacheKey).get();
+    },
+
+    /** Cache search results with short TTL (default 15s). */
+    searchResultSet: async (cacheKey: string, value: string): Promise<void> => {
+      await RedisHelperSearch.searchResult(cacheKey).set(value, config.CACHE_SEARCH_RESULT_TTL_SEC);
+    },
+
+    /**
+     * Increment the search frequency of a term in the hot-search sorted set.
+     * Renews the 24h rolling TTL on every write so stale terms decay naturally.
+     */
+    hotSearchIncrement: async (term: string): Promise<void> => {
+      const key = RedisHelperSearch.hotSearch('terms');
+      await key.zIncrBy(1, term);
+      await key.expire(86400); // rolling 24h window
+    },
+
+    /** Return top-N search terms by frequency (highest first). */
+    hotSearchGetTop: async (limit: number): Promise<Array<{ term: string; score: number }>> => {
+      const results = await RedisHelperSearch.hotSearch('terms').zRevRangeWithScores(0, limit - 1);
+      return results.map(({ value, score }) => ({ term: value, score }));
+    },
+  },
+
+  recommendation: {
+    /** Get cached personalized recommendations for an authenticated user. */
+    userRecsGet: async (userId: string): Promise<string | null> => {
+      return RedisHelperRecommendation.userRecs(userId).get();
+    },
+
+    /** Cache personalized recommendations for a user with 5-min TTL. */
+    userRecsSet: async (userId: string, value: string): Promise<void> => {
+      await RedisHelperRecommendation.userRecs(userId).set(value, config.CACHE_RECOMMENDATION_TTL_SEC);
+    },
+
+    /** Invalidate a user's recommendation cache (called after PURCHASE). */
+    userRecsDel: async (userId: string): Promise<void> => {
+      await RedisHelperRecommendation.userRecs(userId).delete();
+    },
+
+    /** Get cached anonymous/fallback recommendations (keyed by limit to avoid cross-limit collisions). */
+    anonRecsGet: async (limit: number): Promise<string | null> => {
+      return RedisHelperRecommendation.anonRecs(`global:${limit}`).get();
+    },
+
+    /** Cache anonymous recommendations with 5-min TTL (keyed by limit). */
+    anonRecsSet: async (limit: number, value: string): Promise<void> => {
+      await RedisHelperRecommendation.anonRecs(`global:${limit}`).set(value, config.CACHE_RECOMMENDATION_TTL_SEC);
+    },
+
+    /**
+     * Atomic VIEW dedup — prevents recording more than 1 VIEW per user per item per 30s.
+     * Uses SET NX (set-if-not-exists) to avoid TOCTOU race conditions where two
+     * concurrent requests could both pass a GET-then-SET check.
+     * Returns true if this VIEW should be skipped (already tracked recently).
+     */
+    viewDedupCheck: async (userId: string, itemId: string): Promise<boolean> => {
+      const key = RedisHelperRecommendation.viewDedup(`${userId}:${itemId}`);
+      // setNX returns true if key was set (first VIEW), false if already existed (duplicate)
+      const wasSet = await key.setNX('1', 30);
+      return !wasSet;
     },
   },
 

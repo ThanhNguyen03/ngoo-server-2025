@@ -25,8 +25,12 @@ import {
 import { ConflictError, NotFoundError, ValidationError } from '@lib';
 import { CategoryModel, ItemModel, TCategory, TItem } from '@model';
 import { logAudit } from '@service';
+import { createHash } from 'crypto';
 import Joi from 'joi';
 import { Types } from 'mongoose';
+
+/** Escape regex special characters to prevent ReDoS when building $regex queries from user input. */
+const escapeRegex = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Encode a cursor from a document's createdAt timestamp and _id. */
 const encodeCursor = (createdAt: Date, id: Types.ObjectId): string => {
@@ -52,7 +56,7 @@ const decodeCursor = (cursor: string): { t: number; id: string } | null => {
  * (hydrated). This avoids the ObjectId vs FlattenMaps mismatch that
  * TypeScript reports when using `.lean()` with `.populate()`.
  */
-type TItemMappable = Omit<TItem, 'category'> & { category: Pick<TCategory, 'name'> };
+export type TItemMappable = Omit<TItem, 'category'> & { category: Pick<TCategory, 'name'> };
 
 /**
  * Map a Mongoose item document (with populated category) to the GraphQL
@@ -64,7 +68,7 @@ type TItemMappable = Omit<TItem, 'category'> & { category: Pick<TCategory, 'name
  *
  * @param item - Lean or hydrated item document with `category` populated.
  */
-const toItemResponse = (item: TItemMappable): TItemResponse => ({
+export const toItemResponse = (item: TItemMappable): TItemResponse => ({
   itemId: item.itemId,
   name: item.name,
   image: item.image,
@@ -135,6 +139,16 @@ const JOI_ITEM_BY_ID = Joi.object<QueryItemByIdArgs>({
 
 const JOI_LIST_ITEM = Joi.object<Omit<TPagination, 'total'>>({
   ...schemaPagination(Object.values(EItemQuery)),
+});
+
+const JOI_SEARCH_ITEMS = Joi.object({
+  search: Joi.string().trim().min(1).max(100).required(),
+  limit: Joi.number().integer().min(1).max(50).default(10),
+  categoryName: Joi.string().trim().min(1).max(30).allow(null),
+});
+
+const JOI_HOT_SEARCH = Joi.object({
+  limit: Joi.number().integer().min(1).max(20).default(10),
 });
 
 const JOI_LIST_ITEM_CURSOR = Joi.object<QueryListItemCursorArgs>({
@@ -338,6 +352,77 @@ export const resolverItem: Resolvers = {
       await RedisHelper.item.itemByIdSet(response);
       return response;
     }, 'ip:query')),
+
+    searchItems: publicWrapper(
+      JOI_SEARCH_ITEMS,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
+        const { search, limit = 10, categoryName } = _args as {
+          search: string;
+          limit?: number | null;
+          categoryName?: string | null;
+        };
+
+        // Hash the cache key to avoid collisions from special characters (e.g. ":" in search terms)
+        const cacheKey = createHash('sha256')
+          .update(`search:${search.toLowerCase()}:${limit}:${categoryName ?? 'all'}`)
+          .digest('base64url');
+        const cached = await RedisHelper.search.searchResultGet(cacheKey);
+        if (cached) {
+          return JSON.parse(cached);
+        }
+
+        const filter: Record<string, unknown> = { isDeleted: false };
+
+        if (categoryName) {
+          const category = await CategoryModel.findOne({ name: categoryName, isDeleted: false }).lean();
+          if (!category) throw new NotFoundError('Category not found');
+          filter.category = category._id;
+        }
+
+        // Try MongoDB full-text search first (relevance-ranked)
+        let items = await ItemModel.find({ ...filter, $text: { $search: search } })
+          .select({ score: { $meta: 'textScore' } })
+          .populate<{ category: TCategory }>('category')
+          .sort({ score: { $meta: 'textScore' } })
+          .limit(limit ?? 10)
+          .lean();
+
+        // Fall back to regex for partial-word matches (e.g. "lat" → "Latte").
+        // User input is escaped to prevent ReDoS from crafted patterns.
+        if (items.length === 0) {
+          const safePattern = escapeRegex(search);
+          const regex = { $regex: safePattern, $options: 'i' };
+          items = await ItemModel.find({
+            ...filter,
+            $or: [{ name: regex }, { description: regex }],
+          })
+            .populate<{ category: TCategory }>('category')
+            .sort({ createdAt: -1 })
+            .limit(limit ?? 10)
+            .lean();
+        }
+
+        const result = {
+          records: items.map(toItemResponse),
+          total: items.length,
+        };
+
+        await RedisHelper.search.searchResultSet(cacheKey, JSON.stringify(result));
+
+        // Fire-and-forget: track hot search term — never awaited
+        RedisHelper.search.hotSearchIncrement(search.toLowerCase().trim()).catch(() => undefined);
+
+        return result;
+      }, 'ip:query'),
+    ),
+
+    hotSearchTerms: publicWrapper(
+      JOI_HOT_SEARCH,
+      publicRateLimitWrapper(RATE_LIMIT_CONFIGS.PUBLIC_QUERY, async (_root, _args) => {
+        const { limit = 10 } = _args as { limit?: number | null };
+        return RedisHelper.search.hotSearchGetTop(limit ?? 10);
+      }, 'ip:query'),
+    ),
   },
 
   Mutation: {

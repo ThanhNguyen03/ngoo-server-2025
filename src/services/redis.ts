@@ -72,6 +72,18 @@ class RedisKey {
       await this.client.set(this.fullKey(), value);
     }
   }
+
+  /**
+   * Atomic SET-if-not-exists with optional TTL.
+   * Returns true if the key was set (did not exist), false if it already existed.
+   */
+  async setNX(value: string, expireSeconds?: number): Promise<boolean> {
+    const result = await this.client.set(this.fullKey(), value, {
+      NX: true,
+      ...(expireSeconds ? { EX: expireSeconds } : {}),
+    });
+    return result === 'OK';
+  }
   async expire(exp: number) {
     await this.client.expire(this.fullKey(), exp);
   }
@@ -116,6 +128,14 @@ class RedisKey {
   }
   async setHas(member: string) {
     return await this.client.sIsMember(this.fullKey(), member);
+  }
+
+  // SORTED SET
+  async zIncrBy(increment: number, member: string): Promise<number> {
+    return await this.client.zIncrBy(this.fullKey(), increment, member);
+  }
+  async zRevRangeWithScores(start: number, stop: number): Promise<Array<{ value: string; score: number }>> {
+    return await this.client.zRangeWithScores(this.fullKey(), start, stop, { REV: true });
   }
 
   //  HASH

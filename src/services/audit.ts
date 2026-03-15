@@ -14,7 +14,6 @@ type TLogAuditInput = {
 
 /**
  * Fire-and-forget audit log writer. Never throws — failures are logged.
- * TODO: Integrate into existing mutations (item CRUD, category CRUD, payment, auth events)
  */
 export const logAudit = async (input: TLogAuditInput): Promise<void> => {
   try {

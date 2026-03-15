@@ -58,5 +58,12 @@ const ItemSchema = new Schema<IItem>(
 ItemSchema.index({ isDeleted: 1, createdAt: -1 }); // listItem
 ItemSchema.index({ isDeleted: 1, category: 1, createdAt: -1 }); // listItemByCategory
 ItemSchema.index({ isDeleted: 1, status: 1, createdAt: -1 }); // listItemByStatus
+// Text index for full-text search — name weighted 10x over description.
+// default_language: 'none' disables stemming for non-English product names.
+ItemSchema.index(
+  { name: 'text', description: 'text' },
+  // eslint-disable-next-line camelcase
+  { weights: { name: 10, description: 1 }, default_language: 'none' },
+);
 
 export const ItemModel = model<TItem>('Item', ItemSchema);
