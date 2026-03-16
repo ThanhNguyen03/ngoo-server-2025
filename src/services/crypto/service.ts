@@ -11,7 +11,7 @@
 import { config, RedisHelper } from '@helper';
 import { createLogger, PaymentError } from '@lib';
 import { ethers } from 'ethers';
-import { formatWeiToBnb, usdToWei } from './price-oracle';
+import { formatWeiToEth, usdToWei } from './price-oracle';
 import type { ICryptoPaymentProof, ICryptoProofRedisData } from './types';
 
 const logger = createLogger('CryptoPaymentService');
@@ -61,7 +61,7 @@ class CryptoPaymentService {
 
     // 1. Convert USD to wei
     const amountWei = await usdToWei(totalPriceUsd);
-    const amountDisplay = formatWeiToBnb(amountWei);
+    const amountDisplay = formatWeiToEth(amountWei);
 
     // 2. Generate a random single-use nonce
     const nonce = ethers.hexlify(ethers.randomBytes(32));
