@@ -50,10 +50,10 @@ const envSchema = Joi.object({
   PAYPAL_WEBHOOK_ID: Joi.string().required(),
   PAYPAL_MODE: Joi.string().valid('sandbox', 'live').required(),
 
-  // --- Crypto Payment ---
+  // --- Crypto Payment (Ethereum Sepolia) ---
   CRYPTO_PAYMENT_ENABLED: Joi.boolean().default(false),
   // Must use HTTPS or WSS to prevent RPC traffic interception
-  BNB_RPC_URL: Joi.string()
+  CRYPTO_RPC_URL: Joi.string()
     .uri({ scheme: ['https', 'wss'] })
     .when('CRYPTO_PAYMENT_ENABLED', {
       is: true,
@@ -68,7 +68,7 @@ const envSchema = Joi.object({
       then: Joi.required(),
       otherwise: Joi.optional(),
     }),
-  NGOO_CHAIN_ID: Joi.number().default(97),
+  NGOO_CHAIN_ID: Joi.number().default(11155111),
   // Must be a valid 32-byte hex private key (0x + 64 hex chars)
   NGOO_SIGNER: Joi.string()
     .pattern(/^0x[0-9a-fA-F]{64}$/)
@@ -78,7 +78,7 @@ const envSchema = Joi.object({
       otherwise: Joi.optional(),
     }),
   CRYPTO_PROOF_TTL_SEC: Joi.number().optional().default(900),
-  CRYPTO_BLOCK_CONFIRMATIONS: Joi.number().optional().default(5),
+  CRYPTO_BLOCK_CONFIRMATIONS: Joi.number().optional().default(3),
   CRYPTO_PRICE_CACHE_TTL_SEC: Joi.number().optional().default(60),
   CRYPTO_MONITOR_POLL_INTERVAL_MS: Joi.number().optional().default(15000),
   CACHE_CRYPTO_PROOF_TTL_SEC: Joi.number().optional().default(900),
@@ -212,9 +212,9 @@ export const config = {
   PAYPAL_MODE: envVars.PAYPAL_MODE,
   PAYPAL_BASE_URL: envVars.PAYPAL_MODE === 'live' ? 'https://api-m.paypal.com' : 'https://api-m.sandbox.paypal.com',
 
-  // --- Crypto Payment ---
+  // --- Crypto Payment (Ethereum Sepolia) ---
   CRYPTO_PAYMENT_ENABLED: envVars.CRYPTO_PAYMENT_ENABLED as boolean,
-  BNB_RPC_URL: envVars.BNB_RPC_URL as string | undefined,
+  CRYPTO_RPC_URL: envVars.CRYPTO_RPC_URL as string | undefined,
   NGOO_CONTRACT_ADDRESS: envVars.NGOO_CONTRACT_ADDRESS as string | undefined,
   NGOO_CHAIN_ID: envVars.NGOO_CHAIN_ID as number,
   NGOO_SIGNER: envVars.NGOO_SIGNER as string | undefined,

@@ -1,7 +1,7 @@
 /**
- * BNB price oracle using CoinGecko free API.
+ * ETH price oracle using CoinGecko free API.
  *
- * Caches the BNB/USD price in Redis to avoid hammering the API.
+ * Caches the ETH/USD price in Redis to avoid hammering the API.
  * Falls back to the cached price (if < 5 min old) when the API is down.
  * Throws PaymentError if no price is available.
  *
@@ -13,10 +13,10 @@ import axios from 'axios';
 
 const logger = createLogger('CryptoPriceOracle');
 
-const COINGECKO_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=binancecoin&vs_currencies=usd';
+const COINGECKO_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd';
 
 interface ICoinGeckoResponse {
-  binancecoin: {
+  ethereum: {
     usd: number;
   };
 }
@@ -27,20 +27,20 @@ interface ICoinGeckoResponse {
 const MAX_PRICE_DEVIATION_RATIO = 0.3;
 
 /**
- * Fetch BNB/USD price from CoinGecko with Redis caching.
+ * Fetch ETH/USD price from CoinGecko with Redis caching.
  * - Primary cache: CRYPTO_PRICE_CACHE_TTL_SEC (default 60s)
  * - Last-known fallback: 5-minute TTL — used when CoinGecko is unreachable
  *   and the primary cache has expired. Prevents hard failures during brief outages.
  * - Bounds check: rejects a new price that deviates >30% from the last known price.
- * @returns BNB price in USD as a number (e.g. 620.5)
+ * @returns ETH price in USD as a number (e.g. 3500.25)
  */
-export async function getBnbPriceUsd(): Promise<number> {
+export async function getEthPriceUsd(): Promise<number> {
   // 1. Try primary cache first (short TTL, CoinGecko-fresh)
-  const cached = await RedisHelper.crypto.bnbPriceGet();
+  const cached = await RedisHelper.crypto.ethPriceGet();
   if (cached !== null) {
     const price = parseFloat(cached);
     if (!isNaN(price) && price > 0) {
-      logger.debug({ price }, 'BNB price from cache');
+      logger.debug({ price }, 'ETH price from cache');
       return price;
     }
   }
@@ -51,7 +51,7 @@ export async function getBnbPriceUsd(): Promise<number> {
       timeout: 5000,
     });
 
-    const price = response.data?.binancecoin?.usd;
+    const price = response.data?.ethereum?.usd;
     if (!price || typeof price !== 'number' || price <= 0) {
       throw new Error('Invalid price response from CoinGecko');
     }
@@ -59,7 +59,7 @@ export async function getBnbPriceUsd(): Promise<number> {
     // 4.1: Bounds check — reject anomalous price spikes/crashes.
     // Compares against the last-known price to detect potential API bugs or
     // cache poisoning. A >30% deviation in one cache interval is suspicious.
-    const lastKnown = await RedisHelper.crypto.bnbPriceLastKnownGet();
+    const lastKnown = await RedisHelper.crypto.ethPriceLastKnownGet();
     if (lastKnown !== null) {
       const lastPrice = parseFloat(lastKnown);
       if (lastPrice > 0) {
@@ -67,17 +67,17 @@ export async function getBnbPriceUsd(): Promise<number> {
         if (deviation > MAX_PRICE_DEVIATION_RATIO) {
           logger.error(
             { newPrice: price, lastKnownPrice: lastPrice, deviation },
-            'BNB price deviates >30% from last known — rejecting to prevent underpayment',
+            'ETH price deviates >30% from last known — rejecting to prevent underpayment',
           );
-          throw new PaymentError('BNB price is unstable. Please try again shortly.');
+          throw new PaymentError('ETH price is unstable. Please try again shortly.');
         }
       }
     }
 
     // Cache the fresh price in both the primary (short TTL) and last-known (5 min) stores.
-    await RedisHelper.crypto.bnbPriceSet(String(price));
-    await RedisHelper.crypto.bnbPriceLastKnownSet(String(price));
-    logger.info({ price }, 'BNB price fetched from CoinGecko');
+    await RedisHelper.crypto.ethPriceSet(String(price));
+    await RedisHelper.crypto.ethPriceLastKnownSet(String(price));
+    logger.info({ price }, 'ETH price fetched from CoinGecko');
     return price;
   } catch (fetchErr) {
     // Re-throw PaymentError from bounds check directly — don't try stale fallback.
@@ -87,21 +87,21 @@ export async function getBnbPriceUsd(): Promise<number> {
 
     // 4.2: Stale fallback — use the last-known price (up to 5 min old) when
     // CoinGecko is temporarily unreachable. Avoids hard failures during brief outages.
-    const lastKnown = await RedisHelper.crypto.bnbPriceLastKnownGet();
+    const lastKnown = await RedisHelper.crypto.ethPriceLastKnownGet();
     if (lastKnown !== null) {
       const price = parseFloat(lastKnown);
       if (!isNaN(price) && price > 0) {
-        logger.warn({ price }, 'Using last-known BNB price as CoinGecko fallback');
+        logger.warn({ price }, 'Using last-known ETH price as CoinGecko fallback');
         return price;
       }
     }
 
-    throw new PaymentError('BNB price unavailable. Please try again in a moment.');
+    throw new PaymentError('ETH price unavailable. Please try again in a moment.');
   }
 }
 
 /**
- * Convert a USD amount to wei (18 decimals) using the current BNB price.
+ * Convert a USD amount to wei (18 decimals) using the current ETH price.
  * @param usdAmount - USD amount as a number (e.g. 12.50 for $12.50)
  * @returns Wei amount as a decimal string (e.g. "20161290322580645")
  */
@@ -110,32 +110,32 @@ export async function usdToWei(usdAmount: number): Promise<string> {
     throw new ValidationError('USD amount must be positive');
   }
 
-  const bnbPrice = await getBnbPriceUsd();
+  const ethPrice = await getEthPriceUsd();
 
-  // bnbAmount = usdAmount / bnbPrice
-  // Convert to wei (18 decimals): wei = bnbAmount * 10^18
+  // ethAmount = usdAmount / ethPrice
+  // Convert to wei (18 decimals): wei = ethAmount * 10^18
   // Use BigInt to avoid floating-point precision issues
   // Scale: multiply numerator by 10^18 before dividing
   const USD_SCALE = 1_000_000n; // 6 decimal places for USD input
   const usdAmountScaled = BigInt(Math.round(usdAmount * Number(USD_SCALE)));
-  const bnbPriceScaled = BigInt(Math.round(bnbPrice * Number(USD_SCALE)));
+  const ethPriceScaled = BigInt(Math.round(ethPrice * Number(USD_SCALE)));
 
-  // wei = (usdAmountScaled * 10^18) / bnbPriceScaled
-  const weiAmount = (usdAmountScaled * 10n ** 18n) / bnbPriceScaled;
+  // wei = (usdAmountScaled * 10^18) / ethPriceScaled
+  const weiAmount = (usdAmountScaled * 10n ** 18n) / ethPriceScaled;
 
-  logger.debug({ usdAmount, bnbPrice, weiAmount: weiAmount.toString() }, 'Converted USD to wei');
+  logger.debug({ usdAmount, ethPrice, weiAmount: weiAmount.toString() }, 'Converted USD to wei');
   return weiAmount.toString();
 }
 
 /**
- * Format wei amount to human-readable BNB string (4 decimal places).
+ * Format wei amount to human-readable ETH string (4 decimal places).
  * @param weiAmount - Wei amount as decimal string
- * @returns Human-readable BNB string (e.g. "0.0500")
+ * @returns Human-readable ETH string (e.g. "0.0050")
  */
-export function formatWeiToBnb(weiAmount: string): string {
+export function formatWeiToEth(weiAmount: string): string {
   const wei = BigInt(weiAmount);
-  const bnbWhole = wei / 10n ** 18n;
-  const bnbFrac = wei % 10n ** 18n;
-  const fracStr = bnbFrac.toString().padStart(18, '0').slice(0, 4);
-  return `${bnbWhole}.${fracStr}`;
+  const ethWhole = wei / 10n ** 18n;
+  const ethFrac = wei % 10n ** 18n;
+  const fracStr = ethFrac.toString().padStart(18, '0').slice(0, 4);
+  return `${ethWhole}.${fracStr}`;
 }

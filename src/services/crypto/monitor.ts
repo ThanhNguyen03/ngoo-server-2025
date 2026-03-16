@@ -1,7 +1,7 @@
 /**
  * On-chain event monitor for NgooPayment smart contract.
  *
- * Polls BNB Testnet for PaymentReceived events using polling (not WebSocket)
+ * Polls Ethereum Sepolia for PaymentReceived events using polling (not WebSocket)
  * for reliability on free-tier RPC providers. Processes events after
  * CRYPTO_BLOCK_CONFIRMATIONS to protect against shallow reorgs.
  *
@@ -306,7 +306,7 @@ class CryptoEventMonitor {
  */
 export const cryptoEventMonitor = new CryptoEventMonitor({
   contractAddress: config.NGOO_CONTRACT_ADDRESS ?? '',
-  rpcUrl: config.BNB_RPC_URL ?? '',
+  rpcUrl: config.CRYPTO_RPC_URL ?? '',
   chainId: config.NGOO_CHAIN_ID,
   blockConfirmations: config.CRYPTO_BLOCK_CONFIRMATIONS,
   pollIntervalMs: config.CRYPTO_MONITOR_POLL_INTERVAL_MS,
