@@ -169,25 +169,27 @@ export const processPaymentCaptureEvent = async (
         logger.warn({ err: cacheErr, systemOrderId }, 'Failed to update cache/socket (non-critical)');
       }
     } catch (error) {
-      // Even on failure, cache the current status and notify the client so
-      // the frontend doesn't wait indefinitely. The status may still be
-      // PROCESSING at this point, which is acceptable.
-      try {
-        await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
-          status: payment.status,
-          userId: payment.userId,
-          paymentId: payment.paymentId,
-          cachedAt: Date.now(),
-          orderId: order.orderId,
-        } as TWebhookData);
+      // Only cache and notify the client if we reached a terminal status before
+      // the error — caching PROCESSING would poison the cache check in
+      // processWebhookEvent and block all retries for 5 minutes.
+      if (payment.status !== EPaymentStatus.Processing) {
+        try {
+          await RedisHelper.paypal.paypalStatusSet(systemOrderId, {
+            status: payment.status,
+            userId: payment.userId,
+            paymentId: payment.paymentId,
+            cachedAt: Date.now(),
+            orderId: order.orderId,
+          } as TWebhookData);
 
-        emitPaymentStatus(payment.userId, {
-          orderId: order.orderId,
-          paymentId: payment.paymentId,
-          status: payment.status,
-        });
-      } catch (cacheErr) {
-        logger.warn({ err: cacheErr, systemOrderId }, 'Failed to update cache/socket (non-critical)');
+          emitPaymentStatus(payment.userId, {
+            orderId: order.orderId,
+            paymentId: payment.paymentId,
+            status: payment.status,
+          });
+        } catch (cacheErr) {
+          logger.warn({ err: cacheErr, systemOrderId }, 'Failed to update cache/socket (non-critical)');
+        }
       }
       throw error;
     }
@@ -354,14 +356,19 @@ export const processWebhookEvent = async (event: TPayPalWebhookEvent, systemOrde
       if (event_type.includes('PAYMENT.CAPTURE')) {
         const cached = await RedisHelper.paypal.paypalStatusGet(systemOrderId);
 
-        if (cached && Date.now() - cached.cachedAt < 5 * 60_000) {
-          if (cached.status !== EPaymentStatus.Processing) {
-            emitPaymentStatus(cached.userId, {
-              orderId: cached.orderId,
-              paymentId: cached.paymentId,
-              status: cached.status,
-            });
-          }
+        // Only short-circuit on a fresh terminal status. PROCESSING in cache means
+        // a previous attempt failed before completing — fall through to retry.
+        if (cached && cached.status !== EPaymentStatus.Processing && Date.now() - cached.cachedAt < 5 * 60_000) {
+          emitPaymentStatus(cached.userId, {
+            orderId: cached.orderId,
+            paymentId: cached.paymentId,
+            status: cached.status,
+          });
+          // Seal idempotency so PayPal retries take the fast-path skip
+          await RedisHelper.paypal.webhookProcessKeySet(
+            idempotencyKey,
+            JSON.stringify({ processedAt: new Date().toISOString(), eventType: event_type, systemOrderId }),
+          );
           return;
         }
       }
