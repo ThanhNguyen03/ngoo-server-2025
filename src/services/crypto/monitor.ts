@@ -265,10 +265,7 @@ class CryptoEventMonitor {
         });
 
         // Invalidate payment + order list caches after status change
-        await Promise.all([
-          RedisHelper.payment.paymentListInvalidate(),
-          RedisHelper.order.orderListInvalidate(),
-        ]);
+        await Promise.all([RedisHelper.payment.paymentListInvalidate(), RedisHelper.order.orderListInvalidate()]);
       } catch (err) {
         logger.warn({ err, orderId }, 'Failed to cache/emit crypto payment status (non-critical)');
       }

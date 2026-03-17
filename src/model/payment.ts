@@ -12,7 +12,7 @@ type TPaypalPayment = {
 const PaypalPaymentShema = new Schema<TPaypalPayment>(
   {
     paypalPayerEmail: { type: String, required: true },
-    paypalCaptureId: { type: String, sparse: true, unique: true },
+    paypalCaptureId: { type: String },
     payerId: { type: String, required: true },
     rawResponse: { type: Schema.Types.Mixed },
   },
@@ -71,6 +71,7 @@ PaymentSchema.index({ userId: 1, status: 1, createdAt: -1 });
 // supports { status: PROCESSING, expiredAt: { $lt: now } } without a collection scan.
 PaymentSchema.index({ status: 1, expiredAt: 1 });
 
+PaymentSchema.index({ 'paypalTransaction.paypalCaptureId': 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ codTransactionId: 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ txHash: 1 }, { unique: true, sparse: true });
 PaymentSchema.index({ order: 1, userId: 1 }, { unique: true });

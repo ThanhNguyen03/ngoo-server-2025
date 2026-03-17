@@ -166,8 +166,9 @@ class RedisKey {
       return raw as T;
     }
   }
-  async hashGetAll<T>() {
+  async hashGetAll<T>(): Promise<T | null> {
     const raw = await this.client.hGetAll(this.fullKey());
+    if (!raw || Object.keys(raw).length === 0) return null;
     return parseHash<T>(raw);
   }
   async hashDel(field: RedisArgument) {

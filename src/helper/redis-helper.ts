@@ -178,6 +178,7 @@ export const RedisHelper = {
      */
     categoryAllListGet: async (): Promise<TCategory[] | null> => {
       const raw = await RedisHelperCategory.category('list').hashGetAll<Record<string, TCategory>>();
+      if (!raw) return null;
       return Object.values(raw);
     },
 
@@ -489,6 +490,9 @@ export const RedisHelper = {
     paypalStatusSet: async (orderId: string, value: TWebhookData) => {
       const result = await RedisHelperPaypal.paypalOrder(`status:${orderId}`).hashSet(value);
       await RedisHelperPaypal.paypalOrder(`status:${orderId}`).expire(config.CACHE_PAYPAL_STATUS_TTL_SEC);
+      // Also index by userId so socket.ts reconnect replay can find the status
+      await RedisHelperPaypal.paypalOrder(`status:${value.userId}`).hashSet(value);
+      await RedisHelperPaypal.paypalOrder(`status:${value.userId}`).expire(config.CACHE_PAYPAL_STATUS_TTL_SEC);
       return result;
     },
   },
@@ -589,7 +593,10 @@ export const RedisHelper = {
      */
     cryptoStatusSet: async (orderId: string, data: TWebhookData): Promise<void> => {
       await RedisHelperCrypto.cryptoStatus(orderId).hashSet(data);
-      await RedisHelperCrypto.cryptoStatus(orderId).expire(config.CACHE_PAYPAL_STATUS_TTL_SEC);
+      await RedisHelperCrypto.cryptoStatus(orderId).expire(config.CACHE_CRYPTO_PROOF_TTL_SEC);
+      // Also index by userId so socket.ts reconnect replay can find the status
+      await RedisHelperCrypto.cryptoStatus(data.userId).hashSet(data);
+      await RedisHelperCrypto.cryptoStatus(data.userId).expire(config.CACHE_CRYPTO_PROOF_TTL_SEC);
     },
   },
 
