@@ -126,7 +126,7 @@ async function getAnonRecommendations(limit: number): Promise<TRecommendationRes
 
   const records = Array.from(itemMap.values()).slice(0, limit);
   const source = hotTerms.length > 0 ? ERecommendationSource.HotSearch : ERecommendationSource.BestSeller;
-  const result: TRecommendationResponse = { records, source };
+  const result: TRecommendationResponse = { records, source, buyAgainItemIds: [] };
 
   // Cache the anonymous response globally for 5 min (keyed by limit)
   await RedisHelper.recommendation.anonRecsSet(limit, JSON.stringify(result));
@@ -145,73 +145,99 @@ async function getPersonalizedRecommendations(userId: string, limit: number): Pr
     return JSON.parse(cached) as TRecommendationResponse;
   }
 
-  // Step 1: Aggregate user behavior → top 5 preferred categories by weighted score
-  const categoryScores = await UserBehaviorModel.aggregate<{ _id: string; score: number }>([
-    { $match: { userId, isDeleted: false } },
-    {
-      $group: {
-        _id: '$categoryName',
-        // $sum with a conditional expression maps each event to its weight
-        score: {
-          $sum: {
-            $switch: {
-              branches: [
-                { case: { $eq: ['$event', EBehaviorEvent.PURCHASE] }, then: BEHAVIOR_WEIGHTS[EBehaviorEvent.PURCHASE] },
-                {
-                  case: { $eq: ['$event', EBehaviorEvent.ADD_TO_CART] },
-                  then: BEHAVIOR_WEIGHTS[EBehaviorEvent.ADD_TO_CART],
-                },
-                { case: { $eq: ['$event', EBehaviorEvent.VIEW] }, then: BEHAVIOR_WEIGHTS[EBehaviorEvent.VIEW] },
-              ],
-              default: 0,
+  // Steps 1 & 2: Both aggregate UserBehaviorModel for the same user — run in parallel
+  // to avoid two sequential round-trips to the same collection.
+  const [categoryScores, frequentPurchases] = await Promise.all([
+    // Step 1: top 5 preferred categories by weighted event score
+    UserBehaviorModel.aggregate<{ _id: string; score: number }>([
+      { $match: { userId, isDeleted: false } },
+      {
+        $group: {
+          _id: '$categoryName',
+          // $sum with a conditional expression maps each event to its weight
+          score: {
+            $sum: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$event', EBehaviorEvent.PURCHASE] }, then: BEHAVIOR_WEIGHTS[EBehaviorEvent.PURCHASE] },
+                  {
+                    case: { $eq: ['$event', EBehaviorEvent.ADD_TO_CART] },
+                    then: BEHAVIOR_WEIGHTS[EBehaviorEvent.ADD_TO_CART],
+                  },
+                  { case: { $eq: ['$event', EBehaviorEvent.VIEW] }, then: BEHAVIOR_WEIGHTS[EBehaviorEvent.VIEW] },
+                ],
+                default: 0,
+              },
             },
           },
         },
       },
-    },
-    { $sort: { score: -1 } },
-    { $limit: 5 },
+      { $sort: { score: -1 } },
+      { $limit: 5 },
+    ]),
+    // Step 2: top re-purchased items ranked by frequency ("Buy again" candidates).
+    // For a consumable domain (coffee shop), repeat purchases are the primary signal —
+    // excluding them (old approach) drains the category and forces irrelevant backfill.
+    UserBehaviorModel.aggregate<{ _id: string; count: number }>([
+      { $match: { userId, event: EBehaviorEvent.PURCHASE, isDeleted: false } },
+      { $group: { _id: '$itemId', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: Math.ceil(limit / 2) }, // reserve half the slots for "buy again"
+    ]),
   ]);
 
-  // Step 2: Exclude items the user already purchased to avoid recommending them again
-  const purchasedItemIds = await UserBehaviorModel.distinct('itemId', {
-    userId,
-    event: EBehaviorEvent.PURCHASE,
-    isDeleted: false,
-  });
-
+  const buyAgainIds = frequentPurchases.map((p) => p._id);
   const topCategories = categoryScores.map((c) => c._id);
   const itemMap = new Map<string, ReturnType<typeof toItemResponse>>();
 
-  // Step 3: Fetch items from preferred categories (newest first, exclude purchased).
-  // Uses a DB-level category filter to avoid over-fetching items from irrelevant categories.
-  if (topCategories.length > 0) {
-    // Resolve category names → ObjectIds for efficient DB filtering
-    const categories = await CategoryModel.find({
-      name: { $in: topCategories },
-      isDeleted: false,
-    })
-      .select('_id')
-      .lean();
-    const categoryIds = categories.map((c) => c._id);
+  // Steps 2b & 3 (category resolution): independent DB lookups — run in parallel.
+  // buyAgainItems resolves item docs for the buy-again IDs.
+  // categories resolves preferred category names → ObjectIds for the discovery query.
+  const [buyAgainItems, preferredCategories] = await Promise.all([
+    buyAgainIds.length > 0
+      ? ItemModel.find({ itemId: { $in: buyAgainIds }, isDeleted: false })
+          .populate<{ category: { name: string } }>('category', 'name')
+          .lean()
+      : Promise.resolve([]),
+    topCategories.length > 0
+      ? CategoryModel.find({ name: { $in: topCategories }, isDeleted: false })
+          .select('_id')
+          .lean()
+      : Promise.resolve([]),
+  ]);
 
-    if (categoryIds.length > 0) {
-      const personalizedItems = await ItemModel.find({
-        isDeleted: false,
-        category: { $in: categoryIds },
-        itemId: { $nin: purchasedItemIds },
-      })
-        .populate<{ category: { name: string } }>('category', 'name')
-        .lean()
-        .sort({ createdAt: -1 })
-        .limit(limit);
-
-      for (const item of personalizedItems) {
-        if (!itemMap.has(item.itemId)) {
-          itemMap.set(item.itemId, toItemResponse(item as TItemMappable));
-        }
-        if (itemMap.size >= limit) break;
+  // Populate itemMap with buy-again items (preserve frequency order — $in doesn't guarantee it)
+  if (buyAgainItems.length > 0) {
+    const buyAgainMap = new Map(buyAgainItems.map((item) => [item.itemId, item]));
+    for (const id of buyAgainIds) {
+      const item = buyAgainMap.get(id);
+      if (item && !itemMap.has(item.itemId)) {
+        itemMap.set(item.itemId, toItemResponse(item as TItemMappable));
       }
+    }
+  }
+
+  // Step 3: Discovery items from preferred categories.
+  // Only exclude items already added (buy-again set) — allow other purchased items to appear.
+  const categoryIds = preferredCategories.map((c) => c._id);
+  const remainingSlots = limit - itemMap.size;
+
+  if (categoryIds.length > 0 && remainingSlots > 0) {
+    const discoveryItems = await ItemModel.find({
+      isDeleted: false,
+      category: { $in: categoryIds },
+      itemId: { $nin: Array.from(itemMap.keys()) }, // only exclude already-added items
+    })
+      .populate<{ category: { name: string } }>('category', 'name')
+      .sort({ createdAt: -1 })
+      .limit(remainingSlots)
+      .lean();
+
+    for (const item of discoveryItems) {
+      if (!itemMap.has(item.itemId)) {
+        itemMap.set(item.itemId, toItemResponse(item as TItemMappable));
+      }
+      if (itemMap.size >= limit) break;
     }
   }
 
@@ -227,9 +253,13 @@ async function getPersonalizedRecommendations(userId: string, limit: number): Pr
   }
 
   const records = Array.from(itemMap.values()).slice(0, limit);
+  // Only surface buyAgainIds that actually made it into the final result set
+  const finalBuyAgainItemIds = buyAgainIds.filter((id) => itemMap.has(id));
+
   const result: TRecommendationResponse = {
     records,
     source: topCategories.length > 0 ? ERecommendationSource.Personalized : ERecommendationSource.HotSearch,
+    buyAgainItemIds: finalBuyAgainItemIds,
   };
 
   // Cache per user for 5 min
