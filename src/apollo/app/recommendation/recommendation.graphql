@@ -18,6 +18,7 @@ input TrackBehaviorInput {
 type TRecommendationResponse {
   records: [TItemResponse!]!
   source: ERecommendationSource!
+  buyAgainItemIds: [String!]!
 }
 
 type Query {

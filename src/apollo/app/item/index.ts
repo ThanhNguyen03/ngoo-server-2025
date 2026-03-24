@@ -379,28 +379,67 @@ export const resolverItem: Resolvers = {
           filter.category = category._id;
         }
 
-        // Try MongoDB full-text search first (relevance-ranked)
-        let items = await ItemModel.find({ ...filter, $text: { $search: search } })
-          .select({ score: { $meta: 'textScore' } })
-          .populate<{ category: TCategory }>('category')
-          .sort({ score: { $meta: 'textScore' } })
-          .limit(limit ?? 10)
-          .lean();
+        // 3-tier search strategy — all independent queries run in parallel:
+        //   Tier 1: MongoDB full-text search — whole-word relevance ranking via textScore
+        //   Tier 2: Regex on name + category — catches partial matches like "mil" → "Milk Tea"
+        //   Tier 3: Regex on description — lowest priority, fills remaining slots only
+        // Results are merged by priority and deduped by itemId.
+        const effectiveLimit = limit ?? 10;
+        const safePattern = escapeRegex(search);
+        const regex = { $regex: safePattern, $options: 'i' };
 
-        // Fall back to regex for partial-word matches (e.g. "lat" → "Latte").
-        // User input is escaped to prevent ReDoS from crafted patterns.
-        if (items.length === 0) {
-          const safePattern = escapeRegex(search);
-          const regex = { $regex: safePattern, $options: 'i' };
-          items = await ItemModel.find({
-            ...filter,
-            $or: [{ name: regex }, { description: regex }],
-          })
+        // When a categoryName filter is already applied, Tier 2's category condition is redundant
+        // (scope is already restricted to that category). Skip the category lookup in that case.
+        // Otherwise run Tier 1 + Tier 3 + the category resolution in parallel, then Tier 2.
+        let tier2OrConditions: Record<string, unknown>[] = [{ name: regex }];
+
+        const [fullTextItems, descriptionItems] = await Promise.all([
+          // Tier 1: full-text search (relevance ranked by textScore)
+          ItemModel.find({ ...filter, $text: { $search: search } })
+            .select({ score: { $meta: 'textScore' } })
+            .populate<{ category: TCategory }>('category')
+            .sort({ score: { $meta: 'textScore' } })
+            .limit(effectiveLimit)
+            .lean(),
+          // Tier 3: description regex (lowest priority — runs in parallel with category lookup)
+          ItemModel.find({ ...filter, description: regex })
             .populate<{ category: TCategory }>('category')
             .sort({ createdAt: -1 })
-            .limit(limit ?? 10)
-            .lean();
+            .limit(effectiveLimit)
+            .lean(),
+          // Category resolution for Tier 2 runs concurrently with Tier 1 & Tier 3.
+          // Skip when categoryName is already set — the filter already restricts scope.
+          ...(categoryName
+            ? []
+            : [
+                CategoryModel.find({ name: regex, isDeleted: false })
+                  .select('_id')
+                  .lean()
+                  .then((cats) => {
+                    if (cats.length > 0) {
+                      tier2OrConditions = [...tier2OrConditions, { category: { $in: cats.map((c) => c._id) } }];
+                    }
+                  }),
+              ]),
+        ]);
+
+        // Tier 2 runs after category IDs are resolved (depends on the concurrent lookup above)
+        const nameAndCategoryItems = await ItemModel.find({ ...filter, $or: tier2OrConditions })
+          .populate<{ category: TCategory }>('category')
+          .sort({ createdAt: -1 })
+          .limit(effectiveLimit)
+          .lean();
+
+        // Merge with priority: Tier 1 > Tier 2 > Tier 3, deduped by itemId
+        const itemMap = new Map<string, (typeof fullTextItems)[0]>();
+        for (const tier of [fullTextItems, nameAndCategoryItems, descriptionItems]) {
+          for (const item of tier) {
+            if (itemMap.size >= effectiveLimit) break;
+            if (!itemMap.has(item.itemId)) itemMap.set(item.itemId, item);
+          }
+          if (itemMap.size >= effectiveLimit) break;
         }
+        const items = Array.from(itemMap.values());
 
         const result = {
           records: items.map(toItemResponse),
