@@ -604,6 +604,7 @@ export type TQueryBy = {
 
 export type TRecommendationResponse = {
   __typename?: 'TRecommendationResponse';
+  buyAgainItemIds: Array<Scalars['String']['output']>;
   records: Array<TItemResponse>;
   source: ERecommendationSource;
 };
@@ -1108,6 +1109,7 @@ export type TQueryByResolvers<ContextType = TAppContext, ParentType extends Reso
 };
 
 export type TRecommendationResponseResolvers<ContextType = TAppContext, ParentType extends ResolversParentTypes['TRecommendationResponse'] = ResolversParentTypes['TRecommendationResponse']> = {
+  buyAgainItemIds?: Resolver<Array<ResolversTypes['String']>, ParentType, ContextType>;
   records?: Resolver<Array<ResolversTypes['TItemResponse']>, ParentType, ContextType>;
   source?: Resolver<ResolversTypes['ERecommendationSource'], ParentType, ContextType>;
 };
