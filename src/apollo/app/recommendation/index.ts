@@ -28,9 +28,9 @@ import {
   TRecommendationResponse,
 } from '@generated/graphql';
 import {
+  authorizedWrapper,
   EUserAuthenticationStatus,
   JOI_ID_SCHEMA,
-  authorizedWrapper,
   optionalAuthWrapper,
   RATE_LIMIT_CONFIGS,
   rateLimitWrapper,
@@ -159,7 +159,10 @@ async function getPersonalizedRecommendations(userId: string, limit: number): Pr
             $sum: {
               $switch: {
                 branches: [
-                  { case: { $eq: ['$event', EBehaviorEvent.PURCHASE] }, then: BEHAVIOR_WEIGHTS[EBehaviorEvent.PURCHASE] },
+                  {
+                    case: { $eq: ['$event', EBehaviorEvent.PURCHASE] },
+                    then: BEHAVIOR_WEIGHTS[EBehaviorEvent.PURCHASE],
+                  },
                   {
                     case: { $eq: ['$event', EBehaviorEvent.ADD_TO_CART] },
                     then: BEHAVIOR_WEIGHTS[EBehaviorEvent.ADD_TO_CART],
@@ -277,34 +280,31 @@ export const resolverRecommendation: Resolvers = {
      * - Anonymous users: hot search terms + best sellers fallback
      * Both paths are cached in Redis for 5 min.
      */
-    recommendations: optionalAuthWrapper(
-      JOI_RECOMMENDATIONS,
-      async (_root, args, context) => {
-        // IP-based rate limiting — applies to both authenticated and anonymous users.
-        // We do this manually because publicRateLimitWrapper expects TGuestContext,
-        // while optionalAuthWrapper provides TOptionalAuthContext.
-        const ip = context.ip ?? 'unknown';
-        const rateLimitResult = await RedisHelper.rateLimit.tokenBucketConsume(
-          `ip:query:${ip}`,
-          RATE_LIMIT_CONFIGS.PUBLIC_QUERY,
-        );
-        if (!rateLimitResult.allowed) {
-          const minutes = Math.ceil(rateLimitResult.resetIn / 60);
-          throw new RateLimitError(`Too many requests. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}`);
-        }
+    recommendations: optionalAuthWrapper(JOI_RECOMMENDATIONS, async (_root, args, context) => {
+      // IP-based rate limiting — applies to both authenticated and anonymous users.
+      // We do this manually because publicRateLimitWrapper expects TGuestContext,
+      // while optionalAuthWrapper provides TOptionalAuthContext.
+      const ip = context.ip ?? 'unknown';
+      const rateLimitResult = await RedisHelper.rateLimit.tokenBucketConsume(
+        `ip:query:${ip}`,
+        RATE_LIMIT_CONFIGS.PUBLIC_QUERY,
+      );
+      if (!rateLimitResult.allowed) {
+        const minutes = Math.ceil(rateLimitResult.resetIn / 60);
+        throw new RateLimitError(`Too many requests. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}`);
+      }
 
-        const limit = (args as QueryRecommendationsArgs).limit ?? 8;
+      const limit = (args as QueryRecommendationsArgs).limit ?? 8;
 
-        // EUserAuthenticationStatus.Authenticated = 2
-        const isAuthenticated = context.user.kind === EUserAuthenticationStatus.Authenticated;
+      // EUserAuthenticationStatus.Authenticated = 2
+      const isAuthenticated = context.user.kind === EUserAuthenticationStatus.Authenticated;
 
-        if (isAuthenticated && 'userId' in context.user) {
-          return getPersonalizedRecommendations(context.user.userId, limit);
-        }
+      if (isAuthenticated && 'userId' in context.user) {
+        return getPersonalizedRecommendations(context.user.userId, limit);
+      }
 
-        return getAnonRecommendations(limit);
-      },
-    ),
+      return getAnonRecommendations(limit);
+    }),
   },
 
   Mutation: {
@@ -348,7 +348,7 @@ export const resolverRecommendation: Resolvers = {
           userId,
           itemId,
           categoryName: populated.category.name,
-          event: (event as unknown) as EBehaviorEvent,
+          event: event as unknown as EBehaviorEvent,
         }).catch((err) => {
           logger.error({ err, userId, itemId }, 'Failed to track behavior event');
         });
