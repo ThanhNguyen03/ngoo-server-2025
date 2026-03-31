@@ -9,14 +9,14 @@ RUN corepack enable
 # Copy yarn files to cache
 COPY package.json yarn.lock .yarnrc.yml ./
 
-# Install deps (Yarn v4)
-RUN yarn install --immutable
+# Install deps (Yarn v4) 
+RUN yarn install --immutable --ignore-scripts
 
 # Copy source code
 COPY . .
 
-# Build
-RUN yarn build
+# Build 
+RUN yarn install --immutable && yarn build
 
 ### Runtime stage
 FROM node:22-bookworm AS runner
